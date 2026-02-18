@@ -1,0 +1,49 @@
+{
+  "name": "SpotMe: Everyday Support",
+  "short_name": "SpotMe",
+  "description": "Help your neighbors with everyday needs. Small acts, big impact.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAFAF8",
+  "theme_color": "#F2785C",
+  "categories": ["social", "finance", "lifestyle"],
+  "lang": "en-US",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Post a Need",
+      "short_name": "Post",
+      "url": "/create",
+      "icons": []
+    },
+    {
+      "name": "Browse Needs",
+      "short_name": "Browse",
+      "url": "/search",
+      "icons": []
+    },
+    {
+      "name": "Spread the Love",
+      "short_name": "Spread",
+      "url": "/spread",
+      "icons": []
+    }
+  ]
+}
