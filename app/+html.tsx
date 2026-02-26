@@ -44,9 +44,12 @@ export default function Root({ children }: PropsWithChildren) {
         {/* PWA Manifest */}
         <link rel="manifest" href="/manifest.json" />
 
-        {/* Preconnect to image CDN for faster loading */}
+        {/* Preconnect to image CDN and API for faster loading */}
         <link rel="preconnect" href="https://d64gsuwffb70l.cloudfront.net" />
         <link rel="dns-prefetch" href="https://d64gsuwffb70l.cloudfront.net" />
+        <link rel="preconnect" href="https://wadkuixhehslrteepluf.databasepad.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://wadkuixhehslrteepluf.databasepad.com" />
+
 
         {/* Disable text size adjustment on mobile */}
         <ScrollViewStyleReset />

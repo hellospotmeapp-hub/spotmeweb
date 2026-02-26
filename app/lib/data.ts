@@ -37,14 +37,17 @@ export interface Need {
   goalAmount: number;
   raisedAmount: number;
   photo?: string;
-  status: 'Collecting' | 'Goal Met' | 'Payout Requested' | 'Paid';
+  status: 'Collecting' | 'Goal Met' | 'Payout Requested' | 'Paid' | 'Expired';
   verificationStatus?: 'pending' | 'approved' | 'rejected' | 'flagged' | 'info_requested';
   verifiedAt?: string;
   contributorCount: number;
   contributions: Contribution[];
   createdAt: string;
+  expiresAt?: string;
+  updatedAt?: string;
   featured?: boolean;
 }
+
 
 export interface Receipt {
   id: string;
@@ -384,16 +387,18 @@ export const COMMUNITY_GUIDELINES = [
   { title: 'Be Honest', description: 'Only post Needs that are genuine. Describe your situation truthfully and use funds as described.' },
   { title: 'Be Kind', description: 'Treat every member with respect. Leave supportive notes and encourage others in the community.' },
   { title: 'Keep It Small', description: 'SpotMe is for everyday needs, not emergencies or large fundraising. Maximum goal is $300.' },
-  { title: 'No Repeat Posting', description: 'Wait until your current Need is resolved before posting a new one. One active Need at a time.' },
+  { title: 'Stay Reasonable', description: 'You can have up to 4 active needs at a time. Wait for one to be resolved before posting more if you\'ve reached the limit.' },
   { title: 'Protect Privacy', description: 'Don\'t share personal information about others. Respect everyone\'s privacy and boundaries.' },
   { title: 'Report Concerns', description: 'If something doesn\'t feel right, use the report feature. Our team reviews every report within 24 hours.' },
   { title: 'No Harassment', description: 'Zero tolerance for bullying, harassment, or discrimination of any kind.' },
   { title: 'Gratitude Matters', description: 'When your goal is met, consider thanking your contributors. A little gratitude goes a long way.' },
 ];
 
+
 export const FAQ_ITEMS = [
   { q: 'How does SpotMe work?', a: 'Post a Need with a title, category, and goal amount ($25-$300). Other community members can contribute small amounts to help you reach your goal.' },
-  { q: 'Is there a fee?', a: 'SpotMe charges a small 5% transaction fee on contributions to keep the platform running. So if someone spots you $10, you receive $9.50.' },
+  { q: 'Is there a fee?', a: 'SpotMe takes no platform fee — 100% of your contribution goes to the recipient. Stripe charges a standard processing fee (2.9% + $0.30). At checkout, you can leave an optional tip to support SpotMe.' },
+
   { q: 'How do I get my money?', a: 'Once your goal is met, tap "Request Payout" on your Need. Payouts are processed within 2-3 business days to your linked payment method.' },
   { q: 'Can I contribute anonymously?', a: 'Yes! When contributing, you can choose to hide your name. Your contribution will show as "A kind stranger."' },
   { q: 'What if my goal isn\'t met?', a: 'You still receive whatever has been contributed. Needs stay active for 14 days. After that, you can request a payout for the amount raised.' },

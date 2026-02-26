@@ -1,19 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Animated } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Animated, Image, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
 import { CATEGORIES, NEED_PHOTOS } from '@/app/lib/data';
+// Photo upload imports kept but feature is temporarily disabled
+// import { pickNeedPhoto, uploadNeedPhoto } from '@/app/lib/imageUpload';
+
 
 const GOAL_PRESETS = [25, 50, 75, 100, 150, 200, 250, 300];
 const MAX_GOAL = 300;
+const MAX_ACTIVE_NEEDS = 4;
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { createNeed, isLoggedIn } = useApp();
+  const { createNeed, isLoggedIn, currentUser, needs } = useApp();
   
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
@@ -23,12 +27,41 @@ export default function CreateScreen() {
   const [customGoal, setCustomGoal] = useState('');
   const [isCustomGoal, setIsCustomGoal] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [limitError, setLimitError] = useState(false);
+
+  // Photo upload state
+  const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   // Animation for the max banner
   const bannerAnim = useRef(new Animated.Value(0)).current;
   const bannerShown = useRef(false);
 
   const categories = CATEGORIES.filter(c => c.name !== 'All');
+
+  // ---- ENFORCE 4 ACTIVE NEED LIMIT ----
+  const myActiveNeeds = useMemo(() => {
+    if (!isLoggedIn || currentUser.id === 'guest') return [];
+    return needs.filter(n =>
+      (n.userId === currentUser.id || n.userId === 'current') &&
+      n.status === 'Collecting'
+    );
+  }, [needs, currentUser.id, isLoggedIn]);
+
+  const activeNeedCount = myActiveNeeds.length;
+  const canCreateMore = activeNeedCount < MAX_ACTIVE_NEEDS;
+  const slotsRemaining = Math.max(0, MAX_ACTIVE_NEEDS - activeNeedCount);
+
+  // Check limit when component mounts or needs change
+  useEffect(() => {
+    if (isLoggedIn && !canCreateMore) {
+      setLimitError(true);
+    } else {
+      setLimitError(false);
+    }
+  }, [isLoggedIn, canCreateMore]);
 
   const getGoal = () => {
     if (isCustomGoal) {
@@ -70,9 +103,7 @@ export default function CreateScreen() {
   };
 
   const handleCustomGoalChange = (text: string) => {
-    // Only allow numeric input
     const numeric = text.replace(/[^0-9]/g, '');
-    // Cap at MAX_GOAL
     const parsed = parseInt(numeric) || 0;
     if (parsed > MAX_GOAL) {
       setCustomGoal(String(MAX_GOAL));
@@ -81,20 +112,43 @@ export default function CreateScreen() {
     }
   };
 
+  // ---- Photo Picker Handler (DISABLED - feature is asleep) ----
+  const handlePickPhoto = async () => {
+    // Photo upload is temporarily disabled
+    // This handler is kept for when the feature is re-enabled
+    return;
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoLocalUri(null);
+    setPhotoUrl(null);
+    setPhotoError(null);
+    setIsUploadingPhoto(false);
+  };
+
+
+
   const handleSubmit = () => {
     if (!isLoggedIn) {
       router.push('/auth');
       return;
     }
 
-    const randomPhoto = NEED_PHOTOS[Math.floor(Math.random() * NEED_PHOTOS.length)];
+    // Final limit check before submit
+    if (!canCreateMore) {
+      setLimitError(true);
+      return;
+    }
+
+    // Use uploaded photo URL, or fall back to a random preset photo
+    const finalPhoto = photoUrl || NEED_PHOTOS[Math.floor(Math.random() * NEED_PHOTOS.length)];
 
     createNeed({
       title: title.trim(),
       message: message.trim(),
       category,
       goalAmount: getGoal(),
-      photo: randomPhoto,
+      photo: finalPhoto,
     });
 
     setSubmitted(true);
@@ -109,13 +163,75 @@ export default function CreateScreen() {
     setCustomGoal('');
     setIsCustomGoal(false);
     setSubmitted(false);
+    setPhotoLocalUri(null);
+    setPhotoUrl(null);
+    setPhotoError(null);
+    setIsUploadingPhoto(false);
+    setLimitError(false);
     bannerShown.current = false;
     bannerAnim.setValue(0);
   };
 
   const topPadding = Platform.OS === 'web' ? 0 : insets.top;
 
+  // ---- LIMIT REACHED SCREEN ----
+  if (limitError && isLoggedIn) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.limitContainer}>
+          <View style={styles.limitIconWrap}>
+            <MaterialIcons name="block" size={56} color={Colors.accent} />
+          </View>
+          <Text style={styles.limitTitle}>Need Limit Reached</Text>
+          <Text style={styles.limitMessage}>
+            You currently have {activeNeedCount} active {activeNeedCount === 1 ? 'need' : 'needs'}. The maximum is {MAX_ACTIVE_NEEDS} at a time.
+          </Text>
+          <Text style={styles.limitSubMessage}>
+            Wait for one of your needs to be funded, expire, or delete an unfunded need to free up a slot.
+          </Text>
+
+          {/* Show active needs */}
+          <View style={styles.limitNeedsList}>
+            <Text style={styles.limitNeedsTitle}>Your Active Needs ({activeNeedCount}/{MAX_ACTIVE_NEEDS})</Text>
+            {myActiveNeeds.map((need) => (
+              <TouchableOpacity
+                key={need.id}
+                style={styles.limitNeedRow}
+                onPress={() => router.push(`/need/${need.id}`)}
+                activeOpacity={0.7}
+              >
+                {need.photo ? (
+                  <Image source={{ uri: need.photo }} style={styles.limitNeedPhoto} />
+                ) : (
+                  <View style={[styles.limitNeedPhoto, { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
+                    <MaterialIcons name="image" size={16} color={Colors.textLight} />
+                  </View>
+                )}
+                <View style={styles.limitNeedInfo}>
+                  <Text style={styles.limitNeedTitle} numberOfLines={1}>{need.title}</Text>
+                  <Text style={styles.limitNeedProgress}>
+                    ${need.raisedAmount} of ${need.goalAmount} raised
+                  </Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color={Colors.textLight} />
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity style={styles.limitButton} onPress={() => router.push('/(tabs)')} activeOpacity={0.8}>
+            <MaterialIcons name="home" size={20} color={Colors.white} />
+            <Text style={styles.limitButtonText}>Back to Feed</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   if (submitted) {
+    // Recalculate after submission (the need was just created so count may have changed)
+    const newActiveCount = myActiveNeeds.length + 1; // +1 for the just-created need
+    const newSlotsRemaining = Math.max(0, MAX_ACTIVE_NEEDS - newActiveCount);
+
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
         <View style={styles.successContainer}>
@@ -127,13 +243,16 @@ export default function CreateScreen() {
             Your need is now live. The community can start spotting you right away.
           </Text>
 
-          {/* Encouraging message about posting more */}
+          {/* Slot counter */}
           <View style={styles.successInfoBanner}>
             <View style={styles.successInfoIconWrap}>
               <MaterialIcons name="auto-awesome" size={22} color={Colors.accent} />
             </View>
             <Text style={styles.successInfoText}>
-              Have more to cover? You can always post additional needs — there's no limit to how many you can create!
+              {newSlotsRemaining > 0
+                ? `You have ${newSlotsRemaining} of ${MAX_ACTIVE_NEEDS} need ${newSlotsRemaining === 1 ? 'slot' : 'slots'} remaining. If one gets funded, you can always create another!`
+                : `You've used all ${MAX_ACTIVE_NEEDS} need slots. Once one is funded or expires, you can create another.`
+              }
             </Text>
           </View>
 
@@ -142,14 +261,17 @@ export default function CreateScreen() {
             <Text style={styles.successButtonText}>View Feed</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.postAnotherButton} onPress={handleReset}>
-            <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
-            <Text style={styles.postAnotherButtonText}>Post Another Need</Text>
-          </TouchableOpacity>
+          {newSlotsRemaining > 0 && (
+            <TouchableOpacity style={styles.postAnotherButton} onPress={handleReset}>
+              <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
+              <Text style={styles.postAnotherButtonText}>Post Another Need</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
   }
+
 
   const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
   const wrapperProps = Platform.OS === 'web' ? {} : { behavior: 'padding' as const };
@@ -161,7 +283,14 @@ export default function CreateScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Post a Need</Text>
+        <View>
+          <Text style={styles.headerTitle}>Post a Need</Text>
+          {isLoggedIn && (
+            <Text style={styles.headerSlots}>
+              {slotsRemaining} of {MAX_ACTIVE_NEEDS} slots available
+            </Text>
+          )}
+        </View>
         <Text style={styles.headerSubtitle}>Step {step} of 3</Text>
       </View>
 
@@ -225,7 +354,7 @@ export default function CreateScreen() {
           </View>
         )}
 
-        {/* Step 2: Details */}
+        {/* Step 2: Details + Photo */}
         {step === 2 && (
           <View style={styles.stepContent}>
             <Text style={styles.stepTitle}>Tell your story</Text>
@@ -255,10 +384,31 @@ export default function CreateScreen() {
             />
             <Text style={styles.charCount}>{message.length}/200</Text>
 
+            {/* ---- Photo Upload Section (Temporarily Disabled) ---- */}
+            <View style={styles.photoSection}>
+              <View style={styles.photoLabelRow}>
+                <Text style={styles.inputLabel}>Photo</Text>
+                <View style={styles.comingSoonBadge}>
+                  <MaterialIcons name="schedule" size={12} color="#5B8DEF" />
+                  <Text style={styles.comingSoonBadgeText}>Coming Soon</Text>
+                </View>
+              </View>
+              <View style={styles.photoDisabledContainer}>
+                <View style={styles.photoDisabledIconWrap}>
+                  <MaterialIcons name="photo-camera" size={28} color={Colors.textLight} />
+                </View>
+                <Text style={styles.photoDisabledTitle}>Photo uploads are temporarily paused</Text>
+                <Text style={styles.photoDisabledSubtitle}>
+                  We're improving the upload experience. For now, a beautiful default image will be added to your need automatically.
+                </Text>
+              </View>
+            </View>
+
+
             <View style={styles.tipCard}>
               <MaterialIcons name="lightbulb" size={20} color={Colors.accent} />
               <Text style={styles.tipText}>
-                Tip: Needs with specific, honest stories get funded 3x faster than vague ones.
+                Tip: Needs with a personal photo get funded 3x faster than those with stock images.
               </Text>
             </View>
           </View>
@@ -302,7 +452,7 @@ export default function CreateScreen() {
                 <View style={styles.maxBannerContent}>
                   <Text style={styles.maxBannerTitle}>That's the max for a single request</Text>
                   <Text style={styles.maxBannerText}>
-                    But no worries! You can always post another need if you have more to cover. There's no limit to how many needs you can create.
+                    But no worries! You can post up to {MAX_ACTIVE_NEEDS} active needs at a time ({slotsRemaining} {slotsRemaining === 1 ? 'slot' : 'slots'} remaining). If one gets funded, you can always create another.
                   </Text>
                 </View>
               </Animated.View>
@@ -366,29 +516,54 @@ export default function CreateScreen() {
             {getGoal() > 0 && (
               <View style={styles.feeInfo}>
                 <Text style={styles.feeInfoText}>
-                  Platform fee: 5% on contributions
+                  No platform fees — 100% goes to you
                 </Text>
                 <Text style={styles.feeInfoText}>
-                  You'll receive up to ${Math.round(getGoal() * 0.95)} after fees
+                  You'll receive up to ${getGoal()} (Stripe processing: 2.9% + $0.30)
                 </Text>
               </View>
             )}
 
+
+            {/* Summary */}
             {/* Summary */}
             <View style={styles.summaryCard}>
               <Text style={styles.summaryTitle}>Summary</Text>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Category</Text>
-                <Text style={styles.summaryValue}>{category}</Text>
+                <Text style={styles.summaryValue} numberOfLines={1}>{category}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Title</Text>
                 <Text style={styles.summaryValue} numberOfLines={1}>{title}</Text>
               </View>
               <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Photo</Text>
+                <View style={styles.summaryPhotoWrap}>
+                  {photoUrl ? (
+                    <>
+                      <Image source={{ uri: photoLocalUri || photoUrl }} style={styles.summaryPhotoThumb} />
+                      <Text style={[styles.summaryValue, { color: Colors.success }]} numberOfLines={1}>Custom photo</Text>
+                    </>
+                  ) : photoLocalUri && isUploadingPhoto ? (
+                    <>
+                      <Image source={{ uri: photoLocalUri }} style={styles.summaryPhotoThumb} />
+                      <Text style={[styles.summaryValue, { color: Colors.accent }]} numberOfLines={1}>Uploading...</Text>
+                    </>
+                  ) : photoLocalUri && photoError ? (
+                    <>
+                      <Image source={{ uri: photoLocalUri }} style={styles.summaryPhotoThumb} />
+                      <Text style={[styles.summaryValue, { color: Colors.error }]} numberOfLines={1}>Failed — using default</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.summaryValue} numberOfLines={1}>Default image</Text>
+                  )}
+                </View>
+              </View>
+              <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Goal</Text>
                 <View style={styles.summaryGoalWrap}>
-                  <Text style={styles.summaryValue}>${getGoal()}</Text>
+                  <Text style={styles.summaryGoalText} numberOfLines={1}>${getGoal()}</Text>
                   {isAtMax && (
                     <View style={styles.summaryMaxBadge}>
                       <Text style={styles.summaryMaxBadgeText}>MAX</Text>
@@ -397,8 +572,10 @@ export default function CreateScreen() {
                 </View>
               </View>
             </View>
+
           </View>
         )}
+
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -412,15 +589,30 @@ export default function CreateScreen() {
           </TouchableOpacity>
         )}
         <TouchableOpacity
-          style={[styles.nextButton, !canProceed() && styles.nextButtonDisabled, step === 1 && { flex: 1 }]}
+          style={[
+            styles.nextButton,
+            !canProceed() && styles.nextButtonDisabled,
+            step === 1 && { flex: 1 },
+            // Disable submit while photo is uploading
+            step === 3 && isUploadingPhoto && styles.nextButtonDisabled,
+          ]}
           onPress={() => step < 3 ? setStep(step + 1) : handleSubmit()}
-          disabled={!canProceed()}
+          disabled={!canProceed() || (step === 3 && isUploadingPhoto)}
           activeOpacity={0.8}
         >
-          <Text style={styles.nextButtonText}>
-            {step < 3 ? 'Continue' : 'Post Need'}
-          </Text>
-          <MaterialIcons name={step < 3 ? 'arrow-forward' : 'check'} size={20} color={Colors.white} />
+          {step === 3 && isUploadingPhoto ? (
+            <>
+              <ActivityIndicator size="small" color={Colors.white} />
+              <Text style={styles.nextButtonText}>Uploading Photo...</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.nextButtonText}>
+                {step < 3 ? 'Continue' : 'Post Need'}
+              </Text>
+              <MaterialIcons name={step < 3 ? 'arrow-forward' : 'check'} size={20} color={Colors.white} />
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </Wrapper>
@@ -449,6 +641,12 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textLight,
     fontWeight: '600',
+  },
+  headerSlots: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+    marginTop: 2,
   },
   stepsRow: {
     flexDirection: 'row',
@@ -596,6 +794,171 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     marginBottom: Spacing.xl,
   },
+
+  // ---- Photo Upload Section ----
+  photoSection: {
+    marginBottom: Spacing.lg,
+  },
+  photoLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  optionalBadge: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    color: Colors.textLight,
+    backgroundColor: Colors.surfaceAlt,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.sm,
+    overflow: 'hidden',
+  },
+  photoHelpText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+    lineHeight: 19,
+  },
+  photoPickerContainer: {
+    marginBottom: Spacing.sm,
+  },
+  photoPickerButton: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.xl,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
+    alignItems: 'center',
+    gap: Spacing.sm,
+    ...Shadow.sm,
+  },
+  photoPickerIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.xs,
+  },
+  photoPickerTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  photoPickerSubtitle: {
+    fontSize: FontSize.sm,
+    color: Colors.textLight,
+    textAlign: 'center',
+  },
+
+  // ---- Photo Preview ----
+  photoPreviewContainer: {
+    position: 'relative',
+    borderRadius: BorderRadius.xl,
+    overflow: 'hidden',
+    ...Shadow.md,
+    marginBottom: Spacing.sm,
+  },
+  photoPreview: {
+    width: '100%',
+    height: 220,
+    borderRadius: BorderRadius.xl,
+    backgroundColor: Colors.surfaceAlt,
+  },
+  photoUploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    borderRadius: BorderRadius.xl,
+  },
+  photoUploadText: {
+    fontSize: FontSize.md,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+  photoSuccessBadge: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.success,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  photoSuccessText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  photoErrorBadge: {
+    position: 'absolute',
+    top: Spacing.md,
+    right: Spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.error,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+  },
+  photoErrorBadgeText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  photoActions: {
+    position: 'absolute',
+    bottom: Spacing.md,
+    right: Spacing.md,
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  photoActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.full,
+  },
+  photoRemoveBtn: {
+    backgroundColor: 'rgba(232,93,93,0.85)',
+  },
+  photoActionText: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    color: Colors.white,
+  },
+
+  // ---- Photo Error ----
+  photoErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.sm,
+    backgroundColor: Colors.accentLight,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginTop: Spacing.xs,
+  },
+  photoErrorText: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+
   tipCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -796,6 +1159,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flexShrink: 0,
+  },
+  summaryGoalText: {
+    fontSize: FontSize.md,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  summaryGoalValue: {
+    fontSize: FontSize.md,
+    fontWeight: '800',
+  },
+
+  summaryPhotoWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  summaryPhotoThumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: Colors.surfaceAlt,
   },
   summaryMaxBadge: {
     backgroundColor: '#EEF4FF',
@@ -942,5 +1327,150 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
     fontWeight: '700',
     color: Colors.primary,
+  },
+
+  // ---- Limit Reached Screen ----
+  limitContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xxl,
+    gap: Spacing.md,
+  },
+  limitIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.accentLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  limitTitle: {
+    fontSize: FontSize.xxl,
+    fontWeight: '900',
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  limitMessage: {
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  limitSubMessage: {
+    fontSize: FontSize.sm,
+    color: Colors.textLight,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  limitNeedsList: {
+    width: '100%',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+    ...Shadow.sm,
+  },
+  limitNeedsTitle: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+  },
+  limitNeedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  limitNeedPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: BorderRadius.md,
+  },
+  limitNeedInfo: {
+    flex: 1,
+  },
+  limitNeedTitle: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  limitNeedProgress: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
+    marginTop: 2,
+  },
+  limitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: Spacing.xxxl,
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    marginTop: Spacing.lg,
+    width: '100%',
+    ...Shadow.md,
+  },
+  limitButtonText: {
+    fontSize: FontSize.lg,
+    fontWeight: '700',
+  },
+
+  // ---- Coming Soon / Disabled Photo Styles ----
+  comingSoonBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EEF4FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D4E2FC',
+  },
+  comingSoonBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#5B8DEF',
+  },
+  photoDisabledContainer: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#E8ECF0',
+    borderStyle: 'dashed',
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  photoDisabledIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#E8ECF0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  photoDisabledTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#8E99A4',
+    textAlign: 'center',
+  },
+  photoDisabledSubtitle: {
+    fontSize: 13,
+    color: '#A8B3BE',
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
   },
 });

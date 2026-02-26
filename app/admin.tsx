@@ -7,7 +7,8 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from 
 import { supabase } from '@/app/lib/supabase';
 import { useApp } from '@/app/lib/store';
 
-type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding';
+type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips';
+
 
 
 interface WebhookEvent {
@@ -174,6 +175,11 @@ export default function AdminDashboard() {
   const [walkthroughLoading, setWalkthroughLoading] = useState(false);
 
 
+  // Tip analytics state
+  const [tipAnalytics, setTipAnalytics] = useState<any>(null);
+  const [tipAnalyticsLoading, setTipAnalyticsLoading] = useState(false);
+
+
   // Check admin access on mount
   useEffect(() => {
     checkAdminAccess();
@@ -307,13 +313,32 @@ export default function AdminDashboard() {
     if (activeTab === 'onboarding' && isAdminUser) fetchWalkthroughStats();
   }, [activeTab, isAdminUser]);
 
+  const fetchTipAnalytics = useCallback(async () => {
+    setTipAnalyticsLoading(true);
+    try {
+      const { data } = await supabase.functions.invoke('stripe-checkout', {
+        body: { action: 'tip_analytics', userId: currentUser.id },
+      });
+      if (data?.success) {
+        setTipAnalytics(data.tipAnalytics);
+      }
+    } catch {}
+    setTipAnalyticsLoading(false);
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    if (activeTab === 'tips' && isAdminUser) fetchTipAnalytics();
+  }, [activeTab, isAdminUser]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchStats(true);
     if (activeTab === 'webhooks') fetchWebhookLogs();
     if (activeTab === 'security') fetchErrorLogs();
     if (activeTab === 'onboarding') fetchWalkthroughStats();
+    if (activeTab === 'tips') fetchTipAnalytics();
   };
+
 
 
   const topPadding = Platform.OS === 'web' ? 16 : insets.top;
@@ -459,8 +484,9 @@ export default function AdminDashboard() {
     <View style={[s.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.backBtn} onPress={() => { try { router.push('/(tabs)'); } catch { router.back(); } }}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
+
         </TouchableOpacity>
         <View style={s.headerCenter}>
           <Text style={s.headerTitle}>Admin Dashboard</Text>
@@ -490,6 +516,8 @@ export default function AdminDashboard() {
         <TabButton tab="security" current={activeTab} label="Security" icon="security" onPress={() => setActiveTab('security')} badge={errorBadge} />
         <TabButton tab="activity" current={activeTab} label="Activity" icon="timeline" onPress={() => setActiveTab('activity')} />
         <TabButton tab="onboarding" current={activeTab} label="Onboarding" icon="play-circle-outline" onPress={() => setActiveTab('onboarding')} />
+        <TabButton tab="tips" current={activeTab} label="Tips" icon="volunteer-activism" onPress={() => setActiveTab('tips')} />
+
       </ScrollView>
 
 
@@ -507,7 +535,8 @@ export default function AdminDashboard() {
               <StatCard icon="attach-money" label="Total Raised" value={`$${stats.totalRaised.toLocaleString()}`} color={Colors.success} />
               <StatCard icon="check-circle" label="Goals Met" value={stats.totalGoalsMet.toString()} color={Colors.accent} />
               <StatCard icon="receipt" label="Contributions" value={stats.totalContributions.toString()} color={Colors.secondary} subtitle={`${stats.recentContributionsCount} this week`} />
-              <StatCard icon="account-balance" label="Platform Revenue" value={`$${stats.totalRevenue.toFixed(2)}`} color="#B8A9C9" subtitle="5% fees" />
+              <StatCard icon="volunteer-activism" label="Tip Revenue" value={`$${stats.totalRevenue.toFixed(2)}`} color="#B8A9C9" subtitle="Optional tips" />
+
             </View>
 
             {(stats.webhookStats || stats.retryStats) && (
@@ -763,7 +792,9 @@ export default function AdminDashboard() {
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>UUID validation for all ID parameters</Text></View>
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>HTML/XSS stripping on text inputs</Text></View>
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Amount validation (min $0.01, max $10,000)</Text></View>
-              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Stripe Gateway API key server-side only</Text></View>
+              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Stripe keys server-side only (GATEWAY_API_KEY)</Text></View>
+
+
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>CORS headers on all edge functions</Text></View>
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Auto-cleanup of stale rate limit entries</Text></View>
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Database indexes on all queried fields</Text></View>
@@ -842,15 +873,31 @@ export default function AdminDashboard() {
                 <Text style={s.sectionTitle}>Stripe Configuration</Text>
                 <MaterialIcons name="payment" size={20} color={Colors.textLight} />
               </View>
-              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>GATEWAY_API_KEY: Configured</Text></View>
-              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Payment Gateway URL: stripe.gateway.fastrouter.io</Text></View>
-              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Platform fee: 5% (destination charges)</Text></View>
-              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Webhook endpoint: Active</Text></View>
+              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>GATEWAY_API_KEY: Configured (Stripe gateway fallback)</Text></View>
+              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>STRIPE_SECRET_KEY: Preferred for direct API calls (via env var or app_secrets table)</Text></View>
+              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>STRIPE_WEBHOOK_SECRET: Webhook signature verification (HMAC-SHA256)</Text></View>
+              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Platform fee: None (optional tips via application_fee_amount)</Text></View>
+              <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Webhook endpoint: Active with signature verification</Text></View>
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Connected accounts: {stats?.connectedAccounts || 0} active</Text></View>
               <View style={s.secConfigRow}><MaterialIcons name="check-circle" size={18} color={Colors.success} /><Text style={s.secConfigText}>Auto-retry on failure: Up to 3 attempts</Text></View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md }}>
+                <TouchableOpacity style={[s.retryBtn, { flex: 1, alignItems: 'center', minWidth: 100 }]} onPress={() => router.push('/analytics')}>
+                  <Text style={s.retryBtnText}>Analytics</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.retryBtn, { flex: 1, alignItems: 'center', backgroundColor: Colors.secondary, minWidth: 100 }]} onPress={() => router.push('/test-payments')}>
+                  <Text style={s.retryBtnText}>Test Suite</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.retryBtn, { flex: 1, alignItems: 'center', backgroundColor: Colors.error, minWidth: 100 }]} onPress={() => router.push('/refunds')}>
+                  <Text style={s.retryBtnText}>Refunds</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.retryBtn, { flex: 1, alignItems: 'center', backgroundColor: '#635BFF', minWidth: 100 }]} onPress={() => router.push('/go-live')}>
+                  <Text style={s.retryBtnText}>Go-Live</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </>
         )}
+
 
         {/* ACTIVITY TAB */}
         {activeTab === 'activity' && stats && (
@@ -1035,7 +1082,158 @@ export default function AdminDashboard() {
           </>
         )}
 
+
+        {/* TIPS ANALYTICS TAB */}
+        {activeTab === 'tips' && (
+          <>
+            <View style={s.tabHeader}>
+              <Text style={s.tabHeaderTitle}>Tip Analytics</Text>
+              <TouchableOpacity onPress={fetchTipAnalytics} style={{ opacity: tipAnalyticsLoading ? 0.5 : 1 }}>
+                <MaterialIcons name="refresh" size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {tipAnalyticsLoading && !tipAnalytics ? (
+              <View style={s.whLoadingWrap}><ActivityIndicator size="small" color={Colors.primary} /><Text style={s.whLoadingText}>Loading tip analytics...</Text></View>
+            ) : !tipAnalytics ? (
+              <View style={s.emptyState}><MaterialIcons name="volunteer-activism" size={48} color={Colors.borderLight} /><Text style={s.emptyText}>No tip data yet</Text></View>
+            ) : (
+              <>
+                {/* Summary Stats */}
+                <View style={s.statsGrid}>
+                  <StatCard icon="attach-money" label="Total Tips" value={`$${(tipAnalytics.summary?.totalTips || 0).toFixed(2)}`} color={Colors.primary} />
+                  <StatCard icon="trending-up" label="Tip Rate" value={`${tipAnalytics.summary?.tipRate || 0}%`} color={Colors.success} subtitle={`${tipAnalytics.summary?.paymentsWithTip || 0} of ${tipAnalytics.summary?.totalPayments || 0}`} />
+                  <StatCard icon="show-chart" label="Avg Tip" value={`$${(tipAnalytics.summary?.avgTip || 0).toFixed(2)}`} color={Colors.secondary} subtitle={`Median: $${(tipAnalytics.summary?.medianTip || 0).toFixed(2)}`} />
+                  <StatCard icon="percent" label="Avg Tip %" value={`${tipAnalytics.summary?.avgTipPercent || 0}%`} color={Colors.accent} subtitle="of donation amount" />
+                  <StatCard icon="payments" label="Total Donations" value={`$${(tipAnalytics.summary?.totalDonations || 0).toFixed(2)}`} color="#7B9ED9" />
+                  <StatCard icon="do-not-disturb" label="No Tip" value={String(tipAnalytics.summary?.paymentsWithoutTip || 0)} color={Colors.textLight} subtitle={`${tipAnalytics.summary?.totalPayments ? Math.round(((tipAnalytics.summary?.paymentsWithoutTip || 0) / tipAnalytics.summary.totalPayments) * 100) : 0}% of payments`} />
+                </View>
+
+                {/* Tip Distribution */}
+                {tipAnalytics.tipBuckets && (
+                  <View style={s.sectionCard}>
+                    <View style={s.sectionHeader}><Text style={s.sectionTitle}>Tip Distribution</Text><MaterialIcons name="bar-chart" size={20} color={Colors.textLight} /></View>
+                    <View style={tipStyles.bucketGrid}>
+                      {Object.entries(tipAnalytics.tipBuckets).map(([bucket, count]: [string, any]) => {
+                        const total = tipAnalytics.summary?.totalPayments || 1;
+                        const pct = Math.round((count / total) * 100);
+                        const isNoTip = bucket === '$0';
+                        return (
+                          <View key={bucket} style={tipStyles.bucketItem}>
+                            <View style={tipStyles.bucketBarTrack}>
+                              <View style={[tipStyles.bucketBarFill, { height: `${Math.max(pct, 3)}%`, backgroundColor: isNoTip ? Colors.textLight : Colors.primary }]} />
+                            </View>
+                            <Text style={tipStyles.bucketLabel}>{bucket}</Text>
+                            <Text style={tipStyles.bucketCount}>{count}</Text>
+                            <Text style={tipStyles.bucketPct}>{pct}%</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+
+                {/* Daily Tip Trends */}
+                {tipAnalytics.dailyTipData && tipAnalytics.dailyTipData.length > 0 && (
+                  <View style={s.sectionCard}>
+                    <View style={s.sectionHeader}><Text style={s.sectionTitle}>Daily Tips (14 days)</Text><MaterialIcons name="show-chart" size={20} color={Colors.textLight} /></View>
+                    <View style={tipStyles.trendGrid}>
+                      {tipAnalytics.dailyTipData.map((day: any, i: number) => {
+                        const maxTip = Math.max(...tipAnalytics.dailyTipData.map((d: any) => d.tipTotal || 0), 1);
+                        const barH = Math.max(((day.tipTotal || 0) / maxTip) * 60, 2);
+                        return (
+                          <View key={i} style={tipStyles.trendCol}>
+                            <Text style={tipStyles.trendValue}>${day.tipTotal > 0 ? day.tipTotal.toFixed(0) : '0'}</Text>
+                            <View style={[tipStyles.trendBar, { height: barH, backgroundColor: day.tipTotal > 0 ? Colors.primary : Colors.borderLight }]} />
+                            <Text style={tipStyles.trendLabel}>{day.label}</Text>
+                            {day.tipRate > 0 && <Text style={tipStyles.trendRate}>{day.tipRate}%</Text>}
+                          </View>
+                        );
+                      })}
+                    </View>
+                    <View style={tipStyles.trendLegend}>
+                      <View style={tipStyles.legendItem}><View style={[tipStyles.legendDot, { backgroundColor: Colors.primary }]} /><Text style={tipStyles.legendText}>Tip Revenue</Text></View>
+                      <Text style={tipStyles.legendText}>% = tip rate per day</Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Tip by Donation Range */}
+                {tipAnalytics.tipByDonationRange && (
+                  <View style={s.sectionCard}>
+                    <View style={s.sectionHeader}><Text style={s.sectionTitle}>Tips by Donation Size</Text><MaterialIcons name="stacked-bar-chart" size={20} color={Colors.textLight} /></View>
+                    <Text style={s.securityDesc}>How tip behavior varies by donation amount range.</Text>
+                    {Object.entries(tipAnalytics.tipByDonationRange).map(([range, data]: [string, any]) => {
+                      const tipPct = data.count > 0 ? Math.round((data.tipped / data.count) * 100) : 0;
+                      const avgTipInRange = data.tipped > 0 ? (data.totalTips / data.tipped) : 0;
+                      return (
+                        <View key={range} style={tipStyles.rangeRow}>
+                          <View style={tipStyles.rangeInfo}>
+                            <Text style={tipStyles.rangeLabel}>{range}</Text>
+                            <Text style={tipStyles.rangeMeta}>{data.count} payments, {data.tipped} tipped</Text>
+                          </View>
+                          <View style={tipStyles.rangeStats}>
+                            <View style={[tipStyles.rangePctBadge, { backgroundColor: tipPct > 50 ? Colors.success + '15' : tipPct > 25 ? Colors.accent + '15' : Colors.textLight + '15' }]}>
+                              <Text style={[tipStyles.rangePctText, { color: tipPct > 50 ? Colors.success : tipPct > 25 ? Colors.accent : Colors.textLight }]}>{tipPct}%</Text>
+                            </View>
+                            {avgTipInRange > 0 && <Text style={tipStyles.rangeAvg}>avg ${avgTipInRange.toFixed(2)}</Text>}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Top Tippers */}
+                {tipAnalytics.topTippers && tipAnalytics.topTippers.length > 0 && (
+                  <View style={s.sectionCard}>
+                    <View style={s.sectionHeader}><Text style={s.sectionTitle}>Top Tippers</Text><MaterialIcons name="emoji-events" size={20} color={Colors.accent} /></View>
+                    {tipAnalytics.topTippers.map((tipper: any, i: number) => (
+                      <View key={i} style={s.contributorRow}>
+                        <Text style={s.rank}>#{i + 1}</Text>
+                        <View style={[s.contributorAvatar, { backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' }]}>
+                          <MaterialIcons name="favorite" size={18} color={Colors.primary} />
+                        </View>
+                        <View style={s.contributorInfo}>
+                          <Text style={s.contributorName}>{tipper.name}</Text>
+                          <Text style={s.contributorMeta}>{tipper.tipCount} tips, ${tipper.totalDonated.toFixed(2)} donated</Text>
+                        </View>
+                        <Text style={s.contributorTotal}>${tipper.totalTips.toFixed(2)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Recent Tips */}
+                {tipAnalytics.recentTips && tipAnalytics.recentTips.length > 0 && (
+                  <View style={s.sectionCard}>
+                    <View style={s.sectionHeader}><Text style={s.sectionTitle}>Recent Tips</Text><MaterialIcons name="history" size={20} color={Colors.textLight} /></View>
+                    {tipAnalytics.recentTips.slice(0, 15).map((tip: any, i: number) => (
+                      <View key={i} style={tipStyles.recentTipRow}>
+                        <View style={tipStyles.recentTipIcon}>
+                          <MaterialIcons name="favorite" size={14} color={Colors.primary} />
+                        </View>
+                        <View style={tipStyles.recentTipInfo}>
+                          <Text style={tipStyles.recentTipName}>{tip.contributorName}</Text>
+                          <Text style={tipStyles.recentTipMeta}>
+                            ${tip.donationAmount.toFixed(2)} donation{tip.destinationCharge ? ' (direct)' : ''}
+                          </Text>
+                        </View>
+                        <View style={tipStyles.recentTipRight}>
+                          <Text style={tipStyles.recentTipAmount}>+${tip.tipAmount.toFixed(2)}</Text>
+                          <Text style={tipStyles.recentTipTime}>{formatTime(tip.date)}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </>
+        )}
+
         <View style={{ height: 40 }} />
+
 
       </ScrollView>
 
@@ -1263,7 +1461,6 @@ const s = StyleSheet.create({
   modalSubtitle: { fontSize: FontSize.xs, color: Colors.textLight, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined, marginBottom: Spacing.md },
   modalScroll: { maxHeight: 400 },
   modalPayload: { fontSize: 11, color: Colors.text, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined, lineHeight: 18, backgroundColor: Colors.surfaceAlt, padding: Spacing.md, borderRadius: BorderRadius.lg },
-  modalPayload: { fontSize: 11, color: Colors.text, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined, lineHeight: 18, backgroundColor: Colors.surfaceAlt, padding: Spacing.md, borderRadius: BorderRadius.lg },
 });
 
 // Onboarding tab styles
@@ -1299,4 +1496,44 @@ const ob = StyleSheet.create({
   sessionOutcome: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
   sessionMeta: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 1 },
   sessionTime: { fontSize: FontSize.xs, color: Colors.textLight },
+});
+
+// Tip analytics tab styles
+const tipStyles = StyleSheet.create({
+  bucketGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 140, marginTop: Spacing.sm, paddingBottom: Spacing.sm },
+  bucketItem: { alignItems: 'center', flex: 1, gap: 4, height: '100%', justifyContent: 'flex-end' },
+  bucketBarTrack: { width: '65%', height: 80, backgroundColor: Colors.borderLight + '40', borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end', minWidth: 16, maxWidth: 36 },
+  bucketBarFill: { width: '100%', borderRadius: 4 },
+  bucketLabel: { fontSize: 10, fontWeight: '700', color: Colors.text },
+  bucketCount: { fontSize: 11, fontWeight: '800', color: Colors.textSecondary },
+  bucketPct: { fontSize: 9, color: Colors.textLight, fontWeight: '600' },
+
+  trendGrid: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 100, marginTop: Spacing.sm },
+  trendCol: { alignItems: 'center', flex: 1, gap: 3 },
+  trendBar: { width: '55%', borderRadius: 3, minWidth: 6, maxWidth: 20 },
+  trendValue: { fontSize: 8, fontWeight: '700', color: Colors.textSecondary },
+  trendLabel: { fontSize: 7, color: Colors.textLight, fontWeight: '600' },
+  trendRate: { fontSize: 7, color: Colors.primary, fontWeight: '700' },
+  trendLegend: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.md, paddingTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.borderLight },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
+
+  rangeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
+  rangeInfo: { flex: 1 },
+  rangeLabel: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
+  rangeMeta: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 1 },
+  rangeStats: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  rangePctBadge: { paddingHorizontal: Spacing.md, paddingVertical: 3, borderRadius: BorderRadius.full },
+  rangePctText: { fontSize: FontSize.xs, fontWeight: '800' },
+  rangeAvg: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
+
+  recentTipRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
+  recentTipIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  recentTipInfo: { flex: 1 },
+  recentTipName: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
+  recentTipMeta: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 1 },
+  recentTipRight: { alignItems: 'flex-end' },
+  recentTipAmount: { fontSize: FontSize.md, fontWeight: '800', color: Colors.primary },
+  recentTipTime: { fontSize: 10, color: Colors.textLight, marginTop: 1 },
 });

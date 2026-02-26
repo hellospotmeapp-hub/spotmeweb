@@ -63,6 +63,7 @@ export default function GuidelinesScreen() {
         ))}
 
         {/* Limits Section */}
+        {/* Limits Section */}
         <View style={styles.limitsSection}>
           <Text style={styles.limitsTitle}>Platform Limits</Text>
           <View style={styles.limitRow}>
@@ -83,17 +84,20 @@ export default function GuidelinesScreen() {
             <MaterialIcons name="post-add" size={20} color={Colors.accent} />
             <View style={styles.limitContent}>
               <Text style={styles.limitLabel}>Active needs per user</Text>
-              <Text style={styles.limitValue}>1 at a time</Text>
+              <Text style={styles.limitValue}>4 at a time</Text>
             </View>
           </View>
           <View style={styles.limitRow}>
-            <MaterialIcons name="percent" size={20} color={Colors.accent} />
+
+            <MaterialIcons name="favorite" size={20} color={Colors.accent} />
             <View style={styles.limitContent}>
               <Text style={styles.limitLabel}>Platform fee</Text>
-              <Text style={styles.limitValue}>5% on contributions</Text>
+              <Text style={styles.limitValue}>None — tips optional</Text>
             </View>
           </View>
+
         </View>
+
 
         {/* Enforcement */}
         <View style={styles.enforcementCard}>

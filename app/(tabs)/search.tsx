@@ -35,8 +35,9 @@ export default function SearchScreen() {
       result = result.filter(n =>
         n.title.toLowerCase().includes(q) ||
         n.message.toLowerCase().includes(q) ||
-        n.userName.toLowerCase().includes(q)
+        (n.userName || '').toLowerCase().includes(q)
       );
+
     }
 
     switch (sortBy) {

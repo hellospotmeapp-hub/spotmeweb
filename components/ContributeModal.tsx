@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
 import { supabase } from '@/app/lib/supabase';
+import { checkStripeSetup, type StripeSetupStatus } from '@/app/lib/stripeSetup';
 
 interface ContributeModalProps {
   visible: boolean;
@@ -17,6 +18,53 @@ interface ContributeModalProps {
 
 const PRESET_AMOUNTS = [1, 5, 10, 25, 50];
 
+// Smart tip suggestions based on donation amount
+function getSmartTipSuggestions(donationAmount: number): { presets: number[]; defaultTip: number; message: string; highlight: number } {
+  if (donationAmount <= 0) {
+    return { presets: [0, 1, 2, 5], defaultTip: 1, message: 'An optional tip helps keep SpotMe free for everyone', highlight: 1 };
+  }
+  if (donationAmount <= 3) {
+    return {
+      presets: [0, 0.50, 1, 2],
+      defaultTip: 0.50,
+      message: 'Even $0.50 helps us keep SpotMe running',
+      highlight: 0.50,
+    };
+  }
+  if (donationAmount <= 10) {
+    return {
+      presets: [0, 1, 2, 3],
+      defaultTip: 1,
+      message: '$1 keeps SpotMe free for everyone',
+      highlight: 1,
+    };
+  }
+  if (donationAmount <= 25) {
+    return {
+      presets: [0, 1, 2, 5],
+      defaultTip: 2,
+      message: 'A $2 tip supports the platform that connects givers',
+      highlight: 2,
+    };
+  }
+  if (donationAmount <= 50) {
+    return {
+      presets: [0, 2, 3, 5],
+      defaultTip: 2,
+      message: 'Your generosity is amazing! A small tip keeps us going',
+      highlight: 2,
+    };
+  }
+  // $50+
+  return {
+    presets: [0, 2, 5, 10],
+    defaultTip: 5,
+    message: 'You\'re incredible! A $5 tip helps us reach more people',
+    highlight: 5,
+  };
+}
+
+
 export default function ContributeModal({ visible, onClose, onContribute, needTitle, needId, remaining, contributorName }: ContributeModalProps) {
   const { contributeWithPayment, isLoggedIn } = useApp();
   const [selectedAmount, setSelectedAmount] = useState<number | null>(5);
@@ -27,10 +75,34 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   const [processing, setProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [successAmount, setSuccessAmount] = useState(0);
+  const [successTip, setSuccessTip] = useState(0);
   const [paymentMode, setPaymentMode] = useState<'stripe' | 'stripe_connect' | 'direct' | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [recipientHasAccount, setRecipientHasAccount] = useState<boolean | null>(null);
   const [destinationInfo, setDestinationInfo] = useState<{ recipientName: string } | null>(null);
+  const [stripeNotConfigured, setStripeNotConfigured] = useState(false);
+  const [stripeSetupError, setStripeSetupError] = useState<string | undefined>(undefined);
+
+  // Tip state
+  const [tipAmount, setTipAmount] = useState<number>(1);
+  const [isCustomTip, setIsCustomTip] = useState(false);
+  const [customTip, setCustomTip] = useState('');
+  const [tipAutoAdjusted, setTipAutoAdjusted] = useState(false);
+
+  // Auto-adjust tip when donation amount changes
+  // This ensures a $1 donation doesn't default to a $1 tip (100%)
+  useEffect(() => {
+    if (!isCustomTip) {
+      const smartTip = getSmartTipSuggestions(getAmount());
+      // Only auto-adjust if current tip isn't in the new presets, or on first render
+      const currentInPresets = smartTip.presets.includes(tipAmount);
+      if (!currentInPresets || !tipAutoAdjusted) {
+        setTipAmount(smartTip.defaultTip);
+        setTipAutoAdjusted(true);
+      }
+    }
+  }, [selectedAmount, customAmount, isCustom]);
+
 
   // Check if recipient has a connected Stripe account
   useEffect(() => {
@@ -61,45 +133,121 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     return selectedAmount || 0;
   };
 
+  const getTip = () => {
+    if (isCustomTip) {
+      const parsed = parseFloat(customTip);
+      return isNaN(parsed) ? 0 : Math.max(0, parsed);
+    }
+    return tipAmount;
+  };
+
   const amount = getAmount();
-  const fee = Math.round(amount * 0.05 * 100) / 100;
-  const recipientReceives = Math.round((amount - fee) * 100) / 100;
+  const tip = getTip();
+  const totalCharge = Math.round((amount + tip) * 100) / 100;
+  // Ref to prevent double-submission (persists across re-renders)
+  const paymentInProgressRef = React.useRef(false);
+
+  // Track recent payment attempts in localStorage to prevent re-payment across modal re-opens
+  const getRecentPaymentKey = () => `spotme_payment_${needId}`;
+  
+  const hasRecentPayment = (): boolean => {
+    try {
+      const key = getRecentPaymentKey();
+      const stored = localStorage.getItem(key);
+      if (!stored) return false;
+      const data = JSON.parse(stored);
+      // Consider payment "recent" if within last 10 minutes
+      const tenMinAgo = Date.now() - 10 * 60 * 1000;
+      return data.timestamp > tenMinAgo;
+    } catch { return false; }
+  };
+
+  const markPaymentAttempt = () => {
+    try {
+      const key = getRecentPaymentKey();
+      localStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), amount }));
+    } catch {}
+  };
+
+  const clearPaymentAttempt = () => {
+    try { localStorage.removeItem(getRecentPaymentKey()); } catch {}
+  };
 
   const handleContribute = async () => {
     if (amount <= 0 || amount > 300) return;
+    
+    // Prevent double-click / double-submission
+    if (paymentInProgressRef.current || processing) {
+      console.log('[SpotMe] Payment already in progress, ignoring click');
+      return;
+    }
 
+    // Check for recent payment attempt on same need
+    if (hasRecentPayment()) {
+      setErrorMsg(
+        'A payment was recently initiated for this need. Please check your bank/card statement before trying again. ' +
+        'If the previous payment failed, wait a few minutes and try again.'
+      );
+      return;
+    }
+
+    paymentInProgressRef.current = true;
     setProcessing(true);
     setErrorMsg('');
+    setStripeNotConfigured(false);
+    setStripeSetupError(undefined);
 
     try {
-      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous);
+      // Mark that we're attempting a payment (persists across modal re-opens)
+      markPaymentAttempt();
+
+      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip);
 
       if (result.success) {
         if ((result.mode === 'stripe_connect' || result.mode === 'stripe') && (result.clientSecret || result.checkoutUrl)) {
-          // Redirecting to payment page - don't close modal
+          // Redirecting to payment page - keep processing state, don't reset ref
           return;
         }
-        // Direct processing succeeded
+        // Direct processing succeeded - clear the payment tracking
+        clearPaymentAttempt();
+        
         setPaymentMode(result.mode || 'direct');
         setSuccessAmount(amount);
+        setSuccessTip(tip);
         setShowSuccess(true);
+
+        if (result.stripeNotConfigured) {
+          setStripeNotConfigured(true);
+          setStripeSetupError(result.stripeSetupError);
+        }
 
         setTimeout(() => {
           resetAndClose();
-        }, 3000);
+        }, stripeNotConfigured ? 6000 : 3000);
       } else {
+        // Payment failed - clear the tracking so they can retry
+        clearPaymentAttempt();
         setErrorMsg(result.error || 'Payment failed. Please try again.');
+        paymentInProgressRef.current = false; // Allow retry on error
       }
     } catch (err: any) {
+      clearPaymentAttempt();
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
+      paymentInProgressRef.current = false; // Allow retry on error
     } finally {
       setProcessing(false);
     }
   };
 
+
+
+
+
+
   const resetAndClose = () => {
     setShowSuccess(false);
     setSuccessAmount(0);
+    setSuccessTip(0);
     setSelectedAmount(5);
     setCustomAmount('');
     setNote('');
@@ -108,6 +256,9 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     setErrorMsg('');
     setProcessing(false);
     setPaymentMode(null);
+    setTipAmount(1);
+    setIsCustomTip(false);
+    setCustomTip('');
     onClose();
   };
 
@@ -135,13 +286,15 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <Text style={styles.receiptLabel}>Contribution</Text>
                   <Text style={styles.receiptValue}>${successAmount.toFixed(2)}</Text>
                 </View>
-                <View style={styles.receiptRow}>
-                  <Text style={styles.receiptLabel}>Platform fee (5%)</Text>
-                  <Text style={styles.receiptValue}>${(successAmount * 0.05).toFixed(2)}</Text>
-                </View>
+                {successTip > 0 && (
+                  <View style={styles.receiptRow}>
+                    <Text style={styles.receiptLabel}>Support SpotMe tip</Text>
+                    <Text style={styles.receiptValue}>${successTip.toFixed(2)}</Text>
+                  </View>
+                )}
                 <View style={[styles.receiptRow, styles.receiptRowHighlight]}>
                   <Text style={styles.receiptLabelBold}>Recipient receives</Text>
-                  <Text style={styles.receiptValueBold}>${(successAmount * 0.95).toFixed(2)}</Text>
+                  <Text style={styles.receiptValueBold}>${successAmount.toFixed(2)}</Text>
                 </View>
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>Payment method</Text>
@@ -157,7 +310,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   </View>
                 </View>
               </View>
-              <Text style={styles.successSubtext}>Payment processed securely. You're making a difference.</Text>
+              <Text style={styles.successSubtext}>100% of your contribution goes to the recipient. You're making a difference.</Text>
             </View>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
@@ -182,7 +335,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <View style={{ flex: 1 }}>
                     <Text style={styles.connectBadgeTitle}>Direct Payment via Stripe Connect</Text>
                     <Text style={styles.connectBadgeText}>
-                      95% goes directly to {destinationInfo?.recipientName || 'the recipient'}. 5% platform fee.
+                      100% goes directly to {destinationInfo?.recipientName || 'the recipient'}. No platform fees.
                     </Text>
                   </View>
                 </View>
@@ -281,19 +434,92 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 <MaterialIcons name="visibility-off" size={20} color={isAnonymous ? Colors.primary : Colors.textLight} />
               </TouchableOpacity>
 
+              {/* ===== SMART TIP SUGGESTIONS ===== */}
+              {(() => {
+                const smartTip = getSmartTipSuggestions(amount);
+                return (
+                  <View style={styles.tipSection}>
+                    <View style={styles.tipHeader}>
+                      <MaterialIcons name="favorite" size={18} color={Colors.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.tipTitle}>Support SpotMe</Text>
+                        <Text style={styles.tipSubtitle}>{smartTip.message}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.tipGrid}>
+                      {smartTip.presets.map(t => (
+                        <TouchableOpacity
+                          key={t}
+                          style={[
+                            styles.tipButton,
+                            !isCustomTip && tipAmount === t && styles.tipButtonSelected,
+                            t === smartTip.highlight && !isCustomTip && tipAmount !== t && { borderColor: Colors.primary + '40' },
+                          ]}
+                          onPress={() => { setTipAmount(t); setIsCustomTip(false); }}
+                          activeOpacity={0.7}
+                          disabled={processing}
+                        >
+                          <Text style={[
+                            styles.tipButtonText,
+                            !isCustomTip && tipAmount === t && styles.tipButtonTextSelected,
+                          ]}>
+                            {t === 0 ? 'No tip' : `$${t % 1 === 0 ? t : t.toFixed(2)}`}
+                          </Text>
+                          {t === smartTip.highlight && !isCustomTip && tipAmount !== t && (
+                            <Text style={{ fontSize: 8, color: Colors.primary, fontWeight: '600', marginTop: 1 }}>Suggested</Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={[styles.tipButton, isCustomTip && styles.tipButtonSelected]}
+                        onPress={() => setIsCustomTip(true)}
+                        activeOpacity={0.7}
+                        disabled={processing}
+                      >
+                        <Text style={[styles.tipButtonText, isCustomTip && styles.tipButtonTextSelected]}>
+                          Other
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {isCustomTip && (
+                      <View style={styles.customTipRow}>
+                        <Text style={styles.customTipDollar}>$</Text>
+                        <TextInput
+                          style={[styles.customTipInput, Platform.OS === 'web' && { outlineStyle: 'none' as any }]}
+                          value={customTip}
+                          onChangeText={setCustomTip}
+                          keyboardType="numeric"
+                          placeholder="0.00"
+                          placeholderTextColor={Colors.textLight}
+                          maxLength={5}
+                          autoFocus
+                          editable={!processing}
+                        />
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
+
+
               {/* Fee Breakdown */}
               <View style={styles.feeCard}>
                 <View style={styles.feeRow}>
                   <Text style={styles.feeLabel}>Contribution</Text>
                   <Text style={styles.feeValue}>${amount.toFixed(2)}</Text>
                 </View>
-                <View style={styles.feeRow}>
-                  <Text style={styles.feeLabel}>Platform fee (5%)</Text>
-                  <Text style={styles.feeValue}>${fee.toFixed(2)}</Text>
-                </View>
+                {tip > 0 && (
+                  <View style={styles.feeRow}>
+                    <View style={styles.recipientRow}>
+                      <MaterialIcons name="favorite" size={12} color={Colors.primary} />
+                      <Text style={[styles.feeLabel, { color: Colors.primary }]}>Support SpotMe tip</Text>
+                    </View>
+                    <Text style={[styles.feeValue, { color: Colors.primary }]}>${tip.toFixed(2)}</Text>
+                  </View>
+                )}
                 <View style={[styles.feeRow, styles.totalRow]}>
                   <Text style={styles.totalLabel}>You pay</Text>
-                  <Text style={styles.totalValue}>${amount.toFixed(2)}</Text>
+                  <Text style={styles.totalValue}>${totalCharge.toFixed(2)}</Text>
                 </View>
                 <View style={styles.feeRow}>
                   <View style={styles.recipientRow}>
@@ -303,18 +529,15 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                     </Text>
                   </View>
                   <Text style={[styles.feeValue, { color: Colors.success, fontWeight: '700' }]}>
-                    ${recipientReceives.toFixed(2)}
+                    ${amount.toFixed(2)}
                   </Text>
                 </View>
-                {recipientHasAccount && (
-                  <View style={styles.feeRow}>
-                    <View style={styles.recipientRow}>
-                      <MaterialIcons name="account-balance" size={14} color={Colors.textLight} />
-                      <Text style={styles.feeLabel}>SpotMe platform fee</Text>
-                    </View>
-                    <Text style={styles.feeValue}>${fee.toFixed(2)}</Text>
-                  </View>
-                )}
+                <View style={styles.processingNote}>
+                  <MaterialIcons name="info-outline" size={12} color={Colors.textLight} />
+                  <Text style={styles.processingNoteText}>
+                    Stripe processing (2.9% + $0.30) is handled separately
+                  </Text>
+                </View>
               </View>
 
               {/* Accepted payment methods */}
@@ -361,7 +584,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <MaterialIcons name="lock" size={18} color={Colors.white} />
                 )}
                 <Text style={styles.submitButtonText}>
-                  {processing ? 'Processing Payment...' : `Pay $${amount > 0 ? amount.toFixed(2) : '0.00'}`}
+                  {processing ? 'Processing Payment...' : `Pay $${totalCharge > 0 ? totalCharge.toFixed(2) : '0.00'}`}
                 </Text>
               </TouchableOpacity>
 
@@ -369,8 +592,8 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 <MaterialIcons name="verified-user" size={14} color={Colors.textLight} />
                 <Text style={styles.disclaimerText}>
                   {recipientHasAccount
-                    ? 'Powered by Stripe Connect. Funds split automatically: 95% to recipient, 5% platform fee. PCI-DSS compliant.'
-                    : 'Payments secured by Stripe. A 5% fee supports platform operations. PCI-DSS compliant.'
+                    ? 'Powered by Stripe Connect. 100% of your contribution goes to the recipient. No platform fees. PCI-DSS compliant.'
+                    : 'Payments secured by Stripe. No platform fees — 100% goes to the recipient. PCI-DSS compliant.'
                   }
                 </Text>
               </View>
@@ -426,6 +649,36 @@ const styles = StyleSheet.create({
   anonymousInfo: { flex: 1 },
   anonymousTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
   anonymousSubtitle: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 1 },
+
+  // Tip Section
+  tipSection: {
+    backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  tipHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginBottom: Spacing.md },
+  tipTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
+  tipSubtitle: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 1, lineHeight: 16 },
+  tipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  tipButton: {
+    paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg, backgroundColor: Colors.surface,
+    borderWidth: 2, borderColor: 'transparent', minWidth: 60, alignItems: 'center',
+  },
+  tipButtonSelected: { borderColor: Colors.primary, backgroundColor: Colors.surface },
+  tipButtonText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textSecondary },
+  tipButtonTextSelected: { color: Colors.primary },
+  customTipRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg, paddingHorizontal: Spacing.md, marginTop: Spacing.sm,
+    borderWidth: 2, borderColor: Colors.primary,
+  },
+  customTipDollar: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.primary },
+  customTipInput: { flex: 1, fontSize: FontSize.lg, fontWeight: '700', color: Colors.text, paddingVertical: Spacing.sm, marginLeft: Spacing.xs },
+
   feeCard: { backgroundColor: Colors.surfaceAlt, borderRadius: BorderRadius.lg, padding: Spacing.lg, marginBottom: Spacing.md, gap: Spacing.xs },
   feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
   feeLabel: { fontSize: FontSize.sm, color: Colors.textLight },
@@ -434,6 +687,8 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
   totalValue: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
   recipientRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  processingNote: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.xs },
+  processingNoteText: { fontSize: 10, color: Colors.textLight, fontStyle: 'italic' },
   paymentMethods: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.lg },
   paymentMethodsLabel: { fontSize: FontSize.xs, color: Colors.textLight, fontWeight: '600' },
   paymentIcons: { flexDirection: 'row', gap: Spacing.md, flex: 1 },
@@ -461,5 +716,5 @@ const styles = StyleSheet.create({
   receiptValueBold: { fontSize: FontSize.md, fontWeight: '700', color: Colors.success },
   paymentMethodBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.secondaryLight, paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: BorderRadius.sm },
   paymentMethodText: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.secondaryDark },
-  successSubtext: { fontSize: FontSize.sm, color: Colors.textSecondary, fontStyle: 'italic', marginTop: Spacing.sm },
+  successSubtext: { fontSize: FontSize.sm, color: Colors.textSecondary, fontStyle: 'italic', marginTop: Spacing.sm, textAlign: 'center' },
 });

@@ -60,10 +60,11 @@ export function smartSplit(
       totalAmount,
       totalPeople: 0,
       goalsCompleted: 0,
-      fee: Math.round(totalAmount * 0.05 * 100) / 100,
-      netAmount: Math.round(totalAmount * 0.95 * 100) / 100,
+      fee: 0,
+      netAmount: totalAmount,
     };
   }
+
 
   let sortedNeeds: Need[];
 
@@ -204,8 +205,9 @@ export function smartSplit(
     remainingBudget = Math.round((totalAmount - distributed) * 100) / 100;
   }
 
-  const fee = Math.round(totalAmount * 0.05 * 100) / 100;
-  const netAmount = Math.round((totalAmount - fee) * 100) / 100;
+  const fee = 0; // No platform fee - 100% goes to recipients
+  const netAmount = totalAmount;
+
 
   return {
     allocations,

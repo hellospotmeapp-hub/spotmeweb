@@ -5,12 +5,10 @@ import { Platform, View, StyleSheet } from 'react-native';
 import { AppProvider } from './lib/store';
 import { Colors } from './lib/theme';
 import { errorMonitor } from './lib/errorMonitor';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function RootLayout() {
   // Hydration guard: prevent React error #418 on web
-  // During SSR, isHydrated=false → renders null
-  // During client initial render (hydration), isHydrated=false → renders null (matches server!)
-  // After hydration, useEffect fires → isHydrated=true → renders full app
   const [isHydrated, setIsHydrated] = useState(Platform.OS !== 'web');
 
   useEffect(() => {
@@ -19,104 +17,187 @@ export default function RootLayout() {
     }
     // Initialize error monitoring
     errorMonitor.init();
+
+    // Global error handler to prevent full page reloads on web
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const handleError = (event: ErrorEvent) => {
+        console.error('[SpotMe] Global error caught:', event.message);
+        // Prevent the browser from reloading the page
+        event.preventDefault();
+        return true;
+      };
+
+      const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+        console.error('[SpotMe] Unhandled promise rejection:', event.reason);
+        // Prevent the browser from crashing
+        event.preventDefault();
+        return true;
+      };
+
+      window.addEventListener('error', handleError);
+      window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+      return () => {
+        window.removeEventListener('error', handleError);
+        window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      };
+    }
   }, []);
 
 
   // On web, don't render until client-side hydration is complete
-  // The splash screen (from +html.tsx) covers this brief moment
   if (!isHydrated) {
     return null;
   }
 
   return (
-    <AppProvider>
-      <StatusBar style="dark" />
-      <View style={styles.webContainer}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: Colors.background },
-            animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
-          }}
-        >
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="auth"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+    <ErrorBoundary
+      fallbackTitle="SpotMe hit a snag"
+      fallbackMessage="Something went wrong, but your data is safe. Tap below to reload."
+    >
+      <AppProvider>
+        <StatusBar style="dark" />
+        <View style={styles.webContainer}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: Colors.background },
+              animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
             }}
-          />
-          <Stack.Screen name="need/[id]" />
-          <Stack.Screen
-            name="settings"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="guidelines"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="spread"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="payment-success"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="payment-checkout"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="admin"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="payouts"
+          >
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen
+              name="auth"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen name="need/[id]" />
+            <Stack.Screen
+              name="settings"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="guidelines"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="spread"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="payment-success"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="payment-checkout"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="admin"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="payouts"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="mama-recharge"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="welcome"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="about"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="terms"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
 
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="mama-recharge"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-          <Stack.Screen
-            name="welcome"
-            options={{
-              presentation: Platform.OS === 'web' ? 'card' : 'modal',
-              animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
-            }}
-          />
-
-
-        </Stack>
-      </View>
-    </AppProvider>
+              name="share/[id]"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="user/[id]"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="go-live"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="refunds"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="analytics"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="test-payments"
+              options={{
+                presentation: Platform.OS === 'web' ? 'card' : 'modal',
+                animation: Platform.OS === 'web' ? 'none' : 'slide_from_bottom',
+              }}
+            />
+          </Stack>
+        </View>
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -130,4 +211,3 @@ const styles = StyleSheet.create({
     } : {}),
   },
 });
-

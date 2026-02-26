@@ -1,27 +1,91 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Platform, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Platform, Modal, ActivityIndicator, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
+import { Need } from '@/app/lib/data';
+import { pickAndUploadAvatar } from '@/app/lib/imageUpload';
 import NeedCard from '@/components/NeedCard';
 import StatusBadge from '@/components/StatusBadge';
 import ThankYouCard from '@/components/ThankYouCard';
+import ShareSheet from '@/components/ShareSheet';
+import RecordThankYouModal from '@/components/RecordThankYouModal';
+import BulkNeedManager from '@/components/BulkNeedManager';
+import EditNeedModal from '@/components/EditNeedModal';
+import ReceiptHistory from '@/components/ReceiptHistory';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { currentUser, needs, thankYouUpdates, isLoggedIn, logout, updateProfile, requestPayout, payoutStatus, createThankYou, togglePinUpdate, likeUpdate } = useApp();
-  const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'updates' | 'given'>('active');
+  const { currentUser, needs, thankYouUpdates, isLoggedIn, isLoading, logout, updateProfile, requestPayout, payoutStatus, createThankYou, togglePinUpdate, likeUpdate, deleteNeed, editNeed } = useApp();
+
+
+  const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'updates' | 'given' | 'receipts'>('active');
+
   const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(currentUser.name);
   const [editBio, setEditBio] = useState(currentUser.bio);
   const [editCity, setEditCity] = useState(currentUser.city);
   const [showThankYouModal, setShowThankYouModal] = useState(false);
   const [thankYouNeedId, setThankYouNeedId] = useState('');
   const [thankYouMsg, setThankYouMsg] = useState('');
+  const [showShare, setShowShare] = useState(false);
+  const [showRecordThankYou, setShowRecordThankYou] = useState(false);
+  const [recordThankYouNeedId, setRecordThankYouNeedId] = useState('');
+  const [recordThankYouNeedTitle, setRecordThankYouNeedTitle] = useState('');
+
+  // Bulk manager & edit modal state
+  const [showBulkManager, setShowBulkManager] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingNeed, setEditingNeed] = useState<Need | null>(null);
+
+  // Payout state per need
+  const [payoutLoadingId, setPayoutLoadingId] = useState<string | null>(null);
+  const [payoutMessages, setPayoutMessages] = useState<Record<string, { msg: string; success: boolean }>>({});
+
+  // Avatar change state
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarSuccess, setAvatarSuccess] = useState(false);
 
   const topPadding = Platform.OS === 'web' ? 0 : insets.top;
+
+  const handleChangeAvatar = async () => {
+    if (avatarUploading) return;
+    setAvatarUploading(true);
+    setAvatarSuccess(false);
+    try {
+      const result = await pickAndUploadAvatar(currentUser.id);
+      if (result.error === 'cancelled') { setAvatarUploading(false); return; }
+      if (result.success && result.avatarUrl) {
+        updateProfile({ avatar: result.avatarUrl });
+        setAvatarSuccess(true);
+        setTimeout(() => setAvatarSuccess(false), 3000);
+      } else if (result.localUri) {
+        updateProfile({ avatar: result.localUri });
+        setAvatarSuccess(true);
+        setTimeout(() => setAvatarSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error('Avatar change error:', err);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // Show loading state while auth is initializing
+  if (isLoading && !isLoggedIn) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.loginPrompt}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loginSubtitle}>Loading your profile...</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
@@ -38,14 +102,58 @@ export default function ProfileScreen() {
     );
   }
 
+  const NEED_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000;
+  const isExpiredByTime = (n: Need) => {
+    if (n.status === 'Expired') return true;
+    if (n.status !== 'Collecting') return false;
+    const exp = n.expiresAt ? new Date(n.expiresAt).getTime() : new Date(n.createdAt).getTime() + NEED_EXPIRATION_MS;
+    return Date.now() >= exp;
+  };
+
   const myNeeds = needs.filter(n => n.userId === currentUser.id || n.userId === 'current');
-  const activeNeeds = myNeeds.filter(n => n.status === 'Collecting');
-  const completedNeeds = myNeeds.filter(n => n.status !== 'Collecting');
+  const activeNeeds = myNeeds.filter(n => n.status === 'Collecting' && !isExpiredByTime(n));
+  const completedNeeds = myNeeds.filter(n => n.status !== 'Collecting' || isExpiredByTime(n));
   const givenNeeds = needs.filter(n => n.contributions.some(c => c.userId === currentUser.id || c.userId === 'current'));
+
   const myUpdates = thankYouUpdates.filter(u => u.userId === currentUser.id || u.userId === 'current');
   const pinnedUpdates = myUpdates.filter(u => u.pinned);
 
-  const handleSaveProfile = () => { updateProfile({ bio: editBio, city: editCity }); setEditing(false); };
+  const handleSaveProfile = () => { updateProfile({ name: editName.trim() || currentUser.name, bio: editBio, city: editCity }); setEditing(false); };
+
+  // Payout eligibility check for a need
+  const canRequestPayoutForNeed = (need: Need): boolean => {
+    if (need.status === 'Payout Requested' || need.status === 'Paid') return false;
+    if (need.raisedAmount <= 0) return false;
+    if (payoutMessages[need.id]?.success) return false;
+    if (need.status === 'Goal Met') return true;
+    if (need.status === 'Expired' || isExpiredByTime(need)) return true;
+    return false;
+  };
+
+  // Handle payout request with loading state
+  const handleRequestPayoutForNeed = async (needId: string) => {
+    if (payoutLoadingId) return;
+    const need = myNeeds.find(n => n.id === needId);
+    if (!need) return;
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        `Request payout of $${need.raisedAmount} for "${need.title}"?\n\nProcessing takes 2-3 business days.`
+      );
+      if (!confirmed) return;
+    }
+    setPayoutLoadingId(needId);
+    try {
+      const result = await requestPayout(needId);
+      if (result.success) {
+        setPayoutMessages(prev => ({ ...prev, [needId]: { msg: result.message || 'Payout requested!', success: true } }));
+      } else {
+        setPayoutMessages(prev => ({ ...prev, [needId]: { msg: result.error || 'Failed', success: false } }));
+      }
+    } catch (err: any) {
+      setPayoutMessages(prev => ({ ...prev, [needId]: { msg: err.message || 'Error', success: false } }));
+    }
+    setPayoutLoadingId(null);
+  };
 
   const handlePostThankYou = () => {
     if (thankYouMsg.trim().length >= 5 && thankYouNeedId) {
@@ -57,40 +165,89 @@ export default function ProfileScreen() {
     }
   };
 
-  const tabs = [
-    { key: 'active' as const, label: 'Active', count: activeNeeds.length },
-    { key: 'completed' as const, label: 'Completed', count: completedNeeds.length },
-    { key: 'updates' as const, label: 'Updates', count: myUpdates.length },
-    { key: 'given' as const, label: 'Spotted', count: givenNeeds.length },
+
+  const tabs: { key: typeof activeTab; label: string; count: number; icon?: string }[] = [
+    { key: 'active', label: 'Active', count: activeNeeds.length },
+    { key: 'completed', label: 'Completed', count: completedNeeds.length },
+    { key: 'updates', label: 'Updates', count: myUpdates.length },
+    { key: 'given', label: 'Spotted', count: givenNeeds.length },
+    { key: 'receipts', label: 'Receipts', count: 0, icon: 'receipt-long' },
   ];
+
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header Actions */}
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings')}>
-            <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(tabs)')}>
+            <MaterialIcons name="home" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setEditing(!editing)}>
-            <MaterialIcons name={editing ? 'close' : 'edit'} size={22} color={Colors.textSecondary} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setShowShare(true)}>
+              <MaterialIcons name="share" size={22} color={Colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings')}>
+              <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => { setEditing(!editing); if (!editing) { setEditName(currentUser.name); setEditBio(currentUser.bio); setEditCity(currentUser.city); } }}>
+              <MaterialIcons name={editing ? 'close' : 'edit'} size={22} color={Colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
+
+
 
         {/* Profile Card */}
         <View style={styles.profileCard}>
-          <Image source={{ uri: currentUser.avatar }} style={styles.profileAvatar} />
+          {/* Avatar with change photo button */}
+          <TouchableOpacity
+            style={styles.avatarContainer}
+            onPress={handleChangeAvatar}
+            activeOpacity={0.7}
+            disabled={avatarUploading}
+          >
+            <Image source={{ uri: currentUser.avatar }} style={styles.profileAvatar} />
+            <View style={[styles.avatarOverlay, avatarUploading && styles.avatarOverlayActive]}>
+              {avatarUploading ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <MaterialIcons name="camera-alt" size={18} color={Colors.white} />
+              )}
+            </View>
+            {avatarSuccess && (
+              <View style={styles.avatarSuccessBadge}>
+                <MaterialIcons name="check-circle" size={24} color={Colors.success} />
+              </View>
+            )}
+          </TouchableOpacity>
+
           <View style={styles.nameContainer}>
             <Text style={styles.profileName}>{currentUser.name}</Text>
             {currentUser.verified && <MaterialIcons name="verified" size={20} color={Colors.primary} />}
           </View>
           {editing ? (
             <View style={styles.editSection}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>Display Name</Text>
+              <TextInput style={styles.editInput} value={editName} onChangeText={setEditName} placeholder="Your name..." placeholderTextColor={Colors.textLight} maxLength={40} autoFocus />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>Bio</Text>
               <TextInput style={styles.editInput} value={editBio} onChangeText={setEditBio} placeholder="Your bio..." placeholderTextColor={Colors.textLight} multiline maxLength={120} />
+              <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>City</Text>
               <TextInput style={styles.editInput} value={editCity} onChangeText={setEditCity} placeholder="Your city..." placeholderTextColor={Colors.textLight} maxLength={40} />
+              <TouchableOpacity style={styles.changePhotoBtn} onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.7}>
+                {avatarUploading ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <>
+                    <MaterialIcons name="photo-camera" size={18} color={Colors.primary} />
+                    <Text style={styles.changePhotoBtnText}>Change Profile Photo</Text>
+                  </>
+                )}
+              </TouchableOpacity>
               <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}><Text style={styles.saveButtonText}>Save Changes</Text></TouchableOpacity>
             </View>
           ) : (
+
             <>
               <Text style={styles.profileBio}>{currentUser.bio}</Text>
               <View style={styles.locationRow}><MaterialIcons name="place" size={16} color={Colors.textLight} /><Text style={styles.locationText}>{currentUser.city}</Text></View>
@@ -120,15 +277,34 @@ export default function ProfileScreen() {
           <View style={styles.statCard}><MaterialIcons name="people" size={24} color={Colors.accent} /><Text style={styles.statNumber}>{givenNeeds.length}</Text><Text style={styles.statLabel}>Spotted</Text></View>
         </View>
 
+        {/* Manage Needs Button */}
+        {myNeeds.length > 0 && (
+          <TouchableOpacity
+            style={styles.manageNeedsBtn}
+            onPress={() => setShowBulkManager(true)}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="dashboard-customize" size={18} color={Colors.primary} />
+            <Text style={styles.manageNeedsBtnText}>Manage All Needs</Text>
+            <View style={styles.manageNeedsBadge}>
+              <Text style={styles.manageNeedsBadgeText}>{myNeeds.length}</Text>
+            </View>
+            <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />
+          </TouchableOpacity>
+        )}
+
         {/* Tabs */}
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
           {tabs.map(tab => (
             <TouchableOpacity key={tab.key} style={[styles.tab, activeTab === tab.key && styles.tabActive]} onPress={() => setActiveTab(tab.key)} activeOpacity={0.7}>
+              {tab.icon && <MaterialIcons name={tab.icon as any} size={14} color={activeTab === tab.key ? Colors.white : Colors.textSecondary} />}
               <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
-              <View style={[styles.tabBadge, activeTab === tab.key && styles.tabBadgeActive]}><Text style={[styles.tabBadgeText, activeTab === tab.key && styles.tabBadgeTextActive]}>{tab.count}</Text></View>
+              {tab.count > 0 && <View style={[styles.tabBadge, activeTab === tab.key && styles.tabBadgeActive]}><Text style={[styles.tabBadgeText, activeTab === tab.key && styles.tabBadgeTextActive]}>{tab.count}</Text></View>}
             </TouchableOpacity>
           ))}
         </ScrollView>
+
 
         {/* Content */}
         <View style={styles.contentArea}>
@@ -141,32 +317,71 @@ export default function ProfileScreen() {
           {activeTab === 'completed' && (
             completedNeeds.length === 0 ? (
               <View style={styles.emptyTab}><MaterialIcons name="celebration" size={48} color={Colors.borderLight} /><Text style={styles.emptyTabTitle}>No completed needs yet</Text><Text style={styles.emptyTabSubtitle}>When your goals are met, they'll appear here</Text></View>
-            ) : completedNeeds.map(need => (
-              <View key={need.id} style={styles.completedCard}>
-                <TouchableOpacity style={styles.completedCardInner} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
-                  {need.photo && <Image source={{ uri: need.photo }} style={styles.completedImage} />}
-                  <View style={styles.completedContent}>
-                    <Text style={styles.completedTitle}>{need.title}</Text>
-                    <StatusBadge status={need.status} />
-                    <Text style={styles.completedAmount}>${need.raisedAmount} raised</Text>
+            ) : completedNeeds.map(need => {
+              const isPayoutLoading = payoutLoadingId === need.id;
+              const payoutMsg = payoutMessages[need.id];
+              const showPayoutBtn = canRequestPayoutForNeed(need);
+              const displayStatus = (need.status === 'Collecting' && isExpiredByTime(need)) ? 'Expired' : need.status;
+              return (
+                <View key={need.id} style={styles.completedCard}>
+                  <TouchableOpacity style={styles.completedCardInner} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
+                    {need.photo && <Image source={{ uri: need.photo }} style={[styles.completedImage, displayStatus === 'Expired' && { opacity: 0.7 }]} />}
+                    <View style={styles.completedContent}>
+                      <Text style={styles.completedTitle}>{need.title}</Text>
+                      <StatusBadge status={displayStatus} />
+                      <Text style={styles.completedAmount}>${need.raisedAmount} raised</Text>
+                    </View>
+                  </TouchableOpacity>
+                  {/* Payout message */}
+                  {payoutMsg && (
+                    <View style={[styles.completedActions, { paddingBottom: 0 }]}>
+                      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: payoutMsg.success ? '#E8F5E8' : '#FFF0F0', padding: 10, borderRadius: 10 }}>
+                        <MaterialIcons name={payoutMsg.success ? 'check-circle' : 'error-outline'} size={16} color={payoutMsg.success ? Colors.success : Colors.error} />
+                        <Text style={{ flex: 1, fontSize: 12, fontWeight: '600', color: payoutMsg.success ? Colors.success : Colors.error }}>{payoutMsg.msg}</Text>
+                      </View>
+                    </View>
+                  )}
+                  <View style={styles.completedActions}>
+                    {showPayoutBtn && (
+                      <TouchableOpacity
+                        style={[styles.payoutButton, isPayoutLoading && { opacity: 0.6 }]}
+                        onPress={() => handleRequestPayoutForNeed(need.id)}
+                        activeOpacity={0.7}
+                        disabled={isPayoutLoading || !!payoutLoadingId}
+                      >
+                        {isPayoutLoading ? (
+                          <ActivityIndicator size="small" color={Colors.white} />
+                        ) : (
+                          <MaterialIcons name="account-balance-wallet" size={16} color={Colors.white} />
+                        )}
+                        <Text style={styles.payoutButtonText}>
+                          {isPayoutLoading ? 'Processing...' : `Payout $${need.raisedAmount}`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {need.status === 'Payout Requested' && (
+                      <View style={[styles.payoutButton, { backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: Colors.accent }]}>
+                        <MaterialIcons name="hourglass-top" size={16} color={Colors.accent} />
+                        <Text style={[styles.payoutButtonText, { color: Colors.accent }]}>Processing</Text>
+                      </View>
+                    )}
+                    {need.status === 'Paid' && (
+                      <View style={[styles.payoutButton, { backgroundColor: '#E8F5E8', borderWidth: 1, borderColor: Colors.success + '40' }]}>
+                        <MaterialIcons name="check-circle" size={16} color={Colors.success} />
+                        <Text style={[styles.payoutButtonText, { color: Colors.success }]}>Paid</Text>
+                      </View>
+                    )}
+                    {!myUpdates.some(u => u.needId === need.id) && (need.status === 'Goal Met' || need.status === 'Paid' || need.status === 'Payout Requested') && (
+                      <TouchableOpacity style={styles.thankYouButton} onPress={() => { setThankYouNeedId(need.id); setShowThankYouModal(true); }} activeOpacity={0.7}>
+                        <MaterialIcons name="auto-awesome" size={16} color={Colors.accent} />
+                        <Text style={styles.thankYouButtonText}>Thank You</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
-                </TouchableOpacity>
-                <View style={styles.completedActions}>
-                  {need.status === 'Goal Met' && (
-                    <TouchableOpacity style={styles.payoutButton} onPress={() => requestPayout(need.id)} activeOpacity={0.7}>
-                      <MaterialIcons name="account-balance-wallet" size={16} color={Colors.white} />
-                      <Text style={styles.payoutButtonText}>Request Payout</Text>
-                    </TouchableOpacity>
-                  )}
-                  {!myUpdates.some(u => u.needId === need.id) && (
-                    <TouchableOpacity style={styles.thankYouButton} onPress={() => { setThankYouNeedId(need.id); setShowThankYouModal(true); }} activeOpacity={0.7}>
-                      <MaterialIcons name="auto-awesome" size={16} color={Colors.accent} />
-                      <Text style={styles.thankYouButtonText}>Post Thank You</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
-              </View>
-            ))
+              );
+            })
+
           )}
 
           {activeTab === 'updates' && (
@@ -198,7 +413,15 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             ))
           )}
+
+          {activeTab === 'receipts' && (
+            <ReceiptHistory />
+          )}
         </View>
+
+
+
+
 
         <TouchableOpacity style={styles.logoutButton} onPress={logout}><MaterialIcons name="logout" size={18} color={Colors.error} /><Text style={styles.logoutText}>Sign Out</Text></TouchableOpacity>
         <View style={{ height: 40 }} />
@@ -214,11 +437,22 @@ export default function ProfileScreen() {
             </View>
             <Text style={styles.modalSubtitle}>Share your gratitude with the community. This will be pinned to your profile.</Text>
             <TextInput style={styles.thankYouInput} value={thankYouMsg} onChangeText={setThankYouMsg} placeholder="Thank you so much! Here's how your help made a difference..." placeholderTextColor={Colors.textLight} multiline maxLength={500} textAlignVertical="top" />
-            <Text style={styles.charCount}>{thankYouMsg.length}/500</Text>
-            <View style={styles.mediaHint}>
-              <MaterialIcons name="photo-camera" size={20} color={Colors.textLight} />
-              <Text style={styles.mediaHintText}>Photo/video uploads coming soon</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.mediaHint}
+              onPress={() => {
+                setShowThankYouModal(false);
+                setTimeout(() => {
+                  setRecordThankYouNeedId(thankYouNeedId);
+                  const n = needs.find(x => x.id === thankYouNeedId);
+                  setRecordThankYouNeedTitle(n?.title || '');
+                  setShowRecordThankYou(true);
+                }, 300);
+              }}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="videocam" size={20} color={Colors.accent} />
+              <Text style={[styles.mediaHintText, { color: Colors.accent, fontWeight: '700' }]}>Record a Thank You Video instead</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[styles.postButton, thankYouMsg.trim().length < 5 && styles.postButtonDisabled]} onPress={handlePostThankYou} disabled={thankYouMsg.trim().length < 5}>
               <MaterialIcons name="auto-awesome" size={18} color={Colors.white} />
               <Text style={styles.postButtonText}>Post Thank You</Text>
@@ -226,16 +460,108 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      <ShareSheet
+        visible={showShare}
+        onClose={() => setShowShare(false)}
+        type="profile"
+        userId={currentUser.id}
+        userName={currentUser.name}
+        userAvatar={currentUser.avatar}
+        userCity={currentUser.city}
+      />
+
+      <RecordThankYouModal
+        visible={showRecordThankYou}
+        onClose={() => setShowRecordThankYou(false)}
+        onSuccess={(video) => {
+          createThankYou(recordThankYouNeedId, video.message, video.videoUrl);
+          setActiveTab('updates');
+        }}
+        needId={recordThankYouNeedId}
+        needTitle={recordThankYouNeedTitle}
+        userId={currentUser.id}
+        userName={currentUser.name}
+        userAvatar={currentUser.avatar}
+      />
+
+      {/* Bulk Need Manager */}
+      <BulkNeedManager
+        visible={showBulkManager}
+        onClose={() => setShowBulkManager(false)}
+        needs={myNeeds}
+        onDeleteNeed={deleteNeed}
+        onEditNeed={(need) => {
+          setShowBulkManager(false);
+          setTimeout(() => {
+            setEditingNeed(need);
+            setShowEditModal(true);
+          }, 300);
+        }}
+      />
+
+      {/* Edit Need Modal (from bulk manager) */}
+      {editingNeed && (
+        <EditNeedModal
+          visible={showEditModal}
+          onClose={() => { setShowEditModal(false); setEditingNeed(null); }}
+          onSave={async (updates) => {
+            const ok = await editNeed(editingNeed.id, updates);
+            return ok;
+          }}
+          onDelete={async () => {
+            const result = await deleteNeed(editingNeed.id);
+            if (result.success) {
+              setShowEditModal(false);
+              setEditingNeed(null);
+            }
+            return result;
+          }}
+          need={editingNeed}
+        />
+      )}
+
     </View>
+
   );
 }
 
+
 const styles = StyleSheet.create({
+
   container: { flex: 1, backgroundColor: Colors.background },
   headerActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, ...(Platform.OS === 'web' ? { paddingTop: 16 } : {}) },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   profileCard: { alignItems: 'center', paddingHorizontal: Spacing.xl, marginBottom: Spacing.lg },
-  profileAvatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: Colors.primary, marginBottom: Spacing.md },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: Spacing.md,
+  },
+  profileAvatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: Colors.primary },
+  avatarOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: Colors.background,
+    ...Shadow.sm,
+  },
+  avatarOverlayActive: {
+    backgroundColor: Colors.accent,
+  },
+  avatarSuccessBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: Colors.background,
+    borderRadius: 14,
+  },
   nameContainer: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, marginBottom: Spacing.xs },
   profileName: { fontSize: FontSize.xxl, fontWeight: '900', color: Colors.text },
   profileBio: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.sm, paddingHorizontal: Spacing.xl },
@@ -244,6 +570,22 @@ const styles = StyleSheet.create({
   joinedText: { fontSize: FontSize.xs, color: Colors.textLight },
   editSection: { width: '100%', gap: Spacing.md, marginTop: Spacing.md },
   editInput: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, fontSize: FontSize.md, color: Colors.text, borderWidth: 1, borderColor: Colors.border },
+  changePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  changePhotoBtnText: {
+    fontSize: FontSize.md,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
   saveButton: { backgroundColor: Colors.primary, paddingVertical: Spacing.md, borderRadius: BorderRadius.lg, alignItems: 'center' },
   saveButtonText: { fontSize: FontSize.md, fontWeight: '700', color: Colors.white },
   pinnedSection: { marginHorizontal: Spacing.lg, marginBottom: Spacing.lg },
@@ -310,5 +652,9 @@ const styles = StyleSheet.create({
   postButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, paddingVertical: Spacing.lg, borderRadius: BorderRadius.lg },
   postButtonDisabled: { opacity: 0.5 },
   postButtonText: { fontSize: FontSize.md, fontWeight: '700', color: Colors.white },
+  // Manage Needs Button
+  manageNeedsBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginHorizontal: Spacing.lg, marginBottom: Spacing.lg, paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg, backgroundColor: Colors.primaryLight, borderRadius: BorderRadius.xl, borderWidth: 1, borderColor: Colors.primary + '20' },
+  manageNeedsBtnText: { flex: 1, fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
+  manageNeedsBadge: { backgroundColor: Colors.primary, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  manageNeedsBadgeText: { fontSize: FontSize.xs, fontWeight: '800', color: Colors.white },
 });
-

@@ -264,17 +264,17 @@ export default function WelcomeScreen() {
           deviceInfo: deviceInfoRef.current,
         };
 
-        if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.sendBeacon) {
-          const url = `${supabaseUrl}/functions/v1/track-walkthrough`;
-          const payload = JSON.stringify({ action: 'track', ...event });
-          try {
-            navigator.sendBeacon(url, payload);
-          } catch {}
+        if (Platform.OS === 'web') {
+          // Use the local API handler instead of sendBeacon to edge function
+          supabase.functions.invoke('track-walkthrough', {
+            body: { action: 'track', ...event },
+          }).catch(() => {});
         } else {
           supabase.functions.invoke('track-walkthrough', {
             body: { action: 'track', ...event },
           }).catch(() => {});
         }
+
       }
 
       const remaining = [...eventQueueRef.current];

@@ -35,15 +35,19 @@ function MiniBarChart({ data, maxHeight = 70 }: { data: { month: string; net: nu
   );
 }
 
+const NEED_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000;
+
 export default function PayoutDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { payoutDashboard, fetchPayoutDashboard, payoutStatus, setupPayouts, isLoggedIn, currentUser } = useApp();
+  const { payoutDashboard, fetchPayoutDashboard, payoutStatus, setupPayouts, isLoggedIn, currentUser, needs, requestPayout } = useApp();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [setupLoading, setSetupLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [payoutLoadingId, setPayoutLoadingId] = useState<string | null>(null);
+  const [payoutMessages, setPayoutMessages] = useState<Record<string, { msg: string; success: boolean }>>({});
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -63,6 +67,35 @@ export default function PayoutDashboard() {
     setSetupLoading(false);
   };
 
+  const handleRequestPayoutForNeed = async (needId: string) => {
+    if (payoutLoadingId) return;
+    
+    const need = needs.find(n => n.id === needId);
+    if (!need) return;
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        `Request payout of $${need.raisedAmount} for "${need.title}"?\n\nProcessing takes 2-3 business days.`
+      );
+      if (!confirmed) return;
+    }
+
+    setPayoutLoadingId(needId);
+    try {
+      const result = await requestPayout(needId);
+      if (result.success) {
+        setPayoutMessages(prev => ({ ...prev, [needId]: { msg: result.message || 'Payout requested!', success: true } }));
+        // Refresh dashboard data
+        setTimeout(() => loadData(true), 1500);
+      } else {
+        setPayoutMessages(prev => ({ ...prev, [needId]: { msg: result.error || 'Failed', success: false } }));
+      }
+    } catch (err: any) {
+      setPayoutMessages(prev => ({ ...prev, [needId]: { msg: err.message || 'Error', success: false } }));
+    }
+    setPayoutLoadingId(null);
+  };
+
   const handleExportCSV = async () => {
     if (currentUser.id === 'guest') return;
     setExporting(true);
@@ -78,7 +111,6 @@ export default function PayoutDashboard() {
       const filename = data.filename || `spotme-payouts-${new Date().toISOString().split('T')[0]}.csv`;
 
       if (Platform.OS === 'web') {
-        // Create blob and download
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -92,7 +124,7 @@ export default function PayoutDashboard() {
         setExportSuccess(true);
         setTimeout(() => setExportSuccess(false), 3000);
       } else {
-        Alert.alert('Export Ready', 'CSV export is available on web. Please use the web version to download.');
+        Alert.alert('Export Ready', 'CSV export is available on web.');
       }
     } catch (err: any) {
       if (Platform.OS === 'web') {
@@ -108,12 +140,29 @@ export default function PayoutDashboard() {
   const db = payoutDashboard;
   const isActive = payoutStatus?.payoutsEnabled || db?.account?.payoutsEnabled;
 
+  // Find needs eligible for payout from the local needs list
+  const eligibleNeeds = needs.filter(n => {
+    const isOwner = n.userId === currentUser.id || n.userId === 'current';
+    if (!isOwner) return false;
+    if (n.status === 'Goal Met') return true;
+    if (n.status === 'Expired' && n.raisedAmount > 0) return true;
+    // Check if collecting but expired by time
+    if (n.status === 'Collecting' && n.raisedAmount > 0) {
+      const expiresAt = n.expiresAt 
+        ? new Date(n.expiresAt).getTime()
+        : new Date(n.createdAt).getTime() + NEED_EXPIRATION_MS;
+      if (Date.now() >= expiresAt) return true;
+    }
+    return false;
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Collecting': return Colors.primary;
       case 'Goal Met': return Colors.success;
       case 'Payout Requested': return Colors.accent;
       case 'Paid': return Colors.secondary;
+      case 'Expired': return Colors.textLight;
       default: return Colors.textLight;
     }
   };
@@ -157,7 +206,6 @@ export default function PayoutDashboard() {
         </TouchableOpacity>
         <Text style={s.headerTitle}>Payout Dashboard</Text>
         <View style={s.headerActions}>
-          {/* Export CSV Button */}
           {hasData && (
             <TouchableOpacity
               style={[s.exportBtn, exportSuccess && s.exportBtnSuccess]}
@@ -204,7 +252,7 @@ export default function PayoutDashboard() {
             </Text>
             <Text style={s.statusDesc}>
               {isActive
-                ? 'Contributions go directly to your bank. 5% platform fee auto-deducted.'
+                ? 'Contributions go directly to your bank. No platform fees — you receive 100%.'
                 : 'Connect your bank to receive funds directly from contributors.'}
             </Text>
           </View>
@@ -219,6 +267,66 @@ export default function PayoutDashboard() {
           )}
         </View>
 
+        {/* Eligible Needs for Payout */}
+        {eligibleNeeds.length > 0 && (
+          <View style={s.sectionCard}>
+            <View style={s.sectionHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                <MaterialIcons name="account-balance-wallet" size={20} color={Colors.success} />
+                <Text style={s.sectionTitle}>Ready for Payout</Text>
+              </View>
+              <View style={[s.eligibleBadge]}>
+                <Text style={s.eligibleBadgeText}>{eligibleNeeds.length}</Text>
+              </View>
+            </View>
+            <Text style={s.eligibleDesc}>
+              These needs are eligible for payout. Tap to request your funds.
+            </Text>
+            {eligibleNeeds.map(need => {
+              const isLoading = payoutLoadingId === need.id;
+              const msg = payoutMessages[need.id];
+              return (
+                <View key={need.id} style={s.eligibleNeedRow}>
+                  <View style={s.eligibleNeedInfo}>
+                    <View style={s.eligibleNeedTitleRow}>
+                      <View style={[s.needDot, { backgroundColor: getStatusColor(need.status) }]} />
+                      <Text style={s.eligibleNeedTitle} numberOfLines={1}>{need.title}</Text>
+                    </View>
+                    <Text style={s.eligibleNeedAmount}>${need.raisedAmount} raised</Text>
+                    {msg && (
+                      <Text style={[s.eligibleNeedMsg, { color: msg.success ? Colors.success : Colors.error }]}>
+                        {msg.msg}
+                      </Text>
+                    )}
+                  </View>
+                  {!msg?.success && (
+                    <TouchableOpacity
+                      style={[s.payoutNeedBtn, isLoading && { opacity: 0.6 }]}
+                      onPress={() => handleRequestPayoutForNeed(need.id)}
+                      disabled={isLoading || !!payoutLoadingId}
+                      activeOpacity={0.7}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <>
+                          <MaterialIcons name="payments" size={16} color={Colors.white} />
+                          <Text style={s.payoutNeedBtnText}>Payout</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {msg?.success && (
+                    <View style={s.payoutSuccessIcon}>
+                      <MaterialIcons name="check-circle" size={24} color={Colors.success} />
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* Summary Stats */}
         {db?.summary && (
           <View style={s.statsGrid}>
@@ -227,7 +335,7 @@ export default function PayoutDashboard() {
             <StatBox icon="swap-horiz" label="Direct Deposits" value={`$${db.summary.directDeposits.toFixed(2)}`} color={Colors.secondary} subtitle={`${db.summary.directDepositCount} transfers`} />
             <StatBox icon="hourglass-empty" label="Pending" value={`$${db.summary.pendingAmount.toFixed(2)}`} color={Colors.accent} />
             <StatBox icon="savings" label="Paid Out" value={`$${db.summary.paidAmount.toFixed(2)}`} color="#7B9ED9" />
-            <StatBox icon="percent" label="Platform Fees" value={`$${db.summary.totalFees.toFixed(2)}`} color={Colors.textLight} subtitle="5% rate" />
+            <StatBox icon="volunteer-activism" label="Tips to SpotMe" value={`$${db.summary.totalFees.toFixed(2)}`} color={Colors.textLight} subtitle="Optional tips" />
           </View>
         )}
 
@@ -329,7 +437,7 @@ export default function PayoutDashboard() {
           </View>
         )}
 
-        {/* Export CTA (when there's data) */}
+        {/* Export CTA */}
         {hasData && (
           <TouchableOpacity style={s.exportCTA} onPress={handleExportCSV} disabled={exporting} activeOpacity={0.7}>
             <View style={s.exportCTAIcon}>
@@ -348,7 +456,7 @@ export default function PayoutDashboard() {
         )}
 
         {/* Empty State */}
-        {(!db?.needs || db.needs.length === 0) && !loading && (
+        {(!db?.needs || db.needs.length === 0) && eligibleNeeds.length === 0 && !loading && (
           <View style={s.emptyState}>
             <MaterialIcons name="account-balance-wallet" size={56} color={Colors.borderLight} />
             <Text style={s.emptyTitle}>No payout activity yet</Text>
@@ -361,6 +469,47 @@ export default function PayoutDashboard() {
             </TouchableOpacity>
           </View>
         )}
+
+        {/* How Payouts Work */}
+        <View style={s.howItWorksCard}>
+          <Text style={s.howItWorksTitle}>How Payouts Work</Text>
+          <View style={s.howItWorksStep}>
+            <View style={[s.stepCircle, { backgroundColor: Colors.primaryLight }]}>
+              <Text style={[s.stepNumber, { color: Colors.primary }]}>1</Text>
+            </View>
+            <View style={s.stepContent}>
+              <Text style={s.stepTitle}>Create a Need</Text>
+              <Text style={s.stepDesc}>Post what you need help with and set a goal amount ($25-$300).</Text>
+            </View>
+          </View>
+          <View style={s.howItWorksStep}>
+            <View style={[s.stepCircle, { backgroundColor: Colors.secondaryLight }]}>
+              <Text style={[s.stepNumber, { color: Colors.secondary }]}>2</Text>
+            </View>
+            <View style={s.stepContent}>
+              <Text style={s.stepTitle}>Receive Contributions</Text>
+              <Text style={s.stepDesc}>Community members spot you small amounts. Needs are active for 14 days.</Text>
+            </View>
+          </View>
+          <View style={s.howItWorksStep}>
+            <View style={[s.stepCircle, { backgroundColor: Colors.accentLight }]}>
+              <Text style={[s.stepNumber, { color: Colors.accent }]}>3</Text>
+            </View>
+            <View style={s.stepContent}>
+              <Text style={s.stepTitle}>Request Payout</Text>
+              <Text style={s.stepDesc}>When your goal is met (or need expires with funds), request a payout.</Text>
+            </View>
+          </View>
+          <View style={s.howItWorksStep}>
+            <View style={[s.stepCircle, { backgroundColor: '#E8F5E8' }]}>
+              <Text style={[s.stepNumber, { color: Colors.success }]}>4</Text>
+            </View>
+            <View style={s.stepContent}>
+              <Text style={s.stepTitle}>Get Paid</Text>
+              <Text style={s.stepDesc}>Funds arrive in your bank account within 2-3 business days. No platform fees.</Text>
+            </View>
+          </View>
+        </View>
 
         {/* Security Footer */}
         <View style={s.securityFooter}>
@@ -406,6 +555,24 @@ const s = StyleSheet.create({
   statusDesc: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2, lineHeight: 16 },
   setupBtn: { backgroundColor: Colors.primary, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm + 2, borderRadius: BorderRadius.full },
   setupBtnText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.white },
+
+  // Eligible Needs
+  eligibleDesc: { fontSize: FontSize.xs, color: Colors.textSecondary, marginBottom: Spacing.md, lineHeight: 16 },
+  eligibleBadge: { backgroundColor: Colors.success, paddingHorizontal: Spacing.sm + 2, paddingVertical: 2, borderRadius: BorderRadius.full },
+  eligibleBadgeText: { fontSize: FontSize.xs, fontWeight: '800', color: Colors.white },
+  eligibleNeedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.borderLight, gap: Spacing.sm },
+  eligibleNeedInfo: { flex: 1 },
+  eligibleNeedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  eligibleNeedTitle: { flex: 1, fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
+  eligibleNeedAmount: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.success, marginTop: 2 },
+  eligibleNeedMsg: { fontSize: FontSize.xs, fontWeight: '600', marginTop: 4 },
+  payoutNeedBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.success, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm + 2,
+    borderRadius: BorderRadius.full,
+  },
+  payoutNeedBtnText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.white },
+  payoutSuccessIcon: { padding: Spacing.sm },
 
   // Stats Grid
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.lg },
@@ -478,6 +645,19 @@ const s = StyleSheet.create({
   exportCTAContent: { flex: 1 },
   exportCTATitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
   exportCTADesc: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2, lineHeight: 16 },
+
+  // How It Works
+  howItWorksCard: {
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.xl,
+    padding: Spacing.lg, marginBottom: Spacing.lg, gap: Spacing.lg, ...Shadow.sm,
+  },
+  howItWorksTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text },
+  howItWorksStep: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
+  stepCircle: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  stepNumber: { fontSize: FontSize.md, fontWeight: '800' },
+  stepContent: { flex: 1 },
+  stepTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
+  stepDesc: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2, lineHeight: 16 },
 
   // Empty
   emptyState: { alignItems: 'center', paddingVertical: Spacing.huge, gap: Spacing.md },

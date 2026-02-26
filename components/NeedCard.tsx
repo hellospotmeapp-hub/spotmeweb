@@ -3,12 +3,25 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { Need, TRUST_LEVELS } from '@/app/lib/data';
+import { Need } from '@/app/lib/data';
 import ProgressBar from './ProgressBar';
 import CategoryBadge from './CategoryBadge';
 import StatusBadge from './StatusBadge';
-import TrustBadge from './TrustBadge';
-import VerificationBadge from './VerificationBadge';
+import ExpirationTimer from './ExpirationTimer';
+
+const DEFAULT_AVATAR = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png';
+
+const NEED_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000;
+
+// Check if a need is expired by time (client-side check)
+function isExpiredByTime(need: Need): boolean {
+  if (need.status === 'Expired') return true;
+  if (need.status !== 'Collecting') return false;
+  const expiresAt = need.expiresAt 
+    ? new Date(need.expiresAt).getTime()
+    : new Date(need.createdAt).getTime() + NEED_EXPIRATION_MS;
+  return Date.now() >= expiresAt;
+}
 
 interface NeedCardProps {
   need: Need;
@@ -17,34 +30,42 @@ interface NeedCardProps {
 }
 
 function getTimeAgo(dateStr: string): string {
-  const now = new Date('2026-02-14T02:40:00Z');
+  const now = new Date();
   const date = new Date(dateStr);
   const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return 'just now';
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
+  if (diffMins < 1) return 'just now';
   if (diffMins < 60) return `${diffMins}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays === 1) return 'yesterday';
-  return `${diffDays}d ago`;
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return `${Math.floor(diffDays / 30)}mo ago`;
 }
+
 
 export default function NeedCard({ need, onContribute, compact }: NeedCardProps) {
   const router = useRouter();
   const progress = need.raisedAmount / need.goalAmount;
-  const remaining = need.goalAmount - need.raisedAmount;
-  const isComplete = need.status !== 'Collecting';
+  const expired = isExpiredByTime(need);
+  const isComplete = need.status !== 'Collecting' || expired;
+  const canContribute = need.status === 'Collecting' && !expired;
 
   const handlePress = () => {
     router.push(`/need/${need.id}`);
   };
 
   const handleQuickSpot = (amount: number) => {
-    if (onContribute && !isComplete) {
+    if (onContribute && canContribute) {
       onContribute(need.id, amount);
     }
   };
+
+  // Determine the effective status for display
+  const displayStatus = expired && need.status === 'Collecting' ? 'Expired' : need.status;
 
   if (compact) {
     return (
@@ -64,38 +85,54 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
   }
 
   return (
-    <TouchableOpacity style={styles.card} onPress={handlePress} activeOpacity={0.85}>
+    <TouchableOpacity style={[styles.card, expired && styles.cardExpired]} onPress={handlePress} activeOpacity={0.85}>
+
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.userInfo} activeOpacity={0.7}>
-          <Image source={{ uri: need.userAvatar }} style={styles.avatar} />
+        <TouchableOpacity style={styles.userInfo} onPress={() => router.push(`/user/${need.userId}`)} activeOpacity={0.7}>
+          <Image source={{ uri: need.userAvatar || DEFAULT_AVATAR }} style={styles.avatar} />
           <View>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{need.userName}</Text>
-              {need.userCity && (
+              <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
+              {need.userCity ? (
                 <View style={styles.cityRow}>
                   <MaterialIcons name="place" size={12} color={Colors.textLight} />
                   <Text style={styles.cityText}>{need.userCity}</Text>
                 </View>
-              )}
+              ) : null}
             </View>
             <Text style={styles.timeText}>{getTimeAgo(need.createdAt)}</Text>
           </View>
         </TouchableOpacity>
         <View style={styles.headerRight}>
-          <StatusBadge status={need.status} />
+          <TouchableOpacity
+            style={styles.shareBtn}
+            onPress={() => router.push(`/share/${need.id}`)}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={16} color={Colors.textLight} />
+          </TouchableOpacity>
+          <StatusBadge status={displayStatus} />
         </View>
       </View>
 
       {/* Photo */}
       {need.photo && (
-        <Image source={{ uri: need.photo }} style={styles.photo} />
+        <View>
+          <Image source={{ uri: need.photo }} style={[styles.photo, expired && { opacity: 0.7 }]} />
+          {expired && (
+            <View style={styles.expiredOverlay}>
+              <MaterialIcons name="timer-off" size={16} color={Colors.white} />
+              <Text style={styles.expiredOverlayText}>Expired</Text>
+            </View>
+          )}
+        </View>
       )}
 
       {/* Content */}
       <View style={styles.content}>
         <View style={styles.titleRow}>
-          <Text style={styles.title} numberOfLines={2}>{need.title}</Text>
+          <Text style={[styles.title, expired && { color: Colors.textSecondary }]} numberOfLines={2}>{need.title}</Text>
           <CategoryBadge category={need.category} />
         </View>
         
@@ -103,7 +140,7 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
 
         {/* Progress Section */}
         <View style={styles.progressSection}>
-          <ProgressBar progress={progress} height={10} showGlow={progress >= 0.75} />
+          <ProgressBar progress={progress} height={10} showGlow={progress >= 0.75 && !expired} />
           <View style={styles.progressInfo}>
             <View style={styles.amountRow}>
               <Text style={styles.raisedAmount}>${need.raisedAmount}</Text>
@@ -115,8 +152,18 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
           </View>
         </View>
 
-        {/* Quick Contribute Buttons */}
-        {!isComplete && (
+        {/* Expiration Timer Badge */}
+        {(need.status === 'Collecting' || need.status === 'Expired' || expired) && (
+          <ExpirationTimer
+            expiresAt={need.expiresAt}
+            createdAt={need.createdAt}
+            status={expired ? 'Expired' : need.status}
+            compact
+          />
+        )}
+
+        {/* Quick Contribute Buttons - only for active, non-expired needs */}
+        {canContribute && (
           <View style={styles.contributeRow}>
             {[1, 5, 10].map(amount => (
               <TouchableOpacity
@@ -139,10 +186,46 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
           </View>
         )}
 
-        {isComplete && need.status === 'Goal Met' && (
+        {/* Expired Banner */}
+        {expired && need.raisedAmount > 0 && (
+          <View style={styles.expiredBanner}>
+            <MaterialIcons name="timer-off" size={18} color={Colors.textLight} />
+            <Text style={styles.expiredBannerText}>
+              Expired with ${need.raisedAmount} raised
+            </Text>
+          </View>
+        )}
+
+        {expired && need.raisedAmount === 0 && (
+          <View style={styles.expiredBanner}>
+            <MaterialIcons name="timer-off" size={18} color={Colors.textLight} />
+            <Text style={styles.expiredBannerText}>
+              This need has expired
+            </Text>
+          </View>
+        )}
+
+        {/* Goal Met Banner */}
+        {!expired && need.status === 'Goal Met' && (
           <View style={styles.goalMetBanner}>
             <MaterialIcons name="celebration" size={20} color={Colors.success} />
             <Text style={styles.goalMetText}>Goal Met!</Text>
+          </View>
+        )}
+
+        {/* Payout Requested Banner */}
+        {need.status === 'Payout Requested' && (
+          <View style={styles.payoutBanner}>
+            <MaterialIcons name="hourglass-top" size={18} color={Colors.accent} />
+            <Text style={styles.payoutBannerText}>Payout Processing</Text>
+          </View>
+        )}
+
+        {/* Paid Banner */}
+        {need.status === 'Paid' && (
+          <View style={styles.paidBanner}>
+            <MaterialIcons name="check-circle" size={18} color={Colors.success} />
+            <Text style={styles.paidBannerText}>Paid Out</Text>
           </View>
         )}
       </View>
@@ -158,6 +241,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     overflow: 'hidden',
     ...Shadow.md,
+  },
+  cardExpired: {
+    opacity: 0.85,
   },
   header: {
     flexDirection: 'row',
@@ -209,10 +295,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  shareBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   photo: {
     width: '100%',
     height: 200,
     marginTop: Spacing.sm,
+  },
+  expiredOverlay: {
+    position: 'absolute',
+    top: Spacing.sm + 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.full,
+  },
+  expiredOverlayText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.white,
   },
   content: {
     padding: Spacing.lg,
@@ -300,6 +411,48 @@ const styles = StyleSheet.create({
   goalMetText: {
     fontSize: FontSize.lg,
     fontWeight: '800',
+    color: Colors.success,
+  },
+  expiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    backgroundColor: '#F0EDE9',
+    borderRadius: BorderRadius.lg,
+  },
+  expiredBannerText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.textLight,
+  },
+  payoutBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    backgroundColor: Colors.accentLight,
+    borderRadius: BorderRadius.lg,
+  },
+  payoutBannerText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: Colors.accent,
+  },
+  paidBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    backgroundColor: '#E8F5E8',
+    borderRadius: BorderRadius.lg,
+  },
+  paidBannerText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
     color: Colors.success,
   },
   // Compact styles

@@ -291,7 +291,8 @@ export default function MamaRechargeScreen() {
                   activeOpacity={0.8}
                 >
                   <Image source={{ uri: need.userAvatar }} style={styles.completedAvatar} />
-                  <Text style={styles.completedName}>{need.userName.split(' ')[0]}</Text>
+                  <Text style={styles.completedName}>{(need.userName || 'Someone').split(' ')[0]}</Text>
+
                   <Text style={styles.completedTitle} numberOfLines={2}>{need.title}</Text>
                   <View style={styles.completedBadge}>
                     <MaterialIcons name="check-circle" size={14} color={Colors.success} />

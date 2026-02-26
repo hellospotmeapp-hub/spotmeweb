@@ -28,7 +28,7 @@ All API endpoints are rate-limited per user ID (authenticated) or per IP (anonym
 - **RLS**: Row Level Security enabled on all tables
 - **Admin Access**: Controlled via `admin_users` table; first user self-registers, subsequent admins must be added by existing admins
 - **Input Validation**: UUID validation, HTML/XSS stripping, amount bounds ($0.01–$10,000), string length limits
-- **API Keys**: All secrets (GATEWAY_API_KEY, SUPABASE_SERVICE_ROLE_KEY) are server-side only in edge functions
+- **API Keys**: Stripe secret key stored securely in PostgreSQL `spotme_get_stripe_key()` function (SECURITY DEFINER, not accessible to anon/authenticated roles). No edge function secrets needed.
 - **Error Monitoring**: Client errors logged via `error_logs` table; global error/unhandledrejection handlers on web
 - **Database Indexes**: 41 indexes across all tables for query performance
 - **Trust Score System**: Automatic scoring (0–100) based on account age, verification, contributions, and reports
@@ -39,6 +39,10 @@ All API endpoints are rate-limited per user ID (authenticated) or per IP (anonym
 
 ## Stripe Configuration
 
-- Payment Gateway: `stripe.gateway.fastrouter.io`
-- Platform fee: 5% (destination charges for connected accounts)
-- Webhook endpoint: Active with event logging and retry support
+- Integration: Direct Stripe API via PostgreSQL RPC functions (pg_http extension)
+- Secret key: Stored in `spotme_get_stripe_key()` SQL function (set via SQL Editor — see DEPLOY_EDGE_FUNCTIONS.md Step 3)
+
+- Publishable key: `pk_test_51T3T8o2Xr21chucT...` (test mode) / `pk_live_51T3T8o2Xr21chucT...` (live mode)
+- Platform fee: None (tip-based model — optional tips via application_fee_amount)
+- Stripe Connect: Express accounts for recipients (destination charges)
+- Webhook endpoint: Active with event logging, idempotency, and auto-retry support

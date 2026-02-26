@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Modal, ActivityIndicator, Platform, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,8 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme
 import { FAQ_ITEMS } from '@/app/lib/data';
 import { useApp } from '@/app/lib/store';
 import { supabase } from '@/app/lib/supabase';
+import { pickAndUploadAvatar } from '@/app/lib/imageUpload';
+
 
 interface SettingRowProps {
   icon: string;
@@ -61,7 +63,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {
     currentUser, isLoggedIn, logout, pushEnabled, subscribeToPush, unsubscribeFromPush,
-    payoutStatus, setupPayouts, checkPayoutStatus, completePayoutOnboarding,
+    payoutStatus, setupPayouts, checkPayoutStatus, completePayoutOnboarding, updateProfile,
   } = useApp();
   const [pushNotifs, setPushNotifs] = useState(pushEnabled);
   const [emailNotifs, setEmailNotifs] = useState(false);
@@ -87,7 +89,32 @@ export default function SettingsScreen() {
   const [payoutSummary, setPayoutSummary] = useState<any>(null);
   const [loadingPayoutSummary, setLoadingPayoutSummary] = useState(false);
 
+  // Avatar upload state
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
   const topPadding = Platform.OS === 'web' ? 16 : insets.top;
+
+  const handleChangeAvatar = async () => {
+    if (avatarUploading) return;
+    setAvatarUploading(true);
+    try {
+      const result = await pickAndUploadAvatar(currentUser.id);
+      if (result.error === 'cancelled') {
+        setAvatarUploading(false);
+        return;
+      }
+      if (result.success && result.avatarUrl) {
+        updateProfile({ avatar: result.avatarUrl });
+      } else if (result.localUri) {
+        updateProfile({ avatar: result.localUri });
+      }
+    } catch (err) {
+      console.error('Avatar change error:', err);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
 
   // Check for setup_payout param (returning from onboarding)
   useEffect(() => {
@@ -204,6 +231,32 @@ export default function SettingsScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.section}>
+          {/* Change Profile Photo Row */}
+          <TouchableOpacity style={styles.settingRow} onPress={handleChangeAvatar} activeOpacity={0.7} disabled={avatarUploading}>
+            <View style={styles.avatarThumbContainer}>
+              {currentUser.avatar ? (
+                <Image source={{ uri: currentUser.avatar }} style={styles.avatarThumb} />
+              ) : (
+                <View style={[styles.avatarThumb, { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
+                  <MaterialIcons name="person" size={18} color={Colors.textLight} />
+                </View>
+              )}
+              <View style={styles.avatarThumbBadge}>
+                <MaterialIcons name="camera-alt" size={10} color={Colors.white} />
+              </View>
+            </View>
+            <View style={styles.settingContent}>
+              <Text style={styles.settingLabel}>Change Profile Photo</Text>
+              <Text style={styles.settingValue}>
+                {avatarUploading ? 'Uploading...' : 'Tap to select a new photo'}
+              </Text>
+            </View>
+            {avatarUploading ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <MaterialIcons name="chevron-right" size={22} color={Colors.textLight} />
+            )}
+          </TouchableOpacity>
           <SettingRow icon="person" label="Edit Profile" onPress={() => router.push('/(tabs)/profile')} />
           <SettingRow icon="credit-card" label="Payment Methods" value={paymentMethods.length > 0 ? `${paymentMethods.length} card(s)` : 'Add a card'} onPress={() => setShowPaymentMethods(true)} />
           <SettingRow
@@ -216,6 +269,7 @@ export default function SettingsScreen() {
           />
         </View>
 
+
         {/* Stripe Connect Info Banner */}
         <View style={styles.connectInfoBanner}>
           <View style={styles.connectInfoIcon}>
@@ -224,8 +278,9 @@ export default function SettingsScreen() {
           <View style={styles.connectInfoContent}>
             <Text style={styles.connectInfoTitle}>Stripe Connect</Text>
             <Text style={styles.connectInfoText}>
-              When you set up payouts, contributions to your needs go directly to your bank account. SpotMe only keeps a 5% platform fee.
+              When you set up payouts, contributions go directly to your bank account. SpotMe takes no platform fee — 100% goes to you. Tips from contributors support SpotMe.
             </Text>
+
           </View>
         </View>
 
@@ -277,13 +332,20 @@ export default function SettingsScreen() {
               ))}
             </View>
           )}
-          <SettingRow icon="chat" label="Contact Support" onPress={() => {}} />
-          <SettingRow icon="info" label="About SpotMe" value="v1.1.0" onPress={() => {}} />
+          <SettingRow icon="chat" label="Contact Support" value="hellospotme.app@gmail.com" onPress={() => {
+            if (Platform.OS === 'web') {
+              window.open('mailto:hellospotme.app@gmail.com?subject=SpotMe Support Request', '_blank');
+            }
+          }} />
+          <SettingRow icon="info" label="About SpotMe" value="v1.1.0" onPress={() => router.push('/about')} />
+          <SettingRow icon="description" label="Terms of Service" onPress={() => router.push('/terms')} />
+          <SettingRow icon="admin-panel-settings" label="Admin Dashboard" value="Manage app" onPress={() => router.push('/admin')} />
         </View>
 
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.section}>
-          <SettingRow icon="logout" label="Sign Out" danger onPress={() => { logout(); router.back(); }} />
+        <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); } }} />
+
           <SettingRow icon="delete-forever" label="Delete Account" danger onPress={() => {}} />
         </View>
 
@@ -292,7 +354,7 @@ export default function SettingsScreen() {
           <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
           <Text style={styles.footerVersion}>Version 1.1.0 · Stripe Connect</Text>
           <View style={styles.footerLinks}>
-            <TouchableOpacity><Text style={styles.footerLink}>Terms of Service</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/terms')}><Text style={styles.footerLink}>Terms of Service</Text></TouchableOpacity>
             <Text style={styles.footerDot}>·</Text>
             <TouchableOpacity><Text style={styles.footerLink}>Privacy Policy</Text></TouchableOpacity>
             <Text style={styles.footerDot}>·</Text>
@@ -300,6 +362,7 @@ export default function SettingsScreen() {
           </View>
           <Text style={styles.footerCopyright}>© 2026 SpotMe. All rights reserved.</Text>
         </View>
+
       </ScrollView>
 
       {/* Payment Methods Modal */}
@@ -402,7 +465,7 @@ export default function SettingsScreen() {
                 </View>
                 <Text style={styles.payoutStatusTitle}>Payouts Active</Text>
                 <Text style={styles.payoutStatusText}>
-                  Your Stripe Connect account is set up. Contributions to your needs are sent directly to you with a 5% platform fee automatically deducted.
+                  Your Stripe Connect account is set up. 100% of contributions to your needs are sent directly to you — no platform fees.
                 </Text>
               </View>
             ) : (
@@ -412,7 +475,7 @@ export default function SettingsScreen() {
                 </View>
                 <Text style={styles.payoutStatusTitle}>Set Up Direct Payouts</Text>
                 <Text style={styles.payoutStatusText}>
-                  Connect your bank account via Stripe to receive contributions directly. SpotMe automatically takes a 5% platform fee — the rest goes straight to you.
+                  Connect your bank account via Stripe to receive 100% of contributions directly. No platform fees — SpotMe is supported by optional tips.
                 </Text>
               </View>
             )}
@@ -435,8 +498,8 @@ export default function SettingsScreen() {
                   <Text style={[styles.stepNumberText, { color: Colors.secondaryDark }]}>2</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>Stripe splits the payment</Text>
-                  <Text style={styles.stepDesc}>5% goes to SpotMe as platform fee, 95% goes to you</Text>
+                  <Text style={styles.stepTitle}>Stripe routes the payment</Text>
+                  <Text style={styles.stepDesc}>100% of the donation goes to you. Optional tips support SpotMe separately.</Text>
                 </View>
               </View>
               <View style={styles.stepConnector} />
@@ -451,7 +514,7 @@ export default function SettingsScreen() {
               </View>
             </View>
 
-            {/* Fee Breakdown Example */}
+            {/* Fee Example */}
             <View style={styles.feeExample}>
               <Text style={styles.feeExampleTitle}>Example: $20 Contribution</Text>
               <View style={styles.feeExampleRow}>
@@ -463,16 +526,22 @@ export default function SettingsScreen() {
                   <MaterialIcons name="arrow-forward" size={14} color={Colors.success} />
                   <Text style={[styles.feeExampleLabel, { color: Colors.success, fontWeight: '700' }]}>You receive</Text>
                 </View>
-                <Text style={[styles.feeExampleValue, { color: Colors.success, fontWeight: '800' }]}>$19.00</Text>
+                <Text style={[styles.feeExampleValue, { color: Colors.success, fontWeight: '800' }]}>$20.00</Text>
               </View>
               <View style={styles.feeExampleRow}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <MaterialIcons name="arrow-forward" size={14} color={Colors.textLight} />
-                  <Text style={styles.feeExampleLabel}>SpotMe platform fee (5%)</Text>
+                  <MaterialIcons name="info-outline" size={14} color={Colors.textLight} />
+                  <Text style={styles.feeExampleLabel}>Platform fee</Text>
                 </View>
-                <Text style={styles.feeExampleValue}>$1.00</Text>
+                <Text style={[styles.feeExampleValue, { color: Colors.success }]}>$0.00</Text>
+              </View>
+              <View style={[styles.feeExampleRow, { marginTop: 4 }]}>
+                <Text style={[styles.feeExampleLabel, { fontStyle: 'italic' }]}>Stripe processing (2.9% + $0.30)</Text>
+                <Text style={[styles.feeExampleValue, { color: Colors.textLight }]}>$0.88</Text>
               </View>
             </View>
+
+
 
             {/* Payout Summary */}
             {loadingPayoutSummary ? (
@@ -667,4 +736,30 @@ const styles = StyleSheet.create({
   managePayoutBtnText: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.primary },
   payoutSecurityNote: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, paddingVertical: Spacing.md },
   payoutSecurityText: { flex: 1, fontSize: FontSize.xs, color: Colors.textLight, lineHeight: 16 },
+  // Avatar thumbnail styles
+  avatarThumbContainer: {
+    position: 'relative',
+    width: 40,
+    height: 40,
+  },
+  avatarThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+  },
+  avatarThumbBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.surface,
+  },
 });
