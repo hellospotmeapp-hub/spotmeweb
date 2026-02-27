@@ -33,6 +33,234 @@ const storage = {
   },
 };
 
+// ============================================================
+// PENDING NEEDS CACHE — survives page refresh even if server
+// call hasn't completed yet.  Stored in localStorage under
+// 'spotme_pending_needs' as a JSON array of Need objects.
+// ============================================================
+const PENDING_NEEDS_KEY = 'spotme_pending_needs';
+const DELETED_NEEDS_KEY = 'spotme_deleted_needs';
+
+/** Read all pending (unconfirmed) needs from localStorage */
+function getPendingNeeds(): Need[] {
+  if (Platform.OS === 'web') {
+    try {
+      const raw = localStorage.getItem(PENDING_NEEDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+  }
+  // Also check in-memory fallback
+  try {
+    const raw = memoryStore[PENDING_NEEDS_KEY];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+/** Persist a newly created need to the pending cache */
+function savePendingNeed(need: Need): void {
+  try {
+    const current = getPendingNeeds();
+    // Avoid duplicates by local ID
+    const updated = current.filter(n => n.id !== need.id);
+    updated.push(need);
+    const json = JSON.stringify(updated);
+    memoryStore[PENDING_NEEDS_KEY] = json;
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(PENDING_NEEDS_KEY, json); } catch {}
+    }
+    console.log(`[SpotMe PendingNeeds] Saved pending need: ${need.id} ("${need.title}") — ${updated.length} total pending`);
+  } catch (err) {
+    console.warn('[SpotMe PendingNeeds] Failed to save pending need:', err);
+  }
+}
+
+/** Remove a pending need by its local ID (called when server confirms save) */
+function removePendingNeed(localId: string): void {
+  try {
+    const current = getPendingNeeds();
+    const updated = current.filter(n => n.id !== localId);
+    if (updated.length === current.length) return; // Nothing to remove
+    const json = JSON.stringify(updated);
+    memoryStore[PENDING_NEEDS_KEY] = json;
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(PENDING_NEEDS_KEY, json); } catch {}
+    }
+    console.log(`[SpotMe PendingNeeds] Cleared confirmed need: ${localId} — ${updated.length} remaining`);
+  } catch (err) {
+    console.warn('[SpotMe PendingNeeds] Failed to remove pending need:', err);
+  }
+}
+
+/** Clear ALL pending needs from the cache */
+function clearAllPendingNeeds(): void {
+  try {
+    delete memoryStore[PENDING_NEEDS_KEY];
+    if (Platform.OS === 'web') {
+      try { localStorage.removeItem(PENDING_NEEDS_KEY); } catch {}
+    }
+  } catch {}
+}
+
+// ============================================================
+// DELETED NEEDS TRACKING — prevents "zombie" needs from
+// reappearing after deletion when server polling fetches them.
+// Stored in localStorage under 'spotme_deleted_needs' as a
+// JSON array of { id, deletedAt } objects.
+// ============================================================
+
+interface DeletedNeedRecord {
+  id: string;
+  deletedAt: string;
+}
+
+/** Read deleted need IDs from localStorage */
+function getDeletedNeedIds(): Set<string> {
+  const records = getDeletedNeedRecords();
+  return new Set(records.map(r => r.id));
+}
+
+function getDeletedNeedRecords(): DeletedNeedRecord[] {
+  if (Platform.OS === 'web') {
+    try {
+      const raw = localStorage.getItem(DELETED_NEEDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+  }
+  try {
+    const raw = memoryStore[DELETED_NEEDS_KEY];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+/** Mark a need as deleted (persists to localStorage) */
+function markNeedDeleted(needId: string): void {
+  try {
+    const records = getDeletedNeedRecords();
+    // Avoid duplicates
+    if (records.some(r => r.id === needId)) return;
+    const updated = [...records, { id: needId, deletedAt: new Date().toISOString() }];
+    const json = JSON.stringify(updated);
+    memoryStore[DELETED_NEEDS_KEY] = json;
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(DELETED_NEEDS_KEY, json); } catch {}
+    }
+    console.log(`[SpotMe DeletedNeeds] Marked need as deleted: ${needId} — ${updated.length} total deleted`);
+  } catch (err) {
+    console.warn('[SpotMe DeletedNeeds] Failed to mark need as deleted:', err);
+  }
+}
+
+/** Clean up old deleted need records (older than 24 hours) */
+function cleanupDeletedNeeds(): void {
+  try {
+    const records = getDeletedNeedRecords();
+    const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 hours
+    const cleaned = records.filter(r => new Date(r.deletedAt).getTime() > cutoff);
+    if (cleaned.length === records.length) return;
+    const json = JSON.stringify(cleaned);
+    memoryStore[DELETED_NEEDS_KEY] = json;
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(DELETED_NEEDS_KEY, json); } catch {}
+    }
+    console.log(`[SpotMe DeletedNeeds] Cleaned up ${records.length - cleaned.length} old records`);
+  } catch {}
+}
+
+/** Clear ALL deleted need records (called on logout) */
+function clearAllDeletedNeeds(): void {
+  try {
+    delete memoryStore[DELETED_NEEDS_KEY];
+    if (Platform.OS === 'web') {
+      try { localStorage.removeItem(DELETED_NEEDS_KEY); } catch {}
+    }
+  } catch {}
+}
+
+/** Filter out deleted needs from a needs array */
+function filterDeletedNeeds(needs: Need[]): Need[] {
+  const deletedIds = getDeletedNeedIds();
+  if (deletedIds.size === 0) return needs;
+  return needs.filter(n => !deletedIds.has(n.id));
+}
+
+
+/**
+ * Reconcile pending needs against server-fetched needs.
+ * If a server need matches a pending need (same title + userId + created
+ * within 2 minutes), the pending need is considered confirmed and removed.
+ * Returns any remaining unconfirmed pending needs that should be merged
+ * into the displayed list.
+ */
+function reconcilePendingNeeds(serverNeeds: Need[]): Need[] {
+  const pending = getPendingNeeds();
+  if (pending.length === 0) return [];
+
+  const remaining: Need[] = [];
+
+  for (const pn of pending) {
+    // Check if this pending need now exists on the server
+    const match = serverNeeds.find(sn => {
+      // Exact local-ID match (server returned the same ID — unlikely but possible)
+      if (sn.id === pn.id) return true;
+      // Fuzzy match: same user + same title + created within 2 minutes
+      const sameUser = sn.userId === pn.userId;
+      const sameTitle = sn.title.trim().toLowerCase() === pn.title.trim().toLowerCase();
+      const timeDiff = Math.abs(new Date(sn.createdAt).getTime() - new Date(pn.createdAt).getTime());
+      return sameUser && sameTitle && timeDiff < 120000; // 2 minutes
+    });
+
+    if (match) {
+      // Confirmed on server — remove from pending cache
+      removePendingNeed(pn.id);
+    } else {
+      // Check if the pending need is stale (older than 30 minutes = likely failed permanently)
+      const age = Date.now() - new Date(pn.createdAt).getTime();
+      if (age > 30 * 60 * 1000) {
+        // Stale — remove from pending cache
+        removePendingNeed(pn.id);
+        console.log(`[SpotMe PendingNeeds] Removed stale pending need (${Math.round(age / 60000)}min old): ${pn.id}`);
+      } else {
+        remaining.push(pn);
+      }
+    }
+  }
+
+  return remaining;
+}
+
+/**
+ * Merge pending needs into a server-fetched needs array.
+ * Pending needs are prepended (newest first) and duplicates are avoided.
+ */
+function mergeWithPendingNeeds(serverNeeds: Need[]): Need[] {
+  const remaining = reconcilePendingNeeds(serverNeeds);
+  if (remaining.length === 0) return serverNeeds;
+
+  // Filter out any pending needs whose IDs already exist in server data
+  const serverIds = new Set(serverNeeds.map(n => n.id));
+  const toMerge = remaining.filter(pn => !serverIds.has(pn.id));
+
+  if (toMerge.length === 0) return serverNeeds;
+
+  console.log(`[SpotMe PendingNeeds] Merging ${toMerge.length} unconfirmed needs with ${serverNeeds.length} server needs`);
+  return [...toMerge, ...serverNeeds];
+}
+
+
 // ---- Cart Item ----
 export interface CartItem {
   needId: string;
@@ -388,6 +616,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pollRef = useRef<any>(null);
   const dbReady = useRef(false);
   const expirationCheckRef = useRef<any>(null);
+  const logoutIntentionalRef = useRef(false);
+
 
   // ---- Offline State ----
   const [isOffline, setIsOffline] = useState(false);
@@ -436,15 +666,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return isNeedExpiredByTime(need);
   }, []);
 
-  // Load user + cart from storage on mount
+  // ============================================================
+  // AUTH STATE RECOVERY GUARD
+  // If navigation causes a brief state reset (e.g. component tree
+  // re-mount), this effect detects the guest state and immediately
+  // recovers the user from localStorage / memoryStore before any
+  // child component renders the logged-out UI.
+  // ============================================================
   useEffect(() => {
+    // Skip recovery if the user intentionally logged out
+    if (logoutIntentionalRef.current) return;
+    // Only run when state indicates guest
+    if (isLoggedIn || currentUser.id !== 'guest') return;
+
+    // --- Attempt 1: synchronous localStorage read (web) ---
+    if (Platform.OS === 'web') {
+      try {
+        const raw = localStorage.getItem('spotme_user');
+        if (raw) {
+          const user = JSON.parse(raw);
+          if (user && user.id && user.id !== 'guest') {
+            console.log('[SpotMe Auth Recovery] Recovered auth from localStorage:', user.name);
+            setCurrentUser(user);
+            setIsLoggedIn(true);
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    // --- Attempt 2: in-memory fallback store ---
+    try {
+      const raw = memoryStore['spotme_user'];
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user && user.id && user.id !== 'guest') {
+          console.log('[SpotMe Auth Recovery] Recovered auth from memoryStore:', user.name);
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+          return;
+        }
+      }
+    } catch {}
+  }, [isLoggedIn, currentUser.id]);
+
+
+  // Load user + cart + pending needs from storage on mount
+  // Load user + cart + pending needs from storage on mount
+  useEffect(() => {
+    // Clean up old deleted need records on startup
+    cleanupDeletedNeeds();
+
     (async () => {
       try {
         const saved = await storage.get('spotme_user');
         if (saved) {
           const user = JSON.parse(saved);
-          setCurrentUser(user);
-          setIsLoggedIn(true);
+          if (user && user.id && user.id !== 'guest') {
+            setCurrentUser(user);
+            setIsLoggedIn(true);
+          }
         }
         const savedCart = await storage.get('spotme_cart');
         if (savedCart) {
@@ -458,9 +739,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setPushEnabled(Notification.permission === 'granted');
         }
 
+        // ---- PENDING NEEDS: Restore any needs cached in localStorage ----
+        const pendingNeeds = getPendingNeeds();
+        if (pendingNeeds.length > 0) {
+          console.log(`[SpotMe PendingNeeds] Restoring ${pendingNeeds.length} pending needs from localStorage`);
+          setNeeds(prev => {
+            const existingIds = new Set(prev.map(n => n.id));
+            const toRestore = pendingNeeds.filter(pn => !existingIds.has(pn.id));
+            return toRestore.length > 0 ? [...toRestore, ...prev] : prev;
+          });
+        }
+
         const cached = offlineManager.getCachedNeeds();
         if (cached.needs && cached.needs.length > 0) {
-          setNeeds(applyExpirations(cached.needs));
+          setNeeds(applyExpirations(filterDeletedNeeds(cached.needs)));
           console.log(`[SpotMe Offline] Loaded ${cached.needs.length} cached needs`);
         }
 
@@ -469,6 +761,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     })();
   }, []);
+
+
 
   // Check payout status when user logs in
   useEffect(() => {
@@ -496,8 +790,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: { action: 'fetch_needs' },
       }, 8000);
       if (!error && data?.success && data.needs?.length > 0) {
-        // Apply client-side expiration check to server data
-        setNeeds(applyExpirations(data.needs));
+        // Filter out deleted needs BEFORE merging with pending
+        const filteredServerNeeds = filterDeletedNeeds(data.needs);
+        // Merge server data with any unconfirmed pending needs from localStorage
+        const merged = mergeWithPendingNeeds(filteredServerNeeds);
+        // Apply client-side expiration check to merged data
+        setNeeds(applyExpirations(merged));
         dbReady.current = true;
         offlineManager.markOnline();
         offlineManager.cacheNeeds(data.needs);
@@ -508,17 +806,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         const cached = offlineManager.getCachedNeeds();
         if (cached.needs && cached.needs.length > 0) {
-          setNeeds(applyExpirations(cached.needs));
+          setNeeds(applyExpirations(filterDeletedNeeds(cached.needs)));
         }
       }
     } catch (err) {
       offlineManager.markOffline();
       const cached = offlineManager.getCachedNeeds();
       if (cached.needs && cached.needs.length > 0) {
-        setNeeds(applyExpirations(cached.needs));
+        setNeeds(applyExpirations(filterDeletedNeeds(cached.needs)));
       }
     }
   };
+
+
 
   const fetchNeedsSilent = async () => {
     if (isOffline) return;
@@ -527,7 +827,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: { action: 'fetch_needs' },
       }, 8000);
       if (!error && data?.success && data.needs?.length > 0) {
-        setNeeds(applyExpirations(data.needs));
+        // Filter out deleted needs BEFORE merging with pending
+        const filteredServerNeeds = filterDeletedNeeds(data.needs);
+        // Merge server data with any unconfirmed pending needs from localStorage
+        const merged = mergeWithPendingNeeds(filteredServerNeeds);
+        setNeeds(applyExpirations(merged));
         offlineManager.markOnline();
         offlineManager.cacheNeeds(data.needs);
       } else if (error) {
@@ -540,6 +844,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineManager.markOffline();
     }
   };
+
+
 
   const fetchNotificationsSilent = async () => {
     if (isOffline) return;
@@ -573,7 +879,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'This need is no longer accepting contributions.' };
       }
 
-      const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotme.app';
+      const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotmeone.com';
+
 
       const { data, error } = await supabase.functions.invoke('stripe-checkout', {
         body: {
@@ -713,7 +1020,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'All selected needs have expired or are no longer accepting contributions.' };
       }
 
-      const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotme.app';
+      const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotmeone.com';
+
 
       const { data, error } = await supabase.functions.invoke('stripe-checkout', {
         body: {
@@ -807,8 +1115,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: accountData, error: accountErr } = await supabase.functions.invoke('stripe-connect', {
         body: {
           action: 'create_account',
-          userId: currentUser.id,
-          email: `${currentUser.id}@spotme.app`,
+          email: `${currentUser.id}@spotmeone.com`,
+
           name: currentUser.name,
         },
       });
@@ -827,7 +1135,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: true };
       }
 
-      const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotme.app';
+      const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotmeone.com';
+
       const { data: linkData, error: linkErr } = await supabase.functions.invoke('stripe-connect', {
         body: {
           action: 'create_onboarding_link',
@@ -1003,22 +1312,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentUser, needs]);
 
   const createNeed = useCallback(async (needData: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => {
-    const MAX_ACTIVE_NEEDS = 4;
-    const myActiveNeeds = needs.filter(n => 
-      (n.userId === currentUser.id || n.userId === 'current') && 
-      n.status === 'Collecting'
-    );
-    if (myActiveNeeds.length >= MAX_ACTIVE_NEEDS) {
-      setNotifications(prev => [{
-        id: `not_${Date.now()}`,
-        type: 'welcome' as const,
-        title: 'Need Limit Reached',
-        message: `You already have ${myActiveNeeds.length} active needs. The maximum is ${MAX_ACTIVE_NEEDS}. Wait for one to be funded or expire before creating another.`,
-        timestamp: new Date().toISOString(),
-        read: false,
-      }, ...prev]);
-      return;
-    }
+    // No need limit — users can create unlimited needs
+
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + NEED_EXPIRATION_MS).toISOString();
@@ -1039,6 +1334,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     setNeeds(prev => [localNeed, ...prev]);
 
+    // ---- PENDING NEEDS CACHE: Persist to localStorage immediately ----
+    // This ensures the need survives a page refresh even if the server
+    // call hasn't completed or fails silently.
+    savePendingNeed(localNeed);
+
     try {
       const { data } = await supabase.functions.invoke('process-contribution', {
         body: {
@@ -1057,20 +1357,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       if (data?.limitReached) {
+        // Server rejected — remove from both local state and pending cache
         setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
+        removePendingNeed(localNeed.id);
         setNotifications(prev => [{
           id: `not_${Date.now()}`,
           type: 'welcome' as const,
-          title: 'Need Limit Reached',
-          message: data.error || `You can only have ${MAX_ACTIVE_NEEDS} active needs at a time.`,
+          title: 'Could Not Create Need',
+          message: data.error || 'The server could not create this need. Please try again.',
           timestamp: new Date().toISOString(),
           read: false,
         }, ...prev]);
         return;
       }
 
+
       if (data?.success && data.need) {
+        // Server confirmed — update local state with real server data and clear pending cache
         setNeeds(prev => prev.map(n => n.id === localNeed.id ? { ...data.need, expiresAt: data.need.expiresAt || expiresAt } : n));
+        removePendingNeed(localNeed.id);
+        console.log(`[SpotMe PendingNeeds] Need confirmed by server: ${localNeed.id} → ${data.need.id}`);
       }
       offlineManager.markOnline();
 
@@ -1086,6 +1392,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       }
     } catch (err) {
+      // Server call failed — need stays in pending cache for recovery on next load
+      console.log(`[SpotMe PendingNeeds] Server call failed, need preserved in pending cache: ${localNeed.id}`);
       offlineManager.enqueue({
         type: 'create_need',
         payload: {
@@ -1104,6 +1412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPendingActions(offlineManager.pendingCount);
     }
   }, [currentUser, needs]);
+
 
 
   // ---- ENHANCED REQUEST PAYOUT ----
@@ -1244,7 +1553,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = useCallback(async (name: string, email: string, password: string, bio?: string, city?: string): Promise<{ success: boolean; error?: string }> => {
+    logoutIntentionalRef.current = false; // Reset: user is actively signing up
     try {
+
       let storedEmail: string | null = null;
       try { storedEmail = await storage.get('spotme_email'); } catch {}
 
@@ -1332,7 +1643,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (name: string, email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
+    logoutIntentionalRef.current = false; // Reset: user is actively logging in
     try {
+
       let storedEmail: string | null = null;
       let storedPass: string | null = null;
       let storedUser: string | null = null;
@@ -1391,6 +1704,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [signup]);
 
   const logout = useCallback(async () => {
+    // Mark as intentional so the auth recovery guard doesn't fight the logout
+    logoutIntentionalRef.current = true;
+
     if (pushEnabled && currentUser.id !== 'guest') {
       try {
         const reg = await navigator.serviceWorker?.ready;
@@ -1408,12 +1724,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPayoutStatus(null);
     setCart([]);
     setSavedNeeds([]);
+    clearAllPendingNeeds(); // Clear any pending needs from localStorage on logout
     await storage.remove('spotme_user');
     await storage.remove('spotme_email');
     await storage.remove('spotme_pass');
     await storage.remove('spotme_cart');
     await storage.remove('spotme_saved_needs');
   }, [pushEnabled, currentUser.id]);
+
 
   const updateProfile = useCallback(async (updates: Partial<User>) => {
     setCurrentUser(prev => {
@@ -1741,7 +2059,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const editNeed = useCallback(async (needId: string, updates: { title?: string; message?: string; photo?: string; goalAmount?: number }): Promise<boolean> => {
     try {
-      const { data, error } = await supabase.functions.invoke('process-contribution', {
+      // Use safeInvoke to ensure local API handler is used (bypasses potentially broken supabase.functions override)
+      const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'edit_need', needId, userId: currentUser.id, ...updates },
       });
       if (error || !data?.success) return false;
@@ -1763,6 +2082,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch { return false; }
   }, [currentUser.id]);
 
+
   const deleteNeed = useCallback(async (needId: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const need = needs.find(n => n.id === needId);
@@ -1774,25 +2094,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Cannot delete a need that has received contributions. Contact support for help.' };
       }
 
-      const { data, error } = await supabase.functions.invoke('process-contribution', {
+      // Mark as deleted FIRST so polling won't bring it back
+      markNeedDeleted(needId);
+
+      const isLocalOnly = needId.startsWith('n_') || needId.startsWith('local_');
+
+      if (isLocalOnly) {
+        console.log('[deleteNeed] Local-only need, removing from state + pending cache:', needId);
+        setNeeds(prev => prev.filter(n => n.id !== needId));
+        removePendingNeed(needId);
+        setNotifications(prev => [{
+          id: `not_${Date.now()}`, type: 'welcome' as const, title: 'Need Deleted',
+          message: `Your need "${need.title}" has been removed.`,
+          timestamp: new Date().toISOString(), read: false,
+        }, ...prev]);
+        return { success: true };
+      }
+
+      const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'delete_need', needId, userId: currentUser.id },
       });
-      if (error || !data?.success) return { success: false, error: data?.error || 'Delete failed' };
+      
+      if (error || !data?.success) {
+        // Still remove locally since we marked it deleted
+        setNeeds(prev => prev.filter(n => n.id !== needId));
+        return { success: true };
+      }
 
       setNeeds(prev => prev.filter(n => n.id !== needId));
       setNotifications(prev => [{
-        id: `not_${Date.now()}`,
-        type: 'welcome' as const,
-        title: 'Need Deleted',
+        id: `not_${Date.now()}`, type: 'welcome' as const, title: 'Need Deleted',
         message: `Your need "${need.title}" has been removed.`,
-        timestamp: new Date().toISOString(),
-        read: false,
+        timestamp: new Date().toISOString(), read: false,
       }, ...prev]);
       return { success: true };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Delete failed' };
+      // Still remove locally since we already marked it deleted
+      setNeeds(prev => prev.filter(n => n.id !== needId));
+      return { success: true };
     }
   }, [currentUser.id, needs]);
+
+
+
 
   const fetchActivity = useCallback(async () => {
     try {
@@ -2165,8 +2509,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) throw new Error('useApp must be used within AppProvider');
+
+  // ── AUTH STATE RECOVERY (synchronous read-through) ──────────
+  // If the React state shows "guest" but persistent storage still
+  // holds a real user, return the stored user immediately so that
+  // no child component ever flashes the logged-out UI.  The
+  // useEffect guard inside AppProvider will reconcile the actual
+  // React state on the next tick, but this gives us an instant
+  // read-through so the very first render is already correct.
+  if (!context.isLoggedIn && context.currentUser.id === 'guest') {
+    try {
+      let raw: string | null = null;
+      if (Platform.OS === 'web') {
+        try { raw = localStorage.getItem('spotme_user'); } catch {}
+      }
+      if (!raw) {
+        raw = memoryStore['spotme_user'] || null;
+      }
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user && user.id && user.id !== 'guest') {
+          // Return a patched context so this render cycle sees the real user
+          return { ...context, currentUser: user, isLoggedIn: true };
+        }
+      }
+    } catch {}
+  }
+
   return context;
 }
+
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);

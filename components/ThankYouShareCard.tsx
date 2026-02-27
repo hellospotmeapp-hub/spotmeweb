@@ -58,7 +58,7 @@ export default function ThankYouShareCard({
   const getShareUrl = () => {
     const base = Platform.OS === 'web' && typeof window !== 'undefined'
       ? window.location.origin
-      : 'https://spotme.app';
+      : 'https://spotmeone.com';
     return needId ? `${base}/share/${needId}` : base;
   };
 

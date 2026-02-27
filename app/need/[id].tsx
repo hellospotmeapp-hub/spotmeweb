@@ -200,7 +200,8 @@ export default function NeedDetailScreen() {
     <View style={[styles.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.push('/(tabs)'); } catch { router.back(); } }}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
 
         </TouchableOpacity>
@@ -599,7 +600,8 @@ export default function NeedDetailScreen() {
           onDelete={async () => {
             const result = await deleteNeed(need.id);
             if (result.success) {
-              try { router.push('/(tabs)'); } catch { router.back(); }
+              try { router.replace('/(tabs)'); } catch { router.back(); }
+
             }
             return result;
           }}

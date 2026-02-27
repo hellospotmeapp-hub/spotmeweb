@@ -9,7 +9,18 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "SpotMe needs camera access to take photos for your needs and profile.",
+        "NSPhotoLibraryUsageDescription": "SpotMe needs photo library access to attach images to your needs and update your profile picture.",
+        "NSPhotoLibraryAddUsageDescription": "SpotMe needs permission to save receipt images to your photo library.",
+        "LSApplicationQueriesSchemes": [
+          "spotme",
+          "stripe"
+        ],
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": []
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -32,6 +43,13 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SpotMe needs access to your photos to attach images to needs.",
+          "cameraPermission": "SpotMe needs camera access to take photos for your needs."
         }
       ]
     ],

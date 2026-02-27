@@ -38,8 +38,9 @@ export default function ShareSheet({
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return window.location.origin;
     }
-    return 'https://spotme.app';
+    return 'https://spotmeone.com';
   };
+
 
   const getShareUrl = useCallback(() => {
     const base = getBaseUrl();

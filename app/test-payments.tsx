@@ -439,7 +439,7 @@ export default function TestPaymentsScreen() {
         body: {
           action: 'create_account',
           userId: currentUser.id,
-          email: `${currentUser.id}@spotme.app`,
+          email: `${currentUser.id}@spotmeone.com`,
           name: currentUser.name,
         },
       });

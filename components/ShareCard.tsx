@@ -51,10 +51,11 @@ export default function ShareCard({ visible, onClose, needTitle, needId, needRai
   };
 
   const getShareUrl = () => {
-    const baseUrl = Platform.OS === 'web' ? (typeof window !== 'undefined' ? window.location.origin : 'https://spotme.app') : 'https://spotme.app';
+    const baseUrl = Platform.OS === 'web' ? (typeof window !== 'undefined' ? window.location.origin : 'https://spotmeone.com') : 'https://spotmeone.com';
     if (needId) return `${baseUrl}/need/${needId}`;
     return baseUrl;
   };
+
 
   const getShareText = () => {
     if (needTitle && needRaised !== undefined && needGoal !== undefined) {

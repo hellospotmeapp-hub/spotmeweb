@@ -350,8 +350,8 @@ $$;
 -- ============================================================
 CREATE OR REPLACE FUNCTION spotme_create_account_link(
   p_account_id TEXT,
-  p_return_url TEXT DEFAULT 'https://spotme.app/settings',
-  p_refresh_url TEXT DEFAULT 'https://spotme.app/settings'
+  p_return_url TEXT DEFAULT 'https://spotmeone.com/settings',
+  p_refresh_url TEXT DEFAULT 'https://spotmeone.com/settings'
 )
 RETURNS JSONB
 LANGUAGE plpgsql

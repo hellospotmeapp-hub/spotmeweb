@@ -141,7 +141,8 @@ export default function TikTokLandingPage() {
           <MaterialIcons name="search-off" size={48} color={Colors.textLight} />
           <Text style={styles.notFoundTitle}>Need not found</Text>
           <Text style={styles.notFoundSub}>This link may have expired.</Text>
-          <TouchableOpacity style={styles.browseCTA} onPress={() => router.push('/(tabs)')}>
+          <TouchableOpacity style={styles.browseCTA} onPress={() => router.replace('/(tabs)')}>
+
             <Text style={styles.browseCTAText}>Browse All Needs</Text>
           </TouchableOpacity>
         </View>
@@ -188,9 +189,10 @@ export default function TikTokLandingPage() {
             )}
             <View style={styles.heroGradient} />
             <View style={[styles.topBar, { paddingTop: topPadding + 8 }]}>
-              <TouchableOpacity style={styles.topBtn} onPress={() => router.push('/(tabs)')}>
+              <TouchableOpacity style={styles.topBtn} onPress={() => router.replace('/(tabs)')}>
                 <MaterialIcons name="home" size={18} color="#FFF" />
               </TouchableOpacity>
+
               <Text style={styles.topLogo}>SpotMe</Text>
               <TouchableOpacity style={styles.topBtn} onPress={() => setShowShare(true)}>
                 <MaterialIcons name="share" size={18} color="#FFF" />
@@ -331,7 +333,8 @@ export default function TikTokLandingPage() {
             <View style={styles.footer}>
               <Text style={styles.footerLogo}>SpotMe</Text>
               <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)')}>
+              <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
+
                 <Text style={styles.footerLink}>Browse all needs</Text>
               </TouchableOpacity>
             </View>

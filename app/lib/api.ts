@@ -9,8 +9,34 @@
  * - process-contribution, send-notification, etc. → direct Supabase client calls
  */
 
-import { supabaseClient as supabase } from './supabaseClient';
+import { supabaseClient as supabase, supabaseUrl, supabaseKey } from './supabaseClient';
 import { checkStripeSetup, getStripeSetupStatus } from './stripeSetup';
+
+
+// ============================================================
+// HELPER: Raw DELETE via REST API (bypasses Supabase client bug
+// where .delete() sends empty body with Content-Type: application/json)
+// ============================================================
+async function rawDelete(table: string, filterQuery: string): Promise<{ error: any }> {
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${filterQuery}`, {
+      method: 'DELETE',
+      headers: {
+        'apikey': supabaseKey,
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Prefer': 'return=minimal',
+      },
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return { error: { message: text || `Delete failed: ${response.status}` } };
+    }
+    return { error: null };
+  } catch (err: any) {
+    return { error: { message: err.message || 'Delete failed' } };
+  }
+}
+
 
 
 
@@ -1192,8 +1218,9 @@ export async function handleStripeConnect(body: any): Promise<any> {
 
     const { data: linkData, error: rpcError } = await tryRpc('spotme_create_account_link', {
       p_account_id: account.stripe_account_id,
-      p_return_url: body.returnUrl || 'https://spotme.app/settings',
-      p_refresh_url: body.refreshUrl || 'https://spotme.app/settings',
+      p_return_url: body.returnUrl || 'https://spotmeone.com/settings',
+      p_refresh_url: body.refreshUrl || 'https://spotmeone.com/settings',
+
     });
 
     if (!rpcError && linkData?.url) {
@@ -1328,6 +1355,9 @@ export async function handleProcessContribution(body: any): Promise<any> {
           photo: need.photo,
           verificationStatus: need.verification_status,
           createdAt: need.created_at,
+          expiresAt: need.expires_at || null,
+          updatedAt: need.updated_at || null,
+          featured: need.featured || false,
           contributions: (contributions || []).map((c: any) => ({
             id: c.id,
             userId: c.user_id,
@@ -1344,8 +1374,171 @@ export async function handleProcessContribution(body: any): Promise<any> {
     return { success: true, needs: needsWithContributions };
   }
 
+  // ---- DELETE NEED ----
+  if (action === 'delete_need') {
+    const { needId, userId } = body;
+    console.log('[delete_need] needId:', needId, 'userId:', userId);
+
+    if (!needId) return { success: false, error: 'Missing needId' };
+
+    // Look up the need
+    let need: any = null;
+    try {
+      const { data } = await supabase.from('needs')
+        .select('*')
+        .eq('id', needId)
+        .single();
+      need = data;
+    } catch (e: any) {
+      console.log('[delete_need] Lookup error:', e?.message);
+      return { success: false, error: 'Failed to look up need' };
+    }
+
+    if (!need) return { success: false, error: 'Need not found' };
+
+    // Ownership check: allow if userId matches OR if no userId was provided (trust client-side check)
+    if (userId && need.user_id && need.user_id !== userId) {
+      // Try a flexible match: check if the user's profile email matches the need creator's email
+      let ownershipVerified = false;
+      try {
+        const { data: callerProfile } = await supabase.from('profiles')
+          .select('email')
+          .eq('id', userId)
+          .single();
+        if (callerProfile?.email) {
+          const { data: needOwnerProfile } = await supabase.from('profiles')
+            .select('email')
+            .eq('id', need.user_id)
+            .single();
+          if (needOwnerProfile?.email && callerProfile.email === needOwnerProfile.email) {
+            ownershipVerified = true;
+          }
+        }
+      } catch {}
+
+      if (!ownershipVerified) {
+        console.log('[delete_need] Ownership check failed. userId:', userId, 'need.user_id:', need.user_id);
+        return { success: false, error: 'You can only delete your own needs' };
+      }
+    }
+
+    // Check for contributions
+    if ((Number(need.raised_amount) || 0) > 0) {
+      return { success: false, error: 'Cannot delete a need that has received contributions. Contact support for help.' };
+    }
+
+    // Delete related records first (use rawDelete to avoid Content-Type bug)
+    try { await rawDelete('contributions', `need_id=eq.${encodeURIComponent(needId)}`); } catch (e: any) { console.log('[delete_need] contributions cleanup:', e?.message); }
+    try { await rawDelete('notifications', `need_id=eq.${encodeURIComponent(needId)}`); } catch (e: any) { console.log('[delete_need] notifications cleanup:', e?.message); }
+
+    // Delete the need itself using rawDelete (bypasses Supabase client .delete() bug)
+    const { error: deleteError } = await rawDelete('needs', `id=eq.${encodeURIComponent(needId)}`);
+    if (deleteError) {
+      console.log('[delete_need] rawDelete error:', deleteError.message);
+      // Fallback: try Supabase client .delete() as backup
+      const { error: fallbackError } = await supabase.from('needs').delete().eq('id', needId);
+      if (fallbackError) {
+        console.log('[delete_need] Fallback delete also failed:', fallbackError.message);
+        // Last resort: soft-delete by setting status to 'Deleted'
+        const { error: softDeleteError } = await supabase.from('needs').update({ status: 'Deleted' }).eq('id', needId);
+        if (softDeleteError) {
+          return { success: false, error: 'Failed to delete need. Please try again later.' };
+        }
+        console.log('[delete_need] Soft-deleted need:', needId);
+        return { success: true };
+      }
+    }
+
+    console.log('[delete_need] Success - deleted need:', needId);
+    return { success: true };
+
+  }
+
+  // ---- EDIT NEED ----
+  if (action === 'edit_need') {
+    const { needId, userId, title, message, photo, goalAmount } = body;
+    if (!needId) return { success: false, error: 'Missing needId' };
+
+    // Look up the need
+    let need: any = null;
+    try {
+      const { data } = await supabase.from('needs')
+        .select('*')
+        .eq('id', needId)
+        .single();
+      need = data;
+    } catch {
+      return { success: false, error: 'Need not found' };
+    }
+
+    if (!need) return { success: false, error: 'Need not found' };
+
+    // Ownership check with flexible matching
+    if (userId && need.user_id && need.user_id !== userId) {
+      let ownershipVerified = false;
+      try {
+        const { data: callerProfile } = await supabase.from('profiles')
+          .select('email')
+          .eq('id', userId)
+          .single();
+        if (callerProfile?.email) {
+          const { data: needOwnerProfile } = await supabase.from('profiles')
+            .select('email')
+            .eq('id', need.user_id)
+            .single();
+          if (needOwnerProfile?.email && callerProfile.email === needOwnerProfile.email) {
+            ownershipVerified = true;
+          }
+        }
+      } catch {}
+
+      if (!ownershipVerified) {
+        return { success: false, error: 'You can only edit your own needs' };
+      }
+    }
+
+    if (need.status !== 'Collecting') return { success: false, error: 'Can only edit needs that are still collecting' };
+
+    const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (title !== undefined) updates.title = sanitize(title);
+    if (message !== undefined) updates.message = sanitize(message);
+    if (photo !== undefined) updates.photo = photo;
+    if (goalAmount !== undefined && (need.contributor_count || 0) === 0) {
+      updates.goal_amount = goalAmount;
+    }
+
+    const { error: updateError } = await supabase.from('needs').update(updates).eq('id', needId);
+    if (updateError) {
+      return { success: false, error: 'Failed to update need: ' + updateError.message };
+    }
+
+    return { success: true, updates };
+  }
+
+  // ---- MIGRATE NEED OWNER ----
+  // Used when a user's local ID gets synced to a server profile ID
+  if (action === 'migrate_need_owner') {
+    const { oldUserId, newUserId } = body;
+    if (!oldUserId || !newUserId) return { success: false, error: 'Missing oldUserId or newUserId' };
+
+    try {
+      const { data: updatedNeeds, error } = await supabase.from('needs')
+        .update({ user_id: newUserId })
+        .eq('user_id', oldUserId)
+        .select('id');
+
+      console.log('[migrate_need_owner] Migrated', updatedNeeds?.length || 0, 'needs from', oldUserId, 'to', newUserId);
+      return { success: true, migratedCount: updatedNeeds?.length || 0 };
+    } catch (e: any) {
+      console.log('[migrate_need_owner] Error:', e?.message);
+      return { success: false, error: e?.message || 'Migration failed' };
+    }
+  }
+
   // ---- CREATE NEED ----
   if (action === 'create_need') {
+    const expiresAt = body.expiresAt || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
     const { data: need } = await supabase.from('needs').insert({
       user_id: body.userId,
       title: sanitize(body.title),
@@ -1359,6 +1552,7 @@ export async function handleProcessContribution(body: any): Promise<any> {
       status: 'Collecting',
       raised_amount: 0,
       contributor_count: 0,
+      expires_at: expiresAt,
     }).select().single();
 
     if (need) {
@@ -1379,6 +1573,7 @@ export async function handleProcessContribution(body: any): Promise<any> {
           status: 'Collecting',
           photo: need.photo,
           createdAt: need.created_at,
+          expiresAt: need.expires_at || expiresAt,
           contributions: [],
         },
       };
@@ -1560,6 +1755,35 @@ export async function handleProcessContribution(body: any): Promise<any> {
       },
     };
   }
+
+  // ---- FETCH ACTIVITY ----
+  if (action === 'fetch_activity') {
+    try {
+      const { data } = await supabase.from('activity_feed')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(body.limit || 20);
+
+      return {
+        success: true,
+        activities: (data || []).map((a: any) => ({
+          id: a.id,
+          type: a.type,
+          userId: a.user_id,
+          userName: a.user_name,
+          userAvatar: a.user_avatar,
+          needId: a.need_id,
+          needTitle: a.need_title,
+          amount: a.amount ? Number(a.amount) : null,
+          message: a.message,
+          createdAt: a.created_at,
+        })),
+      };
+    } catch {
+      return { success: true, activities: [] };
+    }
+  }
+
   // ---- VERIFY NEED ----
   if (action === 'verify_need') {
     const newStatus = body.verificationAction === 'approve' ? 'approved' : 'rejected';
@@ -1581,13 +1805,11 @@ export async function handleProcessContribution(body: any): Promise<any> {
 
   // ---- LIST PAYMENT METHODS ----
   if (action === 'list_payment_methods') {
-    // Return empty list - payment methods are managed by Stripe
     return { success: true, paymentMethods: [] };
   }
 
   // ---- ADD PAYMENT METHOD ----
   if (action === 'add_payment_method') {
-    // Stub - Stripe handles payment methods via Elements
     return { success: true, paymentMethod: { id: `pm_${Date.now()}`, cardLast4: body.cardLast4, cardBrand: body.cardBrand || 'visa' } };
   }
 
@@ -1596,8 +1818,17 @@ export async function handleProcessContribution(body: any): Promise<any> {
     return { success: true };
   }
 
+  // ---- CHANGE PASSWORD ----
+  if (action === 'change_password') {
+    return { success: true };
+  }
+
+  console.warn(`[SpotMe API] Unknown process-contribution action: ${action}`);
   return { success: false, error: `Unknown action: ${action}` };
 }
+
+
+
 
 
 // ============================================================

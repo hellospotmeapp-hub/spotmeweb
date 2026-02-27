@@ -332,12 +332,13 @@ export default function PayoutDashboard() {
           <View style={s.statsGrid}>
             <StatBox icon="attach-money" label="Net Received" value={`$${db.summary.netReceived.toFixed(2)}`} color={Colors.success} />
             <StatBox icon="receipt" label="Total Payments" value={db.summary.totalPayments.toString()} color={Colors.primary} />
-            <StatBox icon="swap-horiz" label="Direct Deposits" value={`$${db.summary.directDeposits.toFixed(2)}`} color={Colors.secondary} subtitle={`${db.summary.directDepositCount} transfers`} />
-            <StatBox icon="hourglass-empty" label="Pending" value={`$${db.summary.pendingAmount.toFixed(2)}`} color={Colors.accent} />
+            <StatBox icon="send" label="Transferred" value={`$${(db.summary.totalTransferred || 0).toFixed(2)}`} color={Colors.secondary} subtitle={`${db.summary.completedTransfers || 0} transfers`} />
+            <StatBox icon="hourglass-empty" label="Pending" value={`$${db.summary.pendingAmount.toFixed(2)}`} color={Colors.accent} subtitle={db.summary.pendingTransfers ? `${db.summary.pendingTransfers} awaiting` : undefined} />
             <StatBox icon="savings" label="Paid Out" value={`$${db.summary.paidAmount.toFixed(2)}`} color="#7B9ED9" />
             <StatBox icon="volunteer-activism" label="Tips to SpotMe" value={`$${db.summary.totalFees.toFixed(2)}`} color={Colors.textLight} subtitle="Optional tips" />
           </View>
         )}
+
 
         {/* Monthly Chart */}
         {db?.monthlyData && db.monthlyData.some(m => m.net > 0) && (

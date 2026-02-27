@@ -141,7 +141,7 @@ export default function ThankYouVideoPage() {
 
     const shareUrl = Platform.OS === 'web'
       ? `${window.location.origin}/thankyou/${id}`
-      : `https://spotme.app/thankyou/${id}`;
+      : `https://spotmeone.com/thankyou/${id}`;
     const shareText = video
       ? `${video.user_name}'s heartfelt thank you for "${video.need_title}" on SpotMe`
       : 'Watch this thank you video on SpotMe';
@@ -202,7 +202,8 @@ export default function ThankYouVideoPage() {
           <MaterialIcons name="videocam-off" size={48} color={Colors.textLight} />
           <Text style={styles.notFoundTitle}>Video not found</Text>
           <Text style={styles.notFoundSub}>This thank you video may have been removed.</Text>
-          <TouchableOpacity style={styles.browseCTA} onPress={() => router.push('/(tabs)')}>
+          <TouchableOpacity style={styles.browseCTA} onPress={() => router.replace('/(tabs)')}>
+
             <Text style={styles.browseCTAText}>Browse Needs</Text>
           </TouchableOpacity>
         </View>
@@ -393,7 +394,8 @@ export default function ThankYouVideoPage() {
             <View style={styles.footer}>
               <Text style={styles.footerLogo}>SpotMe</Text>
               <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
-              <TouchableOpacity onPress={() => router.push('/(tabs)')}>
+              <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
+
                 <Text style={styles.footerLink}>Browse all needs</Text>
               </TouchableOpacity>
             </View>

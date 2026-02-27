@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Animated, Image, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -6,18 +6,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
 import { CATEGORIES, NEED_PHOTOS } from '@/app/lib/data';
-// Photo upload imports kept but feature is temporarily disabled
-// import { pickNeedPhoto, uploadNeedPhoto } from '@/app/lib/imageUpload';
 
 
 const GOAL_PRESETS = [25, 50, 75, 100, 150, 200, 250, 300];
 const MAX_GOAL = 300;
-const MAX_ACTIVE_NEEDS = 4;
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { createNeed, isLoggedIn, currentUser, needs } = useApp();
+  const { createNeed, isLoggedIn, currentUser } = useApp();
   
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
@@ -27,7 +24,6 @@ export default function CreateScreen() {
   const [customGoal, setCustomGoal] = useState('');
   const [isCustomGoal, setIsCustomGoal] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [limitError, setLimitError] = useState(false);
 
   // Photo upload state
   const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
@@ -40,28 +36,6 @@ export default function CreateScreen() {
   const bannerShown = useRef(false);
 
   const categories = CATEGORIES.filter(c => c.name !== 'All');
-
-  // ---- ENFORCE 4 ACTIVE NEED LIMIT ----
-  const myActiveNeeds = useMemo(() => {
-    if (!isLoggedIn || currentUser.id === 'guest') return [];
-    return needs.filter(n =>
-      (n.userId === currentUser.id || n.userId === 'current') &&
-      n.status === 'Collecting'
-    );
-  }, [needs, currentUser.id, isLoggedIn]);
-
-  const activeNeedCount = myActiveNeeds.length;
-  const canCreateMore = activeNeedCount < MAX_ACTIVE_NEEDS;
-  const slotsRemaining = Math.max(0, MAX_ACTIVE_NEEDS - activeNeedCount);
-
-  // Check limit when component mounts or needs change
-  useEffect(() => {
-    if (isLoggedIn && !canCreateMore) {
-      setLimitError(true);
-    } else {
-      setLimitError(false);
-    }
-  }, [isLoggedIn, canCreateMore]);
 
   const getGoal = () => {
     if (isCustomGoal) {
@@ -114,8 +88,6 @@ export default function CreateScreen() {
 
   // ---- Photo Picker Handler (DISABLED - feature is asleep) ----
   const handlePickPhoto = async () => {
-    // Photo upload is temporarily disabled
-    // This handler is kept for when the feature is re-enabled
     return;
   };
 
@@ -126,17 +98,9 @@ export default function CreateScreen() {
     setIsUploadingPhoto(false);
   };
 
-
-
   const handleSubmit = () => {
     if (!isLoggedIn) {
       router.push('/auth');
-      return;
-    }
-
-    // Final limit check before submit
-    if (!canCreateMore) {
-      setLimitError(true);
       return;
     }
 
@@ -167,71 +131,25 @@ export default function CreateScreen() {
     setPhotoUrl(null);
     setPhotoError(null);
     setIsUploadingPhoto(false);
-    setLimitError(false);
     bannerShown.current = false;
     bannerAnim.setValue(0);
   };
 
+  const handleGoHome = () => {
+    // Reset form state first, then navigate
+    handleReset();
+    // Use navigate instead of replace to avoid stack issues that cause logout
+    try {
+      router.navigate('/(tabs)/' as any);
+    } catch {
+      // Fallback: just reset the form - user can tap Home tab
+      handleReset();
+    }
+  };
+
   const topPadding = Platform.OS === 'web' ? 0 : insets.top;
 
-  // ---- LIMIT REACHED SCREEN ----
-  if (limitError && isLoggedIn) {
-    return (
-      <View style={[styles.container, { paddingTop: topPadding }]}>
-        <View style={styles.limitContainer}>
-          <View style={styles.limitIconWrap}>
-            <MaterialIcons name="block" size={56} color={Colors.accent} />
-          </View>
-          <Text style={styles.limitTitle}>Need Limit Reached</Text>
-          <Text style={styles.limitMessage}>
-            You currently have {activeNeedCount} active {activeNeedCount === 1 ? 'need' : 'needs'}. The maximum is {MAX_ACTIVE_NEEDS} at a time.
-          </Text>
-          <Text style={styles.limitSubMessage}>
-            Wait for one of your needs to be funded, expire, or delete an unfunded need to free up a slot.
-          </Text>
-
-          {/* Show active needs */}
-          <View style={styles.limitNeedsList}>
-            <Text style={styles.limitNeedsTitle}>Your Active Needs ({activeNeedCount}/{MAX_ACTIVE_NEEDS})</Text>
-            {myActiveNeeds.map((need) => (
-              <TouchableOpacity
-                key={need.id}
-                style={styles.limitNeedRow}
-                onPress={() => router.push(`/need/${need.id}`)}
-                activeOpacity={0.7}
-              >
-                {need.photo ? (
-                  <Image source={{ uri: need.photo }} style={styles.limitNeedPhoto} />
-                ) : (
-                  <View style={[styles.limitNeedPhoto, { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
-                    <MaterialIcons name="image" size={16} color={Colors.textLight} />
-                  </View>
-                )}
-                <View style={styles.limitNeedInfo}>
-                  <Text style={styles.limitNeedTitle} numberOfLines={1}>{need.title}</Text>
-                  <Text style={styles.limitNeedProgress}>
-                    ${need.raisedAmount} of ${need.goalAmount} raised
-                  </Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color={Colors.textLight} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity style={styles.limitButton} onPress={() => router.push('/(tabs)')} activeOpacity={0.8}>
-            <MaterialIcons name="home" size={20} color={Colors.white} />
-            <Text style={styles.limitButtonText}>Back to Feed</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   if (submitted) {
-    // Recalculate after submission (the need was just created so count may have changed)
-    const newActiveCount = myActiveNeeds.length + 1; // +1 for the just-created need
-    const newSlotsRemaining = Math.max(0, MAX_ACTIVE_NEEDS - newActiveCount);
-
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
         <View style={styles.successContainer}>
@@ -243,30 +161,15 @@ export default function CreateScreen() {
             Your need is now live. The community can start spotting you right away.
           </Text>
 
-          {/* Slot counter */}
-          <View style={styles.successInfoBanner}>
-            <View style={styles.successInfoIconWrap}>
-              <MaterialIcons name="auto-awesome" size={22} color={Colors.accent} />
-            </View>
-            <Text style={styles.successInfoText}>
-              {newSlotsRemaining > 0
-                ? `You have ${newSlotsRemaining} of ${MAX_ACTIVE_NEEDS} need ${newSlotsRemaining === 1 ? 'slot' : 'slots'} remaining. If one gets funded, you can always create another!`
-                : `You've used all ${MAX_ACTIVE_NEEDS} need slots. Once one is funded or expires, you can create another.`
-              }
-            </Text>
-          </View>
-
-          <TouchableOpacity style={styles.successButton} onPress={() => router.push('/(tabs)')}>
+          <TouchableOpacity style={styles.successButton} onPress={handleGoHome}>
             <MaterialIcons name="home" size={20} color={Colors.white} />
             <Text style={styles.successButtonText}>View Feed</Text>
           </TouchableOpacity>
 
-          {newSlotsRemaining > 0 && (
-            <TouchableOpacity style={styles.postAnotherButton} onPress={handleReset}>
-              <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
-              <Text style={styles.postAnotherButtonText}>Post Another Need</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.postAnotherButton} onPress={handleReset}>
+            <MaterialIcons name="add-circle-outline" size={20} color={Colors.primary} />
+            <Text style={styles.postAnotherButtonText}>Post Another Need</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -285,11 +188,6 @@ export default function CreateScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Post a Need</Text>
-          {isLoggedIn && (
-            <Text style={styles.headerSlots}>
-              {slotsRemaining} of {MAX_ACTIVE_NEEDS} slots available
-            </Text>
-          )}
         </View>
         <Text style={styles.headerSubtitle}>Step {step} of 3</Text>
       </View>
@@ -452,7 +350,7 @@ export default function CreateScreen() {
                 <View style={styles.maxBannerContent}>
                   <Text style={styles.maxBannerTitle}>That's the max for a single request</Text>
                   <Text style={styles.maxBannerText}>
-                    But no worries! You can post up to {MAX_ACTIVE_NEEDS} active needs at a time ({slotsRemaining} {slotsRemaining === 1 ? 'slot' : 'slots'} remaining). If one gets funded, you can always create another.
+                    But no worries! You can post multiple active needs at a time. If one gets funded, you can always create another.
                   </Text>
                 </View>
               </Animated.View>
@@ -526,7 +424,6 @@ export default function CreateScreen() {
 
 
             {/* Summary */}
-            {/* Summary */}
             <View style={styles.summaryCard}>
               <Text style={styles.summaryTitle}>Summary</Text>
               <View style={styles.summaryRow}>
@@ -593,7 +490,6 @@ export default function CreateScreen() {
             styles.nextButton,
             !canProceed() && styles.nextButtonDisabled,
             step === 1 && { flex: 1 },
-            // Disable submit while photo is uploading
             step === 3 && isUploadingPhoto && styles.nextButtonDisabled,
           ]}
           onPress={() => step < 3 ? setStep(step + 1) : handleSubmit()}
@@ -641,12 +537,6 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textLight,
     fontWeight: '600',
-  },
-  headerSlots: {
-    fontSize: FontSize.xs,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-    marginTop: 2,
   },
   stepsRow: {
     flexDirection: 'row',
@@ -794,8 +684,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     marginBottom: Spacing.xl,
   },
-
-  // ---- Photo Upload Section ----
   photoSection: {
     marginBottom: Spacing.lg,
   },
@@ -805,160 +693,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.xs,
   },
-  optionalBadge: {
-    fontSize: FontSize.xs,
-    fontWeight: '600',
-    color: Colors.textLight,
-    backgroundColor: Colors.surfaceAlt,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    overflow: 'hidden',
-  },
-  photoHelpText: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    marginBottom: Spacing.md,
-    lineHeight: 19,
-  },
-  photoPickerContainer: {
-    marginBottom: Spacing.sm,
-  },
-  photoPickerButton: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    borderStyle: 'dashed',
-    paddingVertical: Spacing.xxl,
-    paddingHorizontal: Spacing.xl,
-    alignItems: 'center',
-    gap: Spacing.sm,
-    ...Shadow.sm,
-  },
-  photoPickerIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.xs,
-  },
-  photoPickerTitle: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  photoPickerSubtitle: {
-    fontSize: FontSize.sm,
-    color: Colors.textLight,
-    textAlign: 'center',
-  },
-
-  // ---- Photo Preview ----
-  photoPreviewContainer: {
-    position: 'relative',
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...Shadow.md,
-    marginBottom: Spacing.sm,
-  },
-  photoPreview: {
-    width: '100%',
-    height: 220,
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.surfaceAlt,
-  },
-  photoUploadOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    borderRadius: BorderRadius.xl,
-  },
-  photoUploadText: {
-    fontSize: FontSize.md,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  photoSuccessBadge: {
-    position: 'absolute',
-    top: Spacing.md,
-    right: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.success,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-  },
-  photoSuccessText: {
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  photoErrorBadge: {
-    position: 'absolute',
-    top: Spacing.md,
-    right: Spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.error,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-  },
-  photoErrorBadgeText: {
-    fontSize: FontSize.xs,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  photoActions: {
-    position: 'absolute',
-    bottom: Spacing.md,
-    right: Spacing.md,
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  photoActionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.full,
-  },
-  photoRemoveBtn: {
-    backgroundColor: 'rgba(232,93,93,0.85)',
-  },
-  photoActionText: {
-    fontSize: FontSize.xs,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-
-  // ---- Photo Error ----
-  photoErrorContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.sm,
-    backgroundColor: Colors.accentLight,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    marginTop: Spacing.xs,
-  },
-  photoErrorText: {
-    flex: 1,
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    lineHeight: 18,
-  },
-
   tipCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -992,8 +726,6 @@ const styles = StyleSheet.create({
     color: Colors.text,
     lineHeight: 72,
   },
-
-  // ---- $300 Max Info Banner ----
   maxBanner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1028,7 +760,6 @@ const styles = StyleSheet.create({
     color: '#4A6FA5',
     lineHeight: 20,
   },
-
   goalGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1166,11 +897,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: Colors.text,
   },
-  summaryGoalValue: {
-    fontSize: FontSize.md,
-    fontWeight: '800',
-  },
-
   summaryPhotoWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1260,36 +986,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-
-  // ---- Success screen info banner ----
-  successInfoBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: Colors.accentLight,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginTop: Spacing.sm,
-    gap: Spacing.md,
-    borderWidth: 1,
-    borderColor: '#F0E4C0',
-    width: '100%',
-  },
-  successInfoIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F0E4C0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
-  },
-  successInfoText: {
-    flex: 1,
-    fontSize: FontSize.sm,
-    color: '#7A6B3E',
-    lineHeight: 20,
-  },
-
   successButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1308,8 +1004,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.white,
   },
-
-  // ---- Post Another Need button (prominent) ----
   postAnotherButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1328,102 +1022,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.primary,
   },
-
-  // ---- Limit Reached Screen ----
-  limitContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.xxl,
-    gap: Spacing.md,
-  },
-  limitIconWrap: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: Colors.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  limitTitle: {
-    fontSize: FontSize.xxl,
-    fontWeight: '900',
-    color: Colors.text,
-    textAlign: 'center',
-  },
-  limitMessage: {
-    fontSize: FontSize.md,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  limitSubMessage: {
-    fontSize: FontSize.sm,
-    color: Colors.textLight,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  limitNeedsList: {
-    width: '100%',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginTop: Spacing.md,
-    gap: Spacing.sm,
-    ...Shadow.sm,
-  },
-  limitNeedsTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-    color: Colors.text,
-    marginBottom: Spacing.xs,
-  },
-  limitNeedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
-  },
-  limitNeedPhoto: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.md,
-  },
-  limitNeedInfo: {
-    flex: 1,
-  },
-  limitNeedTitle: {
-    fontSize: FontSize.sm,
-    fontWeight: '700',
-    color: Colors.text,
-  },
-  limitNeedProgress: {
-    fontSize: FontSize.xs,
-    color: Colors.textLight,
-    marginTop: 2,
-  },
-  limitButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xxxl,
-    paddingVertical: Spacing.lg,
-    borderRadius: BorderRadius.xl,
-    marginTop: Spacing.lg,
-    width: '100%',
-    ...Shadow.md,
-  },
-  limitButtonText: {
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-  },
-
-  // ---- Coming Soon / Disabled Photo Styles ----
   comingSoonBadge: {
     flexDirection: 'row',
     alignItems: 'center',

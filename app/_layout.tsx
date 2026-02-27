@@ -6,6 +6,12 @@ import { AppProvider } from './lib/store';
 import { Colors } from './lib/theme';
 import { errorMonitor } from './lib/errorMonitor';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Prevent the splash screen from auto-hiding on native
+if (Platform.OS !== 'web') {
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+}
 
 export default function RootLayout() {
   // Hydration guard: prevent React error #418 on web
@@ -14,7 +20,14 @@ export default function RootLayout() {
   useEffect(() => {
     if (Platform.OS === 'web') {
       setIsHydrated(true);
+    } else {
+      // Hide splash screen after a brief delay on native
+      const timer = setTimeout(() => {
+        SplashScreen.hideAsync().catch(() => {});
+      }, 500);
+      return () => clearTimeout(timer);
     }
+
     // Initialize error monitoring
     errorMonitor.init();
 

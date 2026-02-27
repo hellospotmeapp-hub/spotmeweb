@@ -160,7 +160,7 @@ export default function AuthScreen() {
     try {
       // For social login, create a profile with the provider name
       const socialName = provider === 'google' ? 'Google User' : 'Apple User';
-      const socialEmail = `${provider}_${Date.now()}@spotme.app`;
+      const socialEmail = `${provider}_${Date.now()}@spotmeone.com`;
       const result = await signup(socialName, socialEmail, `${provider}_auth_${Date.now()}`);
       if (result && result.success) {
         goHome();

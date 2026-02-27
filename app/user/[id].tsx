@@ -98,7 +98,8 @@ export default function PublicProfilePage() {
           </View>
           <Text style={styles.notFoundTitle}>Profile not found</Text>
           <Text style={styles.notFoundSubtitle}>This user may not exist or the link is incorrect.</Text>
-          <TouchableOpacity style={styles.notFoundBtn} onPress={() => router.push('/(tabs)')}>
+          <TouchableOpacity style={styles.notFoundBtn} onPress={() => router.replace('/(tabs)')}>
+
             <Text style={styles.notFoundBtnText}>Browse Needs</Text>
           </TouchableOpacity>
         </View>
@@ -321,7 +322,8 @@ export default function PublicProfilePage() {
         <View style={styles.footer}>
           <Text style={styles.footerLogo}>SpotMe</Text>
           <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)')}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
+
             <Text style={styles.footerLink}>Browse all needs</Text>
           </TouchableOpacity>
         </View>

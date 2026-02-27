@@ -271,7 +271,7 @@ export default function PaymentSuccessScreen() {
 
   // ---- Share helpers ----
   const getShareUrl = () => {
-    const base = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://spotme.app';
+    const base = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://spotmeone.com';
     return needId ? `${base}/share/${needId}` : base;
   };
 

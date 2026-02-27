@@ -110,13 +110,14 @@ export default function ProfileScreen() {
     return Date.now() >= exp;
   };
 
-  const myNeeds = needs.filter(n => n.userId === currentUser.id || n.userId === 'current');
+  const myNeeds = needs.filter(n => n.userId === currentUser.id);
   const activeNeeds = myNeeds.filter(n => n.status === 'Collecting' && !isExpiredByTime(n));
   const completedNeeds = myNeeds.filter(n => n.status !== 'Collecting' || isExpiredByTime(n));
-  const givenNeeds = needs.filter(n => n.contributions.some(c => c.userId === currentUser.id || c.userId === 'current'));
+  const givenNeeds = needs.filter(n => n.contributions.some(c => c.userId === currentUser.id));
 
-  const myUpdates = thankYouUpdates.filter(u => u.userId === currentUser.id || u.userId === 'current');
+  const myUpdates = thankYouUpdates.filter(u => u.userId === currentUser.id);
   const pinnedUpdates = myUpdates.filter(u => u.pinned);
+
 
   const handleSaveProfile = () => { updateProfile({ name: editName.trim() || currentUser.name, bio: editBio, city: editCity }); setEditing(false); };
 
@@ -180,7 +181,8 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header Actions */}
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(tabs)')}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.replace('/(tabs)')}>
+
             <MaterialIcons name="home" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -398,7 +400,8 @@ export default function ProfileScreen() {
 
           {activeTab === 'given' && (
             givenNeeds.length === 0 ? (
-              <View style={styles.emptyTab}><MaterialIcons name="favorite-border" size={48} color={Colors.borderLight} /><Text style={styles.emptyTabTitle}>You haven't spotted anyone yet</Text><TouchableOpacity style={styles.createButton} onPress={() => router.push('/(tabs)')}><Text style={styles.createButtonText}>Browse Needs</Text></TouchableOpacity></View>
+              <View style={styles.emptyTab}><MaterialIcons name="favorite-border" size={48} color={Colors.borderLight} /><Text style={styles.emptyTabTitle}>You haven't spotted anyone yet</Text><TouchableOpacity style={styles.createButton} onPress={() => router.replace('/(tabs)')}><Text style={styles.createButtonText}>Browse Needs</Text></TouchableOpacity></View>
+
             ) : givenNeeds.map(need => (
               <TouchableOpacity key={need.id} style={styles.givenCard} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
                 {need.photo && <Image source={{ uri: need.photo }} style={styles.givenImage} />}

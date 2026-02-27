@@ -484,7 +484,8 @@ export default function AdminDashboard() {
     <View style={[s.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => { try { router.push('/(tabs)'); } catch { router.back(); } }}>
+        <TouchableOpacity style={s.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
 
         </TouchableOpacity>

@@ -1,6 +1,6 @@
-// SpotMe Service Worker - v2.0.0
-// Handles caching, push notifications, and offline support
-const CACHE_NAME = 'spotme-v2';
+// SpotMe Service Worker - v3.0.0
+// Handles caching, push notifications, offline support, and SPA navigation fallback
+const CACHE_NAME = 'spotme-v3';
 const STATIC_ASSETS = [
   '/',
 ];
@@ -29,12 +29,58 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch - network first, fallback to cache
+// Fetch - network first, with SPA navigation fallback
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  if (event.request.url.includes('databasepad.com') || 
-      event.request.url.includes('supabase')) return;
 
+  // Skip Supabase/API requests entirely - never cache these
+  if (event.request.url.includes('databasepad.com') || 
+      event.request.url.includes('supabase') ||
+      event.request.url.includes('/functions/')) return;
+
+  // Skip .well-known requests - these must always be served fresh from the server
+  // (iOS and Android fetch these to verify Universal Links / App Links)
+  const url = new URL(event.request.url);
+  if (url.pathname.startsWith('/.well-known/')) return;
+
+
+
+  // ---- SPA NAVIGATION FALLBACK ----
+  // For navigation requests (HTML page loads), serve the cached root page
+  // This prevents 404 errors when refreshing on deep routes like /create, /need/123, etc.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          // If we get a good response, cache it and return
+          if (response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(() => {
+          // Network failed - serve the cached root page (SPA shell)
+          // This allows the client-side router to handle the route
+          return caches.match('/').then((cachedRoot) => {
+            if (cachedRoot) return cachedRoot;
+            // Last resort: return a basic offline page
+            return new Response(
+              '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpotMe - Offline</title><style>body{font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#FAFAF8;color:#2C2925;text-align:center;padding:20px}h1{color:#F2785C;font-size:32px}p{color:#A9A29B;margin-top:8px}button{background:#F2785C;color:white;border:none;padding:12px 32px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin-top:24px}</style></head><body><div><h1>SpotMe</h1><p>You appear to be offline.</p><p>Check your connection and try again.</p><button onclick="location.reload()">Retry</button></div></body></html>',
+              {
+                status: 200,
+                headers: { 'Content-Type': 'text/html' },
+              }
+            );
+          });
+        })
+    );
+    return;
+  }
+
+  // ---- STATIC ASSETS: Network first, cache fallback ----
   event.respondWith(
     fetch(event.request)
       .then((response) => {
@@ -201,5 +247,15 @@ self.addEventListener('message', (event) => {
   
   if (event.data && event.data.type === 'GET_VERSION') {
     event.ports[0].postMessage({ version: CACHE_NAME });
+  }
+
+  // Force clear old caches when app requests it
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    caches.keys().then((names) => {
+      names.forEach((name) => caches.delete(name));
+    }).then(() => {
+      // Re-cache root
+      caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS));
+    });
   }
 });

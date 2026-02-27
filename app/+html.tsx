@@ -30,8 +30,12 @@ export default function Root({ children }: PropsWithChildren) {
         <title>SpotMe - No Tragedy. Just Life.</title>
         <meta name="description" content="Help your neighbors with everyday needs. Small acts, big impact. Post a need or spot someone today." />
 
+        {/* Canonical URL */}
+        <link rel="canonical" href="https://spotmeone.com" />
+
         {/* Open Graph for social sharing */}
         <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://spotmeone.com" />
         <meta property="og:title" content="SpotMe - No Tragedy. Just Life." />
         <meta property="og:description" content="Help your neighbors with everyday needs. Small acts, big impact. One payment can help multiple people." />
         <meta property="og:site_name" content="SpotMe" />
@@ -40,6 +44,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="SpotMe - No Tragedy. Just Life." />
         <meta name="twitter:description" content="Help your neighbors with everyday needs. Small acts, big impact." />
+        <meta name="twitter:url" content="https://spotmeone.com" />
 
         {/* PWA Manifest */}
         <link rel="manifest" href="/manifest.json" />
