@@ -6,12 +6,57 @@ const supabase = supabaseClient;
 
 // ============================================================
 // FUNCTIONS THAT MUST GO TO REAL EDGE FUNCTIONS
-// (These need server-side secrets like GATEWAY_API_KEY, STRIPE_SECRET_KEY)
+// (These need server-side secrets like GATEWAY_API_KEY, STRIPE_SECRET_KEY, VAPID_PRIVATE_KEY)
 // ============================================================
 const REMOTE_FUNCTIONS = new Set([
   'stripe-checkout',
   'stripe-connect',
 ]);
+
+// ============================================================
+// ACTIONS WITHIN LOCAL FUNCTIONS THAT NEED REMOTE ROUTING
+// (e.g. send_push needs VAPID_PRIVATE_KEY on the server)
+// ============================================================
+const REMOTE_ACTIONS: Record<string, Set<string>> = {
+  'send-notification': new Set(['send_push']),
+};
+
+// ============================================================
+// Direct call to remote edge function (bypasses local routing)
+// Used when a specific action within a locally-handled function
+// needs server-side secrets (e.g. VAPID_PRIVATE_KEY for web push)
+// ============================================================
+async function remoteInvoke(functionName: string, body: any): Promise<{ data: any; error: any }> {
+  try {
+    console.log(`[SpotMe] Routing ${functionName} → REMOTE edge function (action: ${body?.action})`);
+    const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseKey}`,
+        'apikey': supabaseKey,
+      },
+      body: JSON.stringify(body || {}),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorData: any;
+      try { errorData = JSON.parse(errorText); } catch { errorData = { error: errorText }; }
+      console.error(`[SpotMe] Remote ${functionName} error ${response.status}:`, errorData);
+      if (errorData && typeof errorData.success !== 'undefined') {
+        return { data: errorData, error: null };
+      }
+      return { data: null, error: { message: errorData?.error || errorData?.message || `Edge function error: ${response.status}` } };
+    }
+
+    const data = await response.json();
+    return { data, error: null };
+  } catch (err: any) {
+    console.error(`[SpotMe] Remote ${functionName} fetch error:`, err.message);
+    return { data: null, error: { message: err.message || 'Network error calling edge function' } };
+  }
+}
 
 // ============================================================
 // The LOCAL invoke function — always available, never depends on override
@@ -21,35 +66,13 @@ async function localInvoke(functionName: string, options?: any): Promise<any> {
 
   // Route payment functions to real edge functions (they need server-side API keys)
   if (REMOTE_FUNCTIONS.has(functionName)) {
-    console.log(`[SpotMe] Routing ${functionName} → REMOTE edge function (action: ${body?.action})`);
-    try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-          'apikey': supabaseKey,
-        },
-        body: JSON.stringify(body || {}),
-      });
+    return remoteInvoke(functionName, body);
+  }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData: any;
-        try { errorData = JSON.parse(errorText); } catch { errorData = { error: errorText }; }
-        console.error(`[SpotMe] Remote ${functionName} error ${response.status}:`, errorData);
-        if (errorData && typeof errorData.success !== 'undefined') {
-          return { data: errorData, error: null };
-        }
-        return { data: null, error: { message: errorData?.error || errorData?.message || `Edge function error: ${response.status}` } };
-      }
-
-      const data = await response.json();
-      return { data, error: null };
-    } catch (err: any) {
-      console.error(`[SpotMe] Remote ${functionName} fetch error:`, err.message);
-      return { data: null, error: { message: err.message || 'Network error calling edge function' } };
-    }
+  // Check if this specific action within a local function needs remote routing
+  const remoteActions = REMOTE_ACTIONS[functionName];
+  if (remoteActions && body?.action && remoteActions.has(body.action)) {
+    return remoteInvoke(functionName, body);
   }
 
   // Route everything else to local API handler
@@ -62,6 +85,7 @@ async function localInvoke(functionName: string, options?: any): Promise<any> {
     return { data: null, error: { message: err.message || 'Local API call failed' } };
   }
 }
+
 
 // ============================================================
 // INTERCEPT: Override supabase.functions.invoke

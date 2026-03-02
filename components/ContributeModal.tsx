@@ -66,7 +66,8 @@ function getSmartTipSuggestions(donationAmount: number): { presets: number[]; de
 
 
 export default function ContributeModal({ visible, onClose, onContribute, needTitle, needId, remaining, contributorName }: ContributeModalProps) {
-  const { contributeWithPayment, isLoggedIn } = useApp();
+  const { contributeWithPayment, isLoggedIn, sendContributionReceipt, resendContributionReceipt } = useApp();
+
   const [selectedAmount, setSelectedAmount] = useState<number | null>(5);
   const [customAmount, setCustomAmount] = useState('');
   const [note, setNote] = useState('');
@@ -83,11 +84,17 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   const [stripeNotConfigured, setStripeNotConfigured] = useState(false);
   const [stripeSetupError, setStripeSetupError] = useState<string | undefined>(undefined);
 
+  // Email receipt state
+  const [receiptStatus, setReceiptStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [receiptNumber, setReceiptNumber] = useState('');
+  const [successPaymentId, setSuccessPaymentId] = useState('');
+
   // Tip state
   const [tipAmount, setTipAmount] = useState<number>(1);
   const [isCustomTip, setIsCustomTip] = useState(false);
   const [customTip, setCustomTip] = useState('');
   const [tipAutoAdjusted, setTipAutoAdjusted] = useState(false);
+
 
   // Auto-adjust tip when donation amount changes
   // This ensures a $1 donation doesn't default to a $1 tip (100%)
@@ -110,6 +117,23 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
       checkRecipientAccount();
     }
   }, [visible, needId]);
+
+  // ============================================================
+  // FIX: Reset all blocking state when modal re-opens
+  // This ensures users can always retry after navigating back
+  // from the checkout page.
+  // ============================================================
+  useEffect(() => {
+    if (visible) {
+      // Always allow a fresh payment attempt when the modal opens
+      paymentInProgressRef.current = false;
+      setProcessing(false);
+      setErrorMsg('');
+      // Clear any stale payment attempt markers from localStorage
+      // (the user is explicitly opening the modal to try again)
+      clearPaymentAttempt();
+    }
+  }, [visible]);
 
   const checkRecipientAccount = async () => {
     try {
@@ -147,18 +171,20 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   // Ref to prevent double-submission (persists across re-renders)
   const paymentInProgressRef = React.useRef(false);
 
-  // Track recent payment attempts in localStorage to prevent re-payment across modal re-opens
+  // Track recent payment attempts in localStorage to prevent rapid double-clicks
   const getRecentPaymentKey = () => `spotme_payment_${needId}`;
   
+  // FIX: Reduced lockout from 10 minutes to 15 seconds — only prevents
+  // accidental rapid double-clicks, NOT legitimate retries after going back
   const hasRecentPayment = (): boolean => {
     try {
       const key = getRecentPaymentKey();
       const stored = localStorage.getItem(key);
       if (!stored) return false;
       const data = JSON.parse(stored);
-      // Consider payment "recent" if within last 10 minutes
-      const tenMinAgo = Date.now() - 10 * 60 * 1000;
-      return data.timestamp > tenMinAgo;
+      // Only block for 15 seconds (rapid double-click protection)
+      const fifteenSecondsAgo = Date.now() - 15 * 1000;
+      return data.timestamp > fifteenSecondsAgo;
     } catch { return false; }
   };
 
@@ -182,11 +208,10 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
       return;
     }
 
-    // Check for recent payment attempt on same need
+    // Check for rapid double-click (15 second window)
     if (hasRecentPayment()) {
       setErrorMsg(
-        'A payment was recently initiated for this need. Please check your bank/card statement before trying again. ' +
-        'If the previous payment failed, wait a few minutes and try again.'
+        'Please wait a moment before trying again.'
       );
       return;
     }
@@ -198,14 +223,16 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     setStripeSetupError(undefined);
 
     try {
-      // Mark that we're attempting a payment (persists across modal re-opens)
+      // Mark that we're attempting a payment (rapid double-click protection only)
       markPaymentAttempt();
 
       const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip);
 
       if (result.success) {
         if ((result.mode === 'stripe_connect' || result.mode === 'stripe') && (result.clientSecret || result.checkoutUrl)) {
-          // Redirecting to payment page - keep processing state, don't reset ref
+          // Redirecting to payment page — reset the ref so user can retry if they come back
+          // The full-page navigation will unmount this component anyway, but just in case:
+          paymentInProgressRef.current = false;
           return;
         }
         // Direct processing succeeded - clear the payment tracking
@@ -214,6 +241,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
         setPaymentMode(result.mode || 'direct');
         setSuccessAmount(amount);
         setSuccessTip(tip);
+        setSuccessPaymentId(result.paymentId || '');
         setShowSuccess(true);
 
         if (result.stripeNotConfigured) {
@@ -221,9 +249,32 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
           setStripeSetupError(result.stripeSetupError);
         }
 
+        // Fire-and-forget: send email receipt via send-receipt-email edge function
+        setReceiptStatus('sending');
+        try {
+          const receiptResult = await sendContributionReceipt({
+            paymentId: result.paymentId || undefined,
+            amount,
+            tipAmount: tip,
+            needTitle,
+            needId,
+            recipientName: contributorName || destinationInfo?.recipientName || '',
+          });
+          if (receiptResult.emailSent) {
+            setReceiptStatus('sent');
+            setReceiptNumber(receiptResult.receiptNumber || '');
+          } else {
+            setReceiptStatus('failed');
+          }
+        } catch {
+          setReceiptStatus('failed');
+        }
+
+
         setTimeout(() => {
           resetAndClose();
-        }, stripeNotConfigured ? 6000 : 3000);
+        }, stripeNotConfigured ? 6000 : 4500);
+
       } else {
         // Payment failed - clear the tracking so they can retry
         clearPaymentAttempt();
@@ -238,6 +289,8 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
       setProcessing(false);
     }
   };
+
+
 
 
 
@@ -259,8 +312,13 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     setTipAmount(1);
     setIsCustomTip(false);
     setCustomTip('');
+    // FIX: Always reset the payment-in-progress ref so the user can retry
+    paymentInProgressRef.current = false;
+    // Clear any stale localStorage markers
+    clearPaymentAttempt();
     onClose();
   };
+
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={resetAndClose}>
@@ -608,8 +666,9 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
   backdrop: { flex: 1, backgroundColor: Colors.overlay },
-  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: BorderRadius.xxl, borderTopRightRadius: BorderRadius.xxl, paddingHorizontal: Spacing.xxl, paddingBottom: 40, maxHeight: '90%' },
+  sheet: { backgroundColor: Colors.surface, borderTopLeftRadius: BorderRadius.xxl, borderTopRightRadius: BorderRadius.xxl, paddingHorizontal: Spacing.xxl, paddingBottom: Platform.OS === 'web' ? 44 : 40, maxHeight: '90%' },
   handle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginTop: Spacing.md, marginBottom: Spacing.lg },
+
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
   headerTitle: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.text },
   needTitle: { fontSize: FontSize.md, color: Colors.textSecondary, fontStyle: 'italic', marginBottom: Spacing.xs },

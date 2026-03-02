@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +11,8 @@ import { supabase } from '@/app/lib/supabase';
 import ProgressBar from '@/components/ProgressBar';
 import ShareSheet from '@/components/ShareSheet';
 import VideoPlayer from '@/components/VideoPlayer';
+import GracefulImage from '@/components/GracefulImage';
+
 
 interface ThankYouVideoData {
   id: string;
@@ -130,7 +133,8 @@ export default function PublicProfilePage() {
             <View style={styles.profileBgCircle2} />
           </View>
           <View style={styles.avatarWrapper}>
-            <Image source={{ uri: user.avatar }} style={styles.avatar} />
+            <GracefulImage uri={user.avatar} type="avatar" style={styles.avatar} />
+
             {user.verified && (
               <View style={styles.verifiedBadge}>
                 <MaterialIcons name="verified" size={20} color={Colors.primary} />
@@ -236,7 +240,8 @@ export default function PublicProfilePage() {
                   onPress={() => router.push(`/share/${need.id}`)}
                   activeOpacity={0.8}
                 >
-                  {need.photo && <Image source={{ uri: need.photo }} style={styles.needPhoto} />}
+                  {need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.needPhoto} category={need.category} />}
+
                   <View style={styles.needContent}>
                     <View style={styles.needCategoryRow}>
                       <View style={styles.needCategoryBadge}>
@@ -285,7 +290,8 @@ export default function PublicProfilePage() {
                 onPress={() => router.push(`/need/${need.id}`)}
                 activeOpacity={0.8}
               >
-                {need.photo && <Image source={{ uri: need.photo }} style={styles.completedPhoto} />}
+                {need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.completedPhoto} category={need.category} />}
+
                 <View style={styles.completedContent}>
                   <Text style={styles.completedTitle} numberOfLines={1}>{need.title}</Text>
                   <Text style={styles.completedAmount}>${need.raisedAmount} raised</Text>

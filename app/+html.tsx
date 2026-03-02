@@ -33,18 +33,23 @@ export default function Root({ children }: PropsWithChildren) {
         {/* Canonical URL */}
         <link rel="canonical" href="https://spotmeone.com" />
 
-        {/* Open Graph for social sharing */}
+        {/* Open Graph for social sharing - default tags that get overridden per-page */}
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://spotmeone.com" />
         <meta property="og:title" content="SpotMe - No Tragedy. Just Life." />
         <meta property="og:description" content="Help your neighbors with everyday needs. Small acts, big impact. One payment can help multiple people." />
         <meta property="og:site_name" content="SpotMe" />
+        <meta property="og:image" content="https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771036966816_3239ff44.png" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:locale" content="en_US" />
 
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content="SpotMe - No Tragedy. Just Life." />
         <meta name="twitter:description" content="Help your neighbors with everyday needs. Small acts, big impact." />
         <meta name="twitter:url" content="https://spotmeone.com" />
+        <meta name="twitter:image" content="https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771036966816_3239ff44.png" />
 
         {/* PWA Manifest */}
         <link rel="manifest" href="/manifest.json" />
@@ -240,6 +245,142 @@ export default function Root({ children }: PropsWithChildren) {
             }
           }
         `}} />
+
+        {/* 
+          EARLY OG META TAG INJECTION
+          This script runs before React hydrates and sets OG meta tags based on the URL path.
+          Social media crawlers (Facebook, Twitter, iMessage, etc.) read these tags from the 
+          initial HTML response. Since this is a client-side app, we inject them as early as possible.
+          The React component will later update them with real data from the API.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            try {
+              var path = window.location.pathname;
+              var origin = window.location.origin;
+              var dbUrl = 'https://wadkuixhehslrteepluf.databasepad.com';
+              
+              // Detect share pages: /share/[id]
+              var shareMatch = path.match(/^\\/share\\/([^/]+)/);
+              if (shareMatch) {
+                var needId = shareMatch[1];
+                var shareUrl = origin + '/share/' + needId;
+                
+                // Set dynamic OG tags for share pages
+                function setOG(prop, content) {
+                  var el = document.querySelector('meta[property="' + prop + '"]');
+                  if (el) el.setAttribute('content', content);
+                  else {
+                    el = document.createElement('meta');
+                    el.setAttribute('property', prop);
+                    el.setAttribute('content', content);
+                    document.head.appendChild(el);
+                  }
+                }
+                function setMeta(name, content) {
+                  var el = document.querySelector('meta[name="' + name + '"]');
+                  if (el) el.setAttribute('content', content);
+                  else {
+                    el = document.createElement('meta');
+                    el.setAttribute('name', name);
+                    el.setAttribute('content', content);
+                    document.head.appendChild(el);
+                  }
+                }
+                
+                // Dynamic OG image URL — served from edge function with storage caching
+                var ogImageUrl = dbUrl + '/functions/v1/generate-og-image?needId=' + needId;
+                
+                // Set URL-specific OG tags immediately
+                setOG('og:url', shareUrl);
+                setOG('og:title', 'Someone needs your help on SpotMe');
+                setOG('og:description', 'Can you spot them? Every dollar goes directly to the person in need. No tragedy, just life.');
+                setOG('og:type', 'article');
+                setOG('og:image', ogImageUrl);
+                setOG('og:image:width', '1200');
+                setOG('og:image:height', '630');
+                setOG('og:image:type', 'image/svg+xml');
+                setMeta('twitter:url', shareUrl);
+                setMeta('twitter:title', 'Someone needs your help on SpotMe');
+                setMeta('twitter:description', 'Can you spot them? Every dollar goes directly to the person in need.');
+                setMeta('twitter:image', ogImageUrl);
+                setMeta('twitter:card', 'summary_large_image');
+                document.title = 'Help Someone on SpotMe';
+                
+                // Attempt to fetch real need data for proper OG tags
+                var dbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjRhNDhjOGQ1LWM2NGEtNGM5Ni04YWJiLWNhOGIxNzBhYzBmYyJ9.eyJwcm9qZWN0SWQiOiJ3YWRrdWl4aGVoc2xydGVlcGx1ZiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzcxMDM2ODc1LCJleHAiOjIwODYzOTY4NzUsImlzcyI6ImZhbW91cy5kYXRhYmFzZXBhZCIsImF1ZCI6ImZhbW91cy5jbGllbnRzIn0.8D4-YKtj3LLq5nDrGKY2mDnG7CqfeliSBh4XLgJq88c';
+                
+                // Only attempt fetch for non-local IDs
+                if (!/^(n\\d+|mr\\d+|n_|local_)/.test(needId)) {
+                  fetch(dbUrl + '/functions/v1/process-contribution', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': 'Bearer ' + dbKey,
+                      'apikey': dbKey
+                    },
+                    body: JSON.stringify({ action: 'fetch_need_by_id', needId: needId })
+                  })
+                  .then(function(r) { return r.json(); })
+                  .then(function(data) {
+                    if (data && data.success && data.need) {
+                      var n = data.need;
+                      var remaining = n.goalAmount - n.raisedAmount;
+                      var pct = Math.round((n.raisedAmount / n.goalAmount) * 100);
+                      var title = 'Help ' + n.userName + ': ' + n.title + ' | SpotMe';
+                      var desc = '$' + remaining + ' still needed (' + pct + '% funded). Can you spot them?';
+                      
+                      document.title = title;
+                      setOG('og:title', title);
+                      setOG('og:description', desc);
+                      setOG('og:image:alt', n.userName + ' needs help: ' + n.title);
+                      setMeta('twitter:title', title);
+                      setMeta('twitter:description', desc);
+                      setMeta('description', n.message ? n.message.substring(0, 160) + '...' : desc);
+                    }
+                  })
+                  .catch(function() {});
+                }
+              }
+              
+              // Detect need pages: /need/[id]
+              var needMatch = path.match(/^\\/need\\/([^/]+)/);
+              if (needMatch) {
+                var nId = needMatch[1];
+                var needUrl = origin + '/need/' + nId;
+                var needOgImage = dbUrl + '/functions/v1/generate-og-image?needId=' + nId;
+                function setOGN(prop, content) {
+                  var el = document.querySelector('meta[property="' + prop + '"]');
+                  if (el) el.setAttribute('content', content);
+                  else {
+                    el = document.createElement('meta');
+                    el.setAttribute('property', prop);
+                    el.setAttribute('content', content);
+                    document.head.appendChild(el);
+                  }
+                }
+                setOGN('og:url', needUrl);
+                setOGN('og:title', 'Help someone on SpotMe');
+                setOGN('og:description', 'Every dollar goes directly to the person in need. No tragedy, just life.');
+                setOGN('og:image', needOgImage);
+              }
+              
+              // Detect user pages: /user/[id]
+              var userMatch = path.match(/^\\/user\\/([^/]+)/);
+              if (userMatch) {
+                var uUrl = origin + '/user/' + userMatch[1];
+                function setOGU(prop, content) {
+                  var el = document.querySelector('meta[property="' + prop + '"]');
+                  if (el) el.setAttribute('content', content);
+                }
+                setOGU('og:url', uUrl);
+                setOGU('og:title', 'SpotMe Profile');
+                setOGU('og:description', 'See how this community member is helping neighbors on SpotMe.');
+              }
+            } catch(e) {}
+          })();
+        `}} />
+
 
         {/* 
           Splash screen + utilities script in <head>.

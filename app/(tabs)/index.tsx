@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, RefreshControl, Platform, ActivityIndicator } from 'react-native';
+
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +13,11 @@ import ContributeModal from '@/components/ContributeModal';
 import MamaRechargeCard from '@/components/MamaRechargeCard';
 import SignInPromptModal from '@/components/SignInPromptModal';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import PushNotificationPrompt from '@/components/PushNotificationPrompt';
+import GracefulImage from '@/components/GracefulImage';
+import HomeSearchBar from '@/components/HomeSearchBar';
+
+
 
 const DEFAULT_AVATAR = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png';
 
@@ -44,10 +50,11 @@ function HomeScreenContent() {
   const [authSettled, setAuthSettled] = useState(() => Platform.OS === 'web' ? hasStoredAuth() : false);
 
   useEffect(() => {
-    // Give auth state a moment to settle on mount
-    const timer = setTimeout(() => setAuthSettled(true), 500);
+    // Reduced from 500ms to 50ms - auth state settles almost instantly
+    const timer = setTimeout(() => setAuthSettled(true), 50);
     return () => clearTimeout(timer);
   }, []);
+
 
   // Extract values safely - BEFORE any conditional returns
   const needs = Array.isArray(appContext.needs) ? appContext.needs : [];
@@ -58,6 +65,11 @@ function HomeScreenContent() {
   const isLoading = appContext.isLoading || false;
   const currentUser = appContext.currentUser || { name: 'Guest', avatar: '', id: 'guest' };
   const refreshNeeds = appContext.refreshNeeds;
+  const showPushPrompt = appContext.showPushPrompt || false;
+  const pushPromptContribution = appContext.pushPromptContribution || null;
+  const dismissPushPrompt = appContext.dismissPushPrompt;
+  const requestPushPermission = appContext.requestPushPermission;
+
 
   // All computed values using hooks - called unconditionally
   const safeNeeds = needs;
@@ -150,8 +162,9 @@ function HomeScreenContent() {
             </TouchableOpacity>
           ) : isLoggedIn ? (
             <TouchableOpacity onPress={() => { try { router.push('/(tabs)/profile'); } catch {} }}>
-              <Image source={{ uri: safeUser.avatar || DEFAULT_AVATAR }} style={styles.topAvatar} />
+              <GracefulImage uri={safeUser.avatar || DEFAULT_AVATAR} type="avatar" style={styles.topAvatar} />
             </TouchableOpacity>
+
           ) : null}
 
         </View>
@@ -162,7 +175,8 @@ function HomeScreenContent() {
         style={Platform.OS === 'web' ? { flex: 1 } : undefined}>
 
         <View style={styles.heroContainer}>
-          <Image source={{ uri: HERO_IMAGE }} style={styles.heroImage} />
+          <GracefulImage uri={HERO_IMAGE} type="photo" style={styles.heroImage} />
+
           <View style={styles.heroOverlay}>
             <Text style={styles.heroTitle}>Small acts.{'\n'}Big impact.</Text>
             <Text style={styles.heroSubtitle}>Help your neighbors with everyday needs.{'\n'}Every dollar counts.</Text>
@@ -173,7 +187,12 @@ function HomeScreenContent() {
           </View>
         </View>
 
+        {/* Search Bar - Find people and their needs */}
+        <HomeSearchBar needs={safeNeeds} />
+
         <TouchableOpacity style={styles.walkthroughBanner} onPress={() => { try { router.push('/welcome'); } catch {} }} activeOpacity={0.8}>
+
+
           <View style={styles.walkthroughIcon}><MaterialIcons name="play-circle-filled" size={20} color={Colors.primary} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.walkthroughTitle}>New here? Watch our walkthrough</Text>
@@ -226,7 +245,8 @@ function HomeScreenContent() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
               {almostThereNeeds.map((need: any) => (
                 <TouchableOpacity key={need.id} style={styles.almostCard} onPress={() => { try { router.push(`/need/${need.id}`); } catch {} }} activeOpacity={0.8}>
-                  {need.photo && <Image source={{ uri: need.photo }} style={styles.almostImage} />}
+                  {need.photo ? <GracefulImage uri={need.photo} type="photo" style={styles.almostImage} category={need.category} /> : null}
+
                   <View style={styles.almostContent}>
                     <Text style={styles.almostTitle} numberOfLines={1}>{need.title}</Text>
                     <View style={styles.almostProgress}>
@@ -292,7 +312,16 @@ function HomeScreenContent() {
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
       <SignInPromptModal visible={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} userName={signInPromptNeed?.userName} userAvatar={signInPromptNeed?.userAvatar} needTitle={signInPromptNeed?.title} remaining={signInPromptNeed?.remaining} />
+      <PushNotificationPrompt
+        visible={showPushPrompt}
+        onClose={dismissPushPrompt}
+        onEnable={requestPushPermission}
+        contributorName={pushPromptContribution?.contributorName}
+        needTitle={pushPromptContribution?.needTitle}
+        amount={pushPromptContribution?.amount}
+      />
     </View>
+
   );
 }
 

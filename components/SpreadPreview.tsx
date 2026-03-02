@@ -134,9 +134,10 @@ export default function SpreadPreview({ result, isAnonymous }: SpreadPreviewProp
           <Text style={styles.feeValue}>${result.totalAmount.toFixed(2)}</Text>
         </View>
         <View style={styles.feeRow}>
-          <Text style={styles.feeLabel}>Platform fee (5%)</Text>
-          <Text style={styles.feeValue}>${result.fee.toFixed(2)}</Text>
+          <Text style={styles.feeLabel}>Platform fee</Text>
+          <Text style={[styles.feeValue, { color: Colors.success, fontWeight: '700' }]}>$0.00</Text>
         </View>
+
         <View style={[styles.feeRow, styles.feeRowTotal]}>
           <Text style={styles.feeLabelBold}>Total charge</Text>
           <Text style={styles.feeValueBold}>${(result.totalAmount + result.fee).toFixed(2)}</Text>

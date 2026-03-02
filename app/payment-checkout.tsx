@@ -10,6 +10,13 @@ import { supabase } from '@/app/lib/supabase';
 const STRIPE_PK = 'pk_live_51OJhJBHdGQpsHqInIzu7c6PzGPSH0yImD4xfpofvxvFZs0VFhPRXZCyEgYkkhOtBOXFWvssYASs851mflwQvjnrl00T6DbUwWZ';
 const DEFAULT_STRIPE_ACCOUNT = 'acct_1T10cMQmpzRtFmoy';
 
+// ============================================================
+// SAFETY: Maximum time (ms) the page can stay in "processing"
+// state before we force-reset. Prevents permanent freeze.
+// ============================================================
+const PROCESSING_TIMEOUT_MS = 45000; // 45 seconds
+const SESSION_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes — show "session expired" prompt
+
 export default function PaymentCheckoutScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -22,11 +29,30 @@ export default function PaymentCheckoutScreen() {
   const [paymentSucceeded, setPaymentSucceeded] = useState(false);
   const [formComplete, setFormComplete] = useState(false);
   const [loadRetries, setLoadRetries] = useState(0);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // ============================================================
+  // SMART PAYMENT RECOVERY STATE
+  // ============================================================
+  const [amountMismatch, setAmountMismatch] = useState(false);
+  const [mismatchInfo, setMismatchInfo] = useState<{
+    stripeAmountDollars: string;
+    expectedAmountDollars: string;
+    stripeAmountCents: number;
+    expectedAmountCents: number;
+  } | null>(null);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverySuccess, setRecoverySuccess] = useState(false);
+  const mismatchCheckDoneRef = useRef(false);
+
   const stripeRef = useRef<any>(null);
   const elementsRef = useRef<any>(null);
   const mountAttemptRef = useRef(0);
+  const pageLoadTimeRef = useRef(Date.now());
+  const processingTimerRef = useRef<any>(null);
 
   // CRITICAL: Track if payment was ever submitted - NEVER reset to false once true
+  // EXCEPT when we confirm the payment failed (safe to retry)
   const paymentEverSubmittedRef = useRef(false);
 
   // Parse URL params
@@ -40,6 +66,13 @@ export default function PaymentCheckoutScreen() {
     applicationFee: string;
     recipientReceives: string;
     stripeAccount: string;
+    needId: string;
+    contributorId: string;
+    contributorName: string;
+    contributorAvatar: string;
+    note: string;
+    isAnonymous: string;
+    type: string;
   }>({
     clientSecret: '',
     paymentId: '',
@@ -50,6 +83,13 @@ export default function PaymentCheckoutScreen() {
     applicationFee: '0',
     recipientReceives: '0',
     stripeAccount: '',
+    needId: '',
+    contributorId: '',
+    contributorName: '',
+    contributorAvatar: '',
+    note: '',
+    isAnonymous: 'false',
+    type: 'contribution',
   });
 
   useEffect(() => {
@@ -65,6 +105,13 @@ export default function PaymentCheckoutScreen() {
         applicationFee: urlParams.get('application_fee') || '0',
         recipientReceives: urlParams.get('recipient_receives') || '0',
         stripeAccount: urlParams.get('stripe_account') || '',
+        needId: urlParams.get('need_id') || '',
+        contributorId: urlParams.get('contributor_id') || '',
+        contributorName: urlParams.get('contributor_name') || '',
+        contributorAvatar: urlParams.get('contributor_avatar') || '',
+        note: urlParams.get('note') || '',
+        isAnonymous: urlParams.get('is_anonymous') || 'false',
+        type: urlParams.get('type') || 'contribution',
       };
       setParams(parsed);
 
@@ -74,6 +121,90 @@ export default function PaymentCheckoutScreen() {
       }
     }
   }, []);
+
+  // ============================================================
+  // SMART PAYMENT RECOVERY: Check for amount mismatch on load
+  // Compares the URL-expected amount against the actual Stripe
+  // PaymentIntent amount. If they differ, the user changed their
+  // mind and we need to create a fresh payment.
+  // ============================================================
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (!params.clientSecret || params.amount === '0') return;
+    if (mismatchCheckDoneRef.current) return; // Only check once
+
+    const piId = params.clientSecret.split('_secret_')[0];
+    if (!piId || !piId.startsWith('pi_')) return;
+
+    const contributionAmount = parseFloat(params.amount) || 0;
+    const tipAmount = parseFloat(params.tipAmount) || parseFloat(params.applicationFee) || 0;
+    const expectedTotalCents = Math.round((contributionAmount + tipAmount) * 100);
+
+    if (expectedTotalCents <= 0) return;
+
+    mismatchCheckDoneRef.current = true;
+
+    // Fire-and-forget check — don't block the Stripe Elements load
+    (async () => {
+      try {
+        console.log(`[SpotMe Recovery] Checking PI ${piId} — expected ${expectedTotalCents} cents`);
+        const { data, error: fnError } = await supabase.functions.invoke('recover-payment', {
+          body: {
+            action: 'check_amount',
+            paymentIntentId: piId,
+            expectedAmountCents: expectedTotalCents,
+          },
+        });
+
+        if (fnError && !data) {
+          console.warn('[SpotMe Recovery] Check failed (non-critical):', fnError.message);
+          return;
+        }
+
+        if (data?.expired) {
+          console.log('[SpotMe Recovery] PI is expired/canceled');
+          setSessionExpired(true);
+          return;
+        }
+
+        if (data?.alreadySucceeded) {
+          console.log('[SpotMe Recovery] PI already succeeded');
+          return;
+        }
+
+        if (data?.mismatch) {
+          console.log(`[SpotMe Recovery] MISMATCH DETECTED: Stripe=$${data.stripeAmountDollars}, Expected=$${data.expectedAmountDollars}`);
+          setAmountMismatch(true);
+          setMismatchInfo({
+            stripeAmountDollars: data.stripeAmountDollars,
+            expectedAmountDollars: data.expectedAmountDollars,
+            stripeAmountCents: data.stripeAmountCents,
+            expectedAmountCents: data.expectedAmountCents,
+          });
+        } else {
+          console.log('[SpotMe Recovery] Amounts match — no recovery needed');
+        }
+      } catch (err) {
+        console.warn('[SpotMe Recovery] Check error (non-critical):', err);
+      }
+    })();
+  }, [params.clientSecret, params.amount, params.tipAmount, params.applicationFee]);
+
+  // ============================================================
+  // SESSION EXPIRY CHECK
+  // If the user has been on this page for too long, the Stripe
+  // PaymentIntent may have expired. Show a friendly prompt.
+  // ============================================================
+  useEffect(() => {
+    const checkExpiry = setInterval(() => {
+      const elapsed = Date.now() - pageLoadTimeRef.current;
+      if (elapsed > SESSION_EXPIRY_MS && !paymentSucceeded && !processing) {
+        setSessionExpired(true);
+        clearInterval(checkExpiry);
+      }
+    }, 30000); // Check every 30 seconds
+    return () => clearInterval(checkExpiry);
+  }, [paymentSucceeded, processing]);
 
   // ================================================================
   // SERVER-SIDE PAYMENT STATUS CHECK
@@ -150,6 +281,130 @@ export default function PaymentCheckoutScreen() {
     }
   }, [params, router]);
 
+  // ============================================================
+  // SAFE GO BACK — clears ContributeModal's localStorage marker
+  // so the user isn't blocked when they re-open the donation modal
+  // ============================================================
+  const handleGoBack = useCallback(() => {
+    // Clear any payment attempt markers from ContributeModal
+    // so the user can freely change their amount and try again
+    if (Platform.OS === 'web') {
+      try {
+        // Clear ALL spotme_payment_ keys (we don't know the exact needId here)
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('spotme_payment_')) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch {}
+    }
+
+    // Cancel any pending processing timer
+    if (processingTimerRef.current) {
+      clearTimeout(processingTimerRef.current);
+      processingTimerRef.current = null;
+    }
+
+    // Reset processing state so the page doesn't stay frozen
+    setProcessing(false);
+
+    // Navigate back
+    if (Platform.OS === 'web') {
+      window.history.back();
+    } else {
+      router.back();
+    }
+  }, [router]);
+
+  // ============================================================
+  // SMART PAYMENT RECOVERY: Cancel old PI, create fresh one
+  // Called when user taps "Create New Payment" on mismatch banner
+  // ============================================================
+  const handleRecoverPayment = useCallback(async () => {
+    if (recovering) return;
+    setRecovering(true);
+    setError('');
+
+    try {
+      const piId = params.clientSecret.split('_secret_')[0];
+      const contributionAmount = parseFloat(params.amount) || 0;
+      const tipAmount = parseFloat(params.tipAmount) || parseFloat(params.applicationFee) || 0;
+
+      console.log(`[SpotMe Recovery] Recovering payment: old PI=${piId}, new amount=$${contributionAmount}+$${tipAmount}`);
+
+      const { data, error: fnError } = await supabase.functions.invoke('recover-payment', {
+        body: {
+          action: 'recover',
+          paymentIntentId: piId,
+          paymentId: params.paymentId || undefined,
+          newAmount: contributionAmount,
+          newTipAmount: tipAmount,
+          needId: params.needId || undefined,
+          needTitle: params.needTitle || undefined,
+          contributorId: params.contributorId || undefined,
+          contributorName: params.contributorName || undefined,
+          contributorAvatar: params.contributorAvatar || undefined,
+          note: params.note || undefined,
+          isAnonymous: params.isAnonymous === 'true',
+          type: params.type || 'contribution',
+        },
+      });
+
+      if (fnError && !data) {
+        throw new Error(fnError.message || 'Recovery failed');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Could not create new payment');
+      }
+
+      console.log(`[SpotMe Recovery] Success! New PI=${data.paymentIntentId}, new payment=${data.paymentId}`);
+
+      // Update params with new clientSecret and paymentId
+      // This will trigger Stripe Elements to remount via the useEffect
+      setAmountMismatch(false);
+      setMismatchInfo(null);
+      setRecoverySuccess(true);
+      mismatchCheckDoneRef.current = true; // Don't re-check after recovery
+
+      // Reset Stripe state for fresh mount
+      setStripeReady(false);
+      setElementMounted(false);
+      setFormComplete(false);
+      setLoading(true);
+      setSessionExpired(false);
+      pageLoadTimeRef.current = Date.now();
+      paymentEverSubmittedRef.current = false;
+
+      // Update params — this triggers the loadAndMountStripe useEffect
+      setParams(prev => ({
+        ...prev,
+        clientSecret: data.clientSecret,
+        paymentId: data.paymentId,
+      }));
+
+      // Update the browser URL so refresh works correctly
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set('client_secret', data.clientSecret);
+        url.searchParams.set('payment_id', data.paymentId);
+        window.history.replaceState({}, '', url.toString());
+      } catch {}
+
+      // Clear recovery success message after a few seconds
+      setTimeout(() => setRecoverySuccess(false), 4000);
+
+    } catch (err: any) {
+      console.error('[SpotMe Recovery] Error:', err);
+      setError(err.message || 'Could not create new payment. Please go back and try again.');
+    } finally {
+      setRecovering(false);
+    }
+  }, [params, recovering]);
+
   // Handle "Check Payment Status" button
   const handleCheckStatus = useCallback(async () => {
     const status = await checkPaymentStatusServerSide();
@@ -161,6 +416,7 @@ export default function PaymentCheckoutScreen() {
     } else if (status === 'failed') {
       setError('Payment was not completed. Your card was NOT charged. You can safely try again.');
       paymentEverSubmittedRef.current = false;
+      setProcessing(false);
     } else if (status === 'pending') {
       setError('Payment is still processing. Please wait a moment and check again.');
     } else {
@@ -186,6 +442,9 @@ export default function PaymentCheckoutScreen() {
     setStripeReady(false);
     setElementMounted(false);
     setFormComplete(false);
+    setSessionExpired(false);
+    // Reset page load time on remount (fresh session)
+    pageLoadTimeRef.current = Date.now();
 
     try {
       // Request storage access for iframe environments
@@ -301,7 +560,8 @@ export default function PaymentCheckoutScreen() {
       paymentElement.on('loaderror', (event: any) => {
         if (attempt === mountAttemptRef.current) {
           const msg = event?.error?.message || 'Failed to load payment form.';
-          if (msg.includes('client_secret') || msg.includes('No such payment_intent')) {
+          if (msg.includes('client_secret') || msg.includes('No such payment_intent') || msg.includes('expired')) {
+            setSessionExpired(true);
             setError('This payment session has expired. Please go back and try again.');
           } else {
             setError(msg + ' Please try reloading.');
@@ -364,6 +624,12 @@ export default function PaymentCheckoutScreen() {
   const handleSubmit = async () => {
     if (!stripeRef.current || !elementsRef.current || processing) return;
 
+    // Block submission if there's an amount mismatch — user must recover first
+    if (amountMismatch) {
+      setError('Please tap "Create New Payment" above to fix the amount mismatch before paying.');
+      return;
+    }
+
     // If payment was EVER submitted, check status instead
     if (paymentEverSubmittedRef.current) {
       console.log('[SpotMe Checkout] Payment was already submitted. Checking status instead...');
@@ -374,6 +640,31 @@ export default function PaymentCheckoutScreen() {
     paymentEverSubmittedRef.current = true;
     setProcessing(true);
     setError('');
+
+    // ============================================================
+    // SAFETY TIMEOUT: Force-reset processing after 45 seconds
+    // to prevent the screen from permanently freezing
+    // ============================================================
+    if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+    processingTimerRef.current = setTimeout(async () => {
+      console.log('[SpotMe Checkout] Processing timeout reached. Force-checking status...');
+      setProcessing(false);
+      
+      // Check if payment actually went through
+      const status = await checkPaymentStatusServerSide();
+      if (status === 'succeeded') {
+        setPaymentSucceeded(true);
+        setError('');
+        setTimeout(() => redirectToSuccess(), 1200);
+      } else if (status === 'failed') {
+        paymentEverSubmittedRef.current = false;
+        setError('Payment timed out. Your card was NOT charged. Please try again.');
+      } else {
+        setError(
+          'Payment is taking longer than expected. Please tap "Check Payment Status" to verify, or go back and try again.'
+        );
+      }
+    }, PROCESSING_TIMEOUT_MS);
 
     try {
       // Build return URL
@@ -396,6 +687,12 @@ export default function PaymentCheckoutScreen() {
         },
       });
 
+      // Clear the safety timeout since we got a response
+      if (processingTimerRef.current) {
+        clearTimeout(processingTimerRef.current);
+        processingTimerRef.current = null;
+      }
+
       // Handle inline result
       if (result.error) {
         console.error('[SpotMe Checkout] confirmPayment error:', result.error);
@@ -404,6 +701,16 @@ export default function PaymentCheckoutScreen() {
         if (result.error.type === 'card_error' || result.error.type === 'validation_error') {
           paymentEverSubmittedRef.current = false;
           setError(result.error.message || 'Your card was declined. Please try a different card.');
+          setProcessing(false);
+          return;
+        }
+
+        // Expired PaymentIntent — session timed out
+        if (result.error.code === 'payment_intent_unexpected_state' || 
+            (result.error.message && (result.error.message.includes('expired') || result.error.message.includes('canceled')))) {
+          paymentEverSubmittedRef.current = false;
+          setSessionExpired(true);
+          setError('This payment session has expired. Please go back and start a new payment.');
           setProcessing(false);
           return;
         }
@@ -495,6 +802,12 @@ export default function PaymentCheckoutScreen() {
       console.log('[SpotMe Checkout] No error and no paymentIntent - redirect may have occurred.');
       
     } catch (err: any) {
+      // Clear the safety timeout
+      if (processingTimerRef.current) {
+        clearTimeout(processingTimerRef.current);
+        processingTimerRef.current = null;
+      }
+
       console.error('[SpotMe Checkout] Payment exception:', err);
 
       // SecurityError handling
@@ -567,6 +880,15 @@ export default function PaymentCheckoutScreen() {
     }
   }, [error, elementMounted, loadRetries, params.clientSecret]);
 
+  // Cleanup processing timer on unmount
+  useEffect(() => {
+    return () => {
+      if (processingTimerRef.current) {
+        clearTimeout(processingTimerRef.current);
+      }
+    };
+  }, []);
+
   const topPadding = Platform.OS === 'web' ? 16 : insets.top;
   const amount = parseFloat(params.amount) || 0;
   const tipAmount = parseFloat(params.tipAmount) || parseFloat(params.applicationFee) || 0;
@@ -575,12 +897,8 @@ export default function PaymentCheckoutScreen() {
   const totalCharge = Math.round((amount + tipAmount) * 100) / 100;
   const isDestinationCharge = params.destinationCharge === 'true';
 
-  // CRITICAL FIX: Submit button should be enabled when:
-  // 1. Stripe is ready (form loaded)
-  // 2. Not currently processing
-  // 3. Not checking status
-  // 4. Error should NOT block submission if the form is loaded and user can interact
-  const canSubmit = stripeReady && !processing && !checkingStatus && !paymentSucceeded;
+  // Submit button: enabled when Stripe is ready and not processing and no mismatch
+  const canSubmit = stripeReady && !processing && !checkingStatus && !paymentSucceeded && !sessionExpired && !amountMismatch && !recovering;
   // Only block if there's a critical error (form didn't load at all)
   const hasCriticalError = error && !elementMounted;
 
@@ -604,9 +922,9 @@ export default function PaymentCheckoutScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      {/* Header */}
+      {/* Header — back button ALWAYS works */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} disabled={processing}>
+        <TouchableOpacity style={styles.backBtn} onPress={handleGoBack}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Secure Payment</Text>
@@ -616,8 +934,104 @@ export default function PaymentCheckoutScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Session Expired Banner */}
+        {sessionExpired && !amountMismatch && (
+          <View style={styles.sessionExpiredBanner}>
+            <MaterialIcons name="timer-off" size={24} color={Colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sessionExpiredTitle}>Session Expired</Text>
+              <Text style={styles.sessionExpiredText}>
+                This payment session has timed out. Please go back and start a new payment.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.sessionExpiredButton}
+              onPress={handleGoBack}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="arrow-back" size={16} color={Colors.white} />
+              <Text style={styles.sessionExpiredButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ============================================================ */}
+        {/* SMART PAYMENT RECOVERY: Amount Mismatch Banner               */}
+        {/* Shown when the Stripe PI amount doesn't match the URL params */}
+        {/* ============================================================ */}
+        {amountMismatch && mismatchInfo && (
+          <View style={styles.mismatchBanner}>
+            <View style={styles.mismatchIconRow}>
+              <View style={styles.mismatchIconCircle}>
+                <MaterialIcons name="sync-problem" size={28} color={Colors.primary} />
+              </View>
+            </View>
+
+            <Text style={styles.mismatchTitle}>Amount Changed</Text>
+            <Text style={styles.mismatchDescription}>
+              The existing payment was created for a different amount than what you selected.
+            </Text>
+
+            {/* Amount comparison */}
+            <View style={styles.mismatchComparison}>
+              <View style={styles.mismatchAmountBox}>
+                <Text style={styles.mismatchAmountLabel}>Previous</Text>
+                <Text style={styles.mismatchAmountOld}>${mismatchInfo.stripeAmountDollars}</Text>
+              </View>
+              <View style={styles.mismatchArrow}>
+                <MaterialIcons name="arrow-forward" size={24} color={Colors.primary} />
+              </View>
+              <View style={[styles.mismatchAmountBox, styles.mismatchAmountBoxNew]}>
+                <Text style={styles.mismatchAmountLabel}>You want</Text>
+                <Text style={styles.mismatchAmountNew}>${mismatchInfo.expectedAmountDollars}</Text>
+              </View>
+            </View>
+
+            {/* One-tap recovery button */}
+            <TouchableOpacity
+              style={styles.mismatchRecoverButton}
+              onPress={handleRecoverPayment}
+              activeOpacity={0.8}
+              disabled={recovering}
+            >
+              {recovering ? (
+                <ActivityIndicator size="small" color={Colors.white} />
+              ) : (
+                <MaterialIcons name="autorenew" size={20} color={Colors.white} />
+              )}
+              <Text style={styles.mismatchRecoverButtonText}>
+                {recovering ? 'Creating New Payment...' : `Create New Payment for $${mismatchInfo.expectedAmountDollars}`}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.mismatchFootnote}>
+              The old payment will be canceled automatically. Your card has NOT been charged.
+            </Text>
+
+            {/* Alternative: go back */}
+            <TouchableOpacity
+              style={styles.mismatchGoBackLink}
+              onPress={handleGoBack}
+              activeOpacity={0.7}
+            >
+              <MaterialIcons name="arrow-back" size={14} color={Colors.textSecondary} />
+              <Text style={styles.mismatchGoBackText}>or go back to change amount</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Recovery success toast */}
+        {recoverySuccess && !amountMismatch && (
+          <View style={styles.recoverySuccessBanner}>
+            <MaterialIcons name="check-circle" size={20} color={Colors.success} />
+            <Text style={styles.recoverySuccessText}>
+              New payment created for ${totalCharge.toFixed(2)}. You can now complete your payment below.
+            </Text>
+          </View>
+        )}
+
         {/* Payment Summary */}
-        <View style={styles.summaryCard}>
+        <View style={[styles.summaryCard, amountMismatch && { opacity: 0.5 }]}>
           <View style={styles.summaryHeader}>
             <MaterialIcons name="receipt-long" size={20} color={Colors.primary} />
             <Text style={styles.summaryTitle}>Payment Summary</Text>
@@ -668,10 +1082,23 @@ export default function PaymentCheckoutScreen() {
               <Text style={styles.platformBadgeText}>Funds held by SpotMe until recipient sets up payouts</Text>
             </View>
           )}
+
+          {/* Change Amount link */}
+          <TouchableOpacity
+            style={styles.changeAmountLink}
+            onPress={handleGoBack}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="edit" size={14} color={Colors.primary} />
+            <Text style={styles.changeAmountText}>Change amount or go back</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Stripe Payment Element Container */}
-        <View style={styles.paymentFormCard}>
+        <View style={[
+          styles.paymentFormCard,
+          (sessionExpired || amountMismatch) && { opacity: 0.4 },
+        ]}>
           <Text style={styles.paymentFormTitle}>Payment Details</Text>
 
           {loading && !error && (
@@ -691,6 +1118,7 @@ export default function PaymentCheckoutScreen() {
                   minHeight: loading && !elementMounted ? 0 : 250,
                   opacity: loading && !elementMounted ? 0 : 1,
                   transition: 'opacity 0.3s ease, min-height 0.3s ease',
+                  pointerEvents: (sessionExpired || amountMismatch) ? 'none' : 'auto',
                 }}
               />
             </View>
@@ -724,7 +1152,7 @@ export default function PaymentCheckoutScreen() {
               )}
 
               <View style={styles.errorActions}>
-                {!paymentEverSubmittedRef.current && (
+                {!paymentEverSubmittedRef.current && !sessionExpired && (
                   <TouchableOpacity
                     style={styles.retryButton}
                     onPress={handleRetry}
@@ -736,7 +1164,7 @@ export default function PaymentCheckoutScreen() {
                 )}
                 <TouchableOpacity
                   style={styles.goBackButton}
-                  onPress={() => router.back()}
+                  onPress={handleGoBack}
                   activeOpacity={0.7}
                 >
                   <MaterialIcons name="arrow-back" size={16} color={Colors.textSecondary} />
@@ -747,25 +1175,52 @@ export default function PaymentCheckoutScreen() {
           ) : null}
         </View>
 
-        {/* Submit Button - FIXED: only disable for critical errors, not form validation errors */}
-        <TouchableOpacity
-          style={[
-            styles.payButton,
-            (!canSubmit || hasCriticalError) && styles.payButtonDisabled,
-          ]}
-          onPress={handleSubmit}
-          activeOpacity={0.8}
-          disabled={!canSubmit || !!hasCriticalError}
-        >
-          {processing || checkingStatus ? (
-            <ActivityIndicator size="small" color={Colors.white} />
-          ) : (
-            <MaterialIcons name="lock" size={20} color={Colors.white} />
-          )}
-          <Text style={styles.payButtonText}>
-            {processing ? 'Processing...' : checkingStatus ? 'Checking Status...' : `Pay $${totalCharge.toFixed(2)}`}
-          </Text>
-        </TouchableOpacity>
+        {/* Submit Button — hidden during mismatch */}
+        {!sessionExpired && !amountMismatch && (
+          <TouchableOpacity
+            style={[
+              styles.payButton,
+              (!canSubmit || hasCriticalError) && styles.payButtonDisabled,
+            ]}
+            onPress={handleSubmit}
+            activeOpacity={0.8}
+            disabled={!canSubmit || !!hasCriticalError}
+          >
+            {processing || checkingStatus ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <MaterialIcons name="lock" size={20} color={Colors.white} />
+            )}
+            <Text style={styles.payButtonText}>
+              {processing ? 'Processing...' : checkingStatus ? 'Checking Status...' : `Pay $${totalCharge.toFixed(2)}`}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Session expired: prominent "Go Back" button replaces Pay */}
+        {sessionExpired && !amountMismatch && (
+          <TouchableOpacity
+            style={[styles.payButton, { backgroundColor: Colors.accent }]}
+            onPress={handleGoBack}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="arrow-back" size={20} color={Colors.white} />
+            <Text style={styles.payButtonText}>Go Back & Start New Payment</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Processing safety notice */}
+        {processing && (
+          <View style={styles.processingNotice}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <Text style={styles.processingNoticeText}>
+              Do not close this page. If this takes too long, you can safely go back.
+            </Text>
+            <TouchableOpacity onPress={handleGoBack} activeOpacity={0.7}>
+              <Text style={styles.processingCancelText}>Cancel & Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Warning if payment was submitted */}
         {paymentEverSubmittedRef.current && !processing && !paymentSucceeded && (
@@ -816,6 +1271,168 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.secondaryLight, alignItems: 'center', justifyContent: 'center',
   },
   content: { flex: 1, paddingHorizontal: Spacing.lg, paddingTop: Spacing.lg },
+
+  // Session Expired Banner
+  sessionExpiredBanner: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: Spacing.sm, backgroundColor: '#FFF8E1', padding: Spacing.lg,
+    borderRadius: BorderRadius.xl, marginBottom: Spacing.lg,
+    borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  sessionExpiredTitle: { fontSize: FontSize.md, fontWeight: '800', color: '#8B7000' },
+  sessionExpiredText: { fontSize: FontSize.sm, color: '#8B7000', lineHeight: 20, marginBottom: Spacing.sm },
+  sessionExpiredButton: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
+    backgroundColor: Colors.accent, paddingVertical: Spacing.sm, paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.lg,
+  },
+  sessionExpiredButtonText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.white },
+
+  // ============================================================
+  // SMART PAYMENT RECOVERY: Mismatch Banner Styles
+  // ============================================================
+  mismatchBanner: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+    marginBottom: Spacing.lg,
+    borderWidth: 2,
+    borderColor: Colors.primary + '40',
+    alignItems: 'center',
+    ...Shadow.md,
+  },
+  mismatchIconRow: {
+    marginBottom: Spacing.md,
+  },
+  mismatchIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mismatchTitle: {
+    fontSize: FontSize.xl,
+    fontWeight: '900',
+    color: Colors.text,
+    marginBottom: Spacing.xs,
+    textAlign: 'center',
+  },
+  mismatchDescription: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+    paddingHorizontal: Spacing.sm,
+  },
+  mismatchComparison: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.xl,
+    width: '100%',
+  },
+  mismatchAmountBox: {
+    flex: 1,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  mismatchAmountBoxNew: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary + '40',
+  },
+  mismatchAmountLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: '600',
+    color: Colors.textLight,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.xs,
+  },
+  mismatchAmountOld: {
+    fontSize: FontSize.xxl,
+    fontWeight: '800',
+    color: Colors.textLight,
+    textDecorationLine: 'line-through',
+  },
+  mismatchAmountNew: {
+    fontSize: FontSize.xxl,
+    fontWeight: '900',
+    color: Colors.primary,
+  },
+  mismatchArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mismatchRecoverButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.lg + 2,
+    paddingHorizontal: Spacing.xxl,
+    borderRadius: BorderRadius.xl,
+    width: '100%',
+    marginBottom: Spacing.md,
+    ...Shadow.md,
+  },
+  mismatchRecoverButtonText: {
+    fontSize: FontSize.lg,
+    fontWeight: '800',
+    color: Colors.white,
+  },
+  mismatchFootnote: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
+    textAlign: 'center',
+    lineHeight: 16,
+    marginBottom: Spacing.sm,
+    fontStyle: 'italic',
+  },
+  mismatchGoBackLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+  },
+  mismatchGoBackText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+  },
+
+  // Recovery success banner
+  recoverySuccessBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: '#E8F5E9',
+    padding: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    marginBottom: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.success + '30',
+  },
+  recoverySuccessText: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: '#2E7D32',
+    lineHeight: 20,
+  },
+
   summaryCard: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.xl,
     padding: Spacing.xl, marginBottom: Spacing.lg, gap: Spacing.sm, ...Shadow.sm,
@@ -852,6 +1469,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentLight, padding: Spacing.md, borderRadius: BorderRadius.lg, marginTop: Spacing.sm,
   },
   platformBadgeText: { flex: 1, fontSize: FontSize.xs, color: '#8B7000', fontWeight: '600', lineHeight: 16 },
+
+  // Change amount link
+  changeAmountLink: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.xs, marginTop: Spacing.md, paddingTop: Spacing.sm,
+    borderTopWidth: 1, borderTopColor: Colors.borderLight,
+  },
+  changeAmountText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
+
   paymentFormCard: {
     backgroundColor: Colors.surface, borderRadius: BorderRadius.xl,
     padding: Spacing.xl, marginBottom: Spacing.lg, ...Shadow.sm,
@@ -892,6 +1518,21 @@ const styles = StyleSheet.create({
   },
   payButtonDisabled: { opacity: 0.5 },
   payButtonText: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.white },
+
+  // Processing safety notice
+  processingNotice: {
+    alignItems: 'center', gap: Spacing.sm, paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg, backgroundColor: Colors.primaryLight,
+    borderRadius: BorderRadius.lg, marginBottom: Spacing.lg,
+  },
+  processingNoticeText: {
+    fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20,
+  },
+  processingCancelText: {
+    fontSize: FontSize.sm, color: Colors.primary, fontWeight: '700', textDecorationLine: 'underline',
+    marginTop: Spacing.xs,
+  },
+
   warningBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm,
     backgroundColor: Colors.accentLight, padding: Spacing.md, borderRadius: BorderRadius.lg,

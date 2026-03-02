@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Platform, Modal, ActivityIndicator, Linking } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, Modal, ActivityIndicator, Linking } from 'react-native';
+
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { useRouter } from 'expo-router';
@@ -7,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
 import { Need } from '@/app/lib/data';
-import { pickAndUploadAvatar } from '@/app/lib/imageUpload';
+import { pickAndUploadAvatar, prefetchUserPhotos } from '@/app/lib/imageUpload';
 import NeedCard from '@/components/NeedCard';
 import StatusBadge from '@/components/StatusBadge';
 import ThankYouCard from '@/components/ThankYouCard';
@@ -16,6 +17,9 @@ import RecordThankYouModal from '@/components/RecordThankYouModal';
 import BulkNeedManager from '@/components/BulkNeedManager';
 import EditNeedModal from '@/components/EditNeedModal';
 import ReceiptHistory from '@/components/ReceiptHistory';
+import GracefulImage, { prefetchImages } from '@/components/GracefulImage';
+import AvatarPicker from '@/components/AvatarPicker';
+
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -49,8 +53,55 @@ export default function ProfileScreen() {
   // Avatar change state
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarSuccess, setAvatarSuccess] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+
+  // Stored spots from localStorage (for Stripe payments that don't update local state)
+  const [storedSpotNeedIds, setStoredSpotNeedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      try {
+        const raw = localStorage.getItem('spotme_my_spots');
+        if (raw) {
+          const spots = JSON.parse(raw);
+          if (Array.isArray(spots)) {
+            setStoredSpotNeedIds(spots.map((s: any) => s.needId).filter(Boolean));
+          }
+        }
+      } catch {}
+    }
+  }, []);
+
+
+
+  // ---- PREFETCH & CACHE USER'S NEED PHOTOS ----
+  // Eagerly loads all the user's need photos into memory so they
+  // display instantly when scrolling through Active/Completed tabs
+  useEffect(() => {
+    if (!isLoggedIn || currentUser.id === 'guest') return;
+    
+    const myNeeds = needs.filter(n => n.userId === currentUser.id);
+    const photoUrls = myNeeds
+      .map(n => n.photo)
+      .filter((url): url is string => !!url);
+    
+    // Also prefetch the avatar
+    const allUrls = currentUser.avatar ? [currentUser.avatar, ...photoUrls] : photoUrls;
+    
+    if (allUrls.length > 0) {
+      // Prefetch via GracefulImage's cache system
+      prefetchImages(allUrls).then(count => {
+        console.log(`[Profile] Prefetched ${count}/${allUrls.length} user photos`);
+      });
+      
+      // Also store in the imageUpload cache for cross-screen access
+      prefetchUserPhotos(currentUser.id, photoUrls).catch(() => {});
+    }
+  }, [isLoggedIn, currentUser.id, needs.length]);
 
   const topPadding = Platform.OS === 'web' ? 0 : insets.top;
+
+
 
   const handleChangeAvatar = async () => {
     if (avatarUploading) return;
@@ -113,10 +164,15 @@ export default function ProfileScreen() {
   const myNeeds = needs.filter(n => n.userId === currentUser.id);
   const activeNeeds = myNeeds.filter(n => n.status === 'Collecting' && !isExpiredByTime(n));
   const completedNeeds = myNeeds.filter(n => n.status !== 'Collecting' || isExpiredByTime(n));
-  const givenNeeds = needs.filter(n => n.contributions.some(c => c.userId === currentUser.id));
+  // Include needs where user contributed OR where we have a stored spot from Stripe payment
+  const givenNeeds = needs.filter(n =>
+    n.contributions.some(c => c.userId === currentUser.id) ||
+    storedSpotNeedIds.includes(n.id)
+  );
 
   const myUpdates = thankYouUpdates.filter(u => u.userId === currentUser.id);
   const pinnedUpdates = myUpdates.filter(u => u.pinned);
+
 
 
   const handleSaveProfile = () => { updateProfile({ name: editName.trim() || currentUser.name, bio: editBio, city: editCity }); setEditing(false); };
@@ -205,11 +261,12 @@ export default function ProfileScreen() {
           {/* Avatar with change photo button */}
           <TouchableOpacity
             style={styles.avatarContainer}
-            onPress={handleChangeAvatar}
+            onPress={() => setShowAvatarPicker(true)}
             activeOpacity={0.7}
             disabled={avatarUploading}
           >
-            <Image source={{ uri: currentUser.avatar }} style={styles.profileAvatar} />
+            <GracefulImage uri={currentUser.avatar} type="avatar" style={styles.profileAvatar} />
+
             <View style={[styles.avatarOverlay, avatarUploading && styles.avatarOverlayActive]}>
               {avatarUploading ? (
                 <ActivityIndicator size="small" color={Colors.white} />
@@ -224,6 +281,7 @@ export default function ProfileScreen() {
             )}
           </TouchableOpacity>
 
+
           <View style={styles.nameContainer}>
             <Text style={styles.profileName}>{currentUser.name}</Text>
             {currentUser.verified && <MaterialIcons name="verified" size={20} color={Colors.primary} />}
@@ -236,17 +294,17 @@ export default function ProfileScreen() {
               <TextInput style={styles.editInput} value={editBio} onChangeText={setEditBio} placeholder="Your bio..." placeholderTextColor={Colors.textLight} multiline maxLength={120} />
               <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>City</Text>
               <TextInput style={styles.editInput} value={editCity} onChangeText={setEditCity} placeholder="Your city..." placeholderTextColor={Colors.textLight} maxLength={40} />
-              <TouchableOpacity style={styles.changePhotoBtn} onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.7}>
+              <TouchableOpacity style={styles.changePhotoBtn} onPress={() => setShowAvatarPicker(true)} disabled={avatarUploading} activeOpacity={0.7}>
                 {avatarUploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
                 ) : (
                   <>
-                    <MaterialIcons name="photo-camera" size={18} color={Colors.primary} />
-                    <Text style={styles.changePhotoBtnText}>Change Profile Photo</Text>
+                    <MaterialIcons name="face" size={18} color={Colors.primary} />
+                    <Text style={styles.changePhotoBtnText}>Choose Avatar or Upload Photo</Text>
                   </>
                 )}
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}><Text style={styles.saveButtonText}>Save Changes</Text></TouchableOpacity>
+
             </View>
           ) : (
 
@@ -327,7 +385,8 @@ export default function ProfileScreen() {
               return (
                 <View key={need.id} style={styles.completedCard}>
                   <TouchableOpacity style={styles.completedCardInner} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
-                    {need.photo && <Image source={{ uri: need.photo }} style={[styles.completedImage, displayStatus === 'Expired' && { opacity: 0.7 }]} />}
+                    {need.photo && <GracefulImage uri={need.photo} type="photo" style={[styles.completedImage, displayStatus === 'Expired' && { opacity: 0.7 }]} category={need.category} />}
+
                     <View style={styles.completedContent}>
                       <Text style={styles.completedTitle}>{need.title}</Text>
                       <StatusBadge status={displayStatus} />
@@ -404,7 +463,8 @@ export default function ProfileScreen() {
 
             ) : givenNeeds.map(need => (
               <TouchableOpacity key={need.id} style={styles.givenCard} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
-                {need.photo && <Image source={{ uri: need.photo }} style={styles.givenImage} />}
+                {need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.givenImage} category={need.category} />}
+
                 <View style={styles.givenContent}>
                   <Text style={styles.givenTitle} numberOfLines={1}>{need.title}</Text>
                   <Text style={styles.givenUser}>{need.userName}</Text>
@@ -524,10 +584,25 @@ export default function ProfileScreen() {
         />
       )}
 
-    </View>
+      {/* Avatar Picker Modal */}
+      <AvatarPicker
+        visible={showAvatarPicker}
+        onClose={() => setShowAvatarPicker(false)}
+        onSelectAvatar={(url) => {
+          updateProfile({ avatar: url });
+          setAvatarSuccess(true);
+          setTimeout(() => setAvatarSuccess(false), 3000);
+          setShowAvatarPicker(false);
+        }}
+        onUploadPhoto={handleChangeAvatar}
+        currentAvatar={currentUser.avatar}
+        uploading={avatarUploading}
+      />
 
+    </View>
   );
 }
+
 
 
 const styles = StyleSheet.create({

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Animated, Image, Share } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Animated, Image, Share, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,27 @@ import { useApp } from '@/app/lib/store';
 import { supabase } from '@/app/lib/supabase';
 
 const CTA_COLOR = Colors.primary;
+const MY_SPOTS_KEY = 'spotme_my_spots';
+
+// ---- Helper: Store spot details in localStorage ----
+function storeSpotInLocalStorage(spot: { needId: string; needTitle: string; amount: number; date: string; paymentId: string }) {
+  if (Platform.OS !== 'web') return;
+  try {
+    const raw = localStorage.getItem(MY_SPOTS_KEY);
+    let spots: any[] = [];
+    if (raw) {
+      try { spots = JSON.parse(raw); } catch {}
+      if (!Array.isArray(spots)) spots = [];
+    }
+    // Avoid duplicates by paymentId
+    if (spots.some(s => s.paymentId === spot.paymentId && spot.paymentId)) return;
+    spots.push(spot);
+    localStorage.setItem(MY_SPOTS_KEY, JSON.stringify(spots));
+    console.log(`[SpotMe MySpots] Stored spot: $${spot.amount} for "${spot.needTitle}" — ${spots.length} total`);
+  } catch (err) {
+    console.warn('[SpotMe MySpots] Failed to store spot:', err);
+  }
+}
 
 // ---- URL param extraction (runs once) ----
 interface SuccessParams {
@@ -43,7 +64,7 @@ function parseUrlParams(): SuccessParams {
 export default function PaymentSuccessScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { refreshNeeds, needs, currentUser, sendContributionReceipt, resendContributionReceipt } = useApp();
+  const { refreshNeeds, needs, currentUser, sendContributionReceipt, resendContributionReceipt, updateProfile } = useApp();
 
   // ---- State ----
   const [status, setStatus] = useState<'verifying' | 'success' | 'processing' | 'error'>('verifying');
@@ -55,6 +76,28 @@ export default function PaymentSuccessScreen() {
   const [receiptStatus, setReceiptStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const [receiptNumber, setReceiptNumber] = useState('');
   const [receiptError, setReceiptError] = useState('');
+
+  // ---- Email input state (for when no stored email) ----
+  const [hasStoredEmail, setHasStoredEmail] = useState<boolean | null>(null); // null = checking
+  const [emailInput, setEmailInput] = useState('');
+  const [emailInputError, setEmailInputError] = useState('');
+  const spotStoredRef = useRef(false); // prevent double-storing spot
+
+  // ---- Check for stored email on mount ----
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      try {
+        const email = localStorage.getItem('spotme_email');
+        setHasStoredEmail(!!email);
+        if (email) setEmailInput(email);
+      } catch {
+        setHasStoredEmail(false);
+      }
+    } else {
+      setHasStoredEmail(false);
+    }
+  }, []);
+
 
 
   // URL params — parsed once
@@ -221,6 +264,63 @@ export default function PaymentSuccessScreen() {
       ]).start();
     }
   }, [status]);
+
+  // ---- Store spot details & update totalGiven on success ----
+  useEffect(() => {
+    if (status !== 'success' || spotStoredRef.current) return;
+    spotStoredRef.current = true;
+
+    // Derive values from paymentDetails or URL params
+    const spotAmount = paymentDetails?.amount
+      ? Number(paymentDetails.amount)
+      : urlParams.amount ? Number(urlParams.amount) : 0;
+    const spotNeedId = paymentDetails?.need_id || urlParams.needId || '';
+    const spotNeedTitle = paymentDetails?.need_title || urlParams.needTitle || '';
+    const spotPaymentId = paymentDetails?.id || paymentDetails?.payment_intent_id || urlParams.paymentIntentId || urlParams.paymentId || '';
+
+    // 1) Store in localStorage under 'spotme_my_spots'
+    if (spotNeedId || spotPaymentId) {
+      storeSpotInLocalStorage({
+        needId: spotNeedId,
+        needTitle: spotNeedTitle,
+        amount: spotAmount,
+        date: new Date().toISOString(),
+        paymentId: spotPaymentId,
+      });
+    }
+
+    // 2) Also store the needId in the legacy 'spotme_my_spots' ID list for backward compat
+    if (spotNeedId && Platform.OS === 'web') {
+      try {
+        const raw = localStorage.getItem('spotme_my_spots_ids');
+        let ids: string[] = [];
+        if (raw) {
+          try { ids = JSON.parse(raw); } catch {}
+          if (!Array.isArray(ids)) ids = [];
+        }
+        if (!ids.includes(spotNeedId)) {
+          ids.push(spotNeedId);
+          localStorage.setItem('spotme_my_spots_ids', JSON.stringify(ids));
+        }
+      } catch {}
+    }
+
+    // 3) Update currentUser.totalGiven
+    if (spotAmount > 0 && updateProfile) {
+      const currentGiven = Number(currentUser?.totalGiven) || 0;
+      updateProfile({ totalGiven: currentGiven + spotAmount } as any).catch(() => {});
+    }
+
+    // 4) Refresh needs to pick up updated progress
+    refreshNeeds().catch(() => {});
+
+    console.log('[SpotMe Success] Spot stored & totalGiven updated:', {
+      needId: spotNeedId,
+      amount: spotAmount,
+      paymentId: spotPaymentId,
+    });
+  }, [status, paymentDetails, urlParams, currentUser, updateProfile, refreshNeeds]);
+
 
   // Auto-retry for "processing" status
   useEffect(() => {
@@ -508,47 +608,165 @@ export default function PaymentSuccessScreen() {
               </View>
             )}
 
-            {/* Email Receipt Status & Resend Button */}
-            <View style={{ width: '100%', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            {/* Email Receipt Status & Send/Resend Section */}
+            <View style={styles.emailReceiptSection}>
+              {/* Status badges */}
               {receiptStatus === 'sent' && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#E8F5E9', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 }}>
+                <View style={styles.receiptSentBadge}>
                   <MaterialIcons name="mark-email-read" size={16} color="#2E7D32" />
-                  <Text style={{ fontSize: 13, color: '#2E7D32', fontWeight: '600' }}>Receipt emailed{receiptNumber ? ` (${receiptNumber})` : ''}</Text>
+                  <Text style={styles.receiptSentText}>
+                    Receipt emailed{receiptNumber ? ` (${receiptNumber})` : ''}
+                  </Text>
                 </View>
               )}
               {receiptStatus === 'failed' && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF3E0', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10 }}>
+                <View style={styles.receiptFailedBadge}>
                   <MaterialIcons name="warning" size={16} color="#E65100" />
-                  <Text style={{ fontSize: 13, color: '#E65100', fontWeight: '600' }}>Receipt email not sent</Text>
+                  <Text style={styles.receiptFailedText}>
+                    {hasStoredEmail === false
+                      ? 'No email on file — enter yours below to get a receipt'
+                      : 'Receipt email not sent'}
+                  </Text>
                 </View>
               )}
-              <TouchableOpacity
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.surfaceAlt, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 12, borderWidth: 1, borderColor: Colors.border }}
-                disabled={receiptStatus === 'sending'}
-                activeOpacity={0.7}
-                onPress={async () => {
-                  setReceiptStatus('sending');
-                  try {
-                    const result = await resendContributionReceipt({
-                      paymentId: paymentDetails?.id || urlParams.paymentId || undefined,
-                      paymentIntentId: paymentDetails?.payment_intent_id || urlParams.paymentIntentId || undefined,
-                      amount, tipAmount, needTitle, needId, recipientName,
-                    });
-                    setReceiptStatus(result.emailSent ? 'sent' : 'failed');
-                    if (result.receiptNumber) setReceiptNumber(result.receiptNumber);
-                  } catch { setReceiptStatus('failed'); }
-                }}
-              >
-                {receiptStatus === 'sending' ? (
-                  <ActivityIndicator size="small" color={CTA_COLOR} />
-                ) : (
-                  <MaterialIcons name="send" size={16} color={CTA_COLOR} />
-                )}
-                <Text style={{ fontSize: 14, fontWeight: '700', color: CTA_COLOR }}>
-                  {receiptStatus === 'sending' ? 'Sending...' : receiptStatus === 'sent' ? 'Resend Receipt' : 'Send Receipt Email'}
-                </Text>
-              </TouchableOpacity>
+
+              {/* Inline email input when no stored email */}
+              {hasStoredEmail === false && receiptStatus !== 'sent' && (
+                <View style={styles.emailInputCard}>
+                  <View style={styles.emailInputHeader}>
+                    <MaterialIcons name="email" size={18} color={CTA_COLOR} />
+                    <Text style={styles.emailInputTitle}>Get your receipt</Text>
+                  </View>
+                  <Text style={styles.emailInputSubtitle}>
+                    Enter your email address and we'll send your payment receipt right away.
+                  </Text>
+                  <View style={styles.emailInputRow}>
+                    <TextInput
+                      style={[
+                        styles.emailTextInput,
+                        emailInputError ? styles.emailTextInputError : null,
+                      ]}
+                      placeholder="your@email.com"
+                      placeholderTextColor={Colors.textLight}
+                      value={emailInput}
+                      onChangeText={(text) => {
+                        setEmailInput(text);
+                        setEmailInputError('');
+                      }}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={receiptStatus !== 'sending'}
+                    />
+                    <TouchableOpacity
+                      style={[
+                        styles.emailSendBtn,
+                        receiptStatus === 'sending' && styles.emailSendBtnDisabled,
+                      ]}
+                      disabled={receiptStatus === 'sending'}
+                      activeOpacity={0.7}
+                      onPress={async () => {
+                        // Validate email
+                        const trimmed = emailInput.trim();
+                        if (!trimmed) {
+                          setEmailInputError('Please enter your email');
+                          return;
+                        }
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (!emailRegex.test(trimmed)) {
+                          setEmailInputError('Please enter a valid email');
+                          return;
+                        }
+                        setEmailInputError('');
+                        setReceiptStatus('sending');
+
+                        // Optionally store the email for future use
+                        if (Platform.OS === 'web') {
+                          try { localStorage.setItem('spotme_email', trimmed); } catch {}
+                        }
+
+                        try {
+                          const result = await sendContributionReceipt({
+                            paymentId: paymentDetails?.id || urlParams.paymentId || undefined,
+                            paymentIntentId: paymentDetails?.payment_intent_id || urlParams.paymentIntentId || undefined,
+                            amount, tipAmount, needTitle, needId, recipientName,
+                            toEmail: trimmed,
+                          });
+                          if (result.emailSent) {
+                            setReceiptStatus('sent');
+                            setReceiptNumber(result.receiptNumber || '');
+                            setHasStoredEmail(true); // email is now stored
+                          } else {
+                            setReceiptStatus('failed');
+                            setReceiptError(result.error || 'Could not send receipt');
+                            setEmailInputError(result.error || 'Failed to send. Please try again.');
+                          }
+                        } catch (err: any) {
+                          setReceiptStatus('failed');
+                          setEmailInputError('Network error. Please try again.');
+                        }
+                      }}
+                    >
+                      {receiptStatus === 'sending' ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <>
+                          <MaterialIcons name="send" size={16} color="#FFF" />
+                          <Text style={styles.emailSendBtnText}>Send Receipt</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {emailInputError ? (
+                    <Text style={styles.emailInputErrorText}>{emailInputError}</Text>
+                  ) : null}
+                </View>
+              )}
+
+              {/* Standard resend button (when email IS stored, or after initial send) */}
+              {(hasStoredEmail === true || receiptStatus === 'sent') && (
+                <TouchableOpacity
+                  style={styles.resendBtn}
+                  disabled={receiptStatus === 'sending'}
+                  activeOpacity={0.7}
+                  onPress={async () => {
+                    setReceiptStatus('sending');
+                    setReceiptError('');
+                    try {
+                      const result = await resendContributionReceipt({
+                        paymentId: paymentDetails?.id || urlParams.paymentId || undefined,
+                        paymentIntentId: paymentDetails?.payment_intent_id || urlParams.paymentIntentId || undefined,
+                        amount, tipAmount, needTitle, needId, recipientName,
+                        toEmail: emailInput.trim() || undefined,
+                      });
+                      setReceiptStatus(result.emailSent ? 'sent' : 'failed');
+                      if (result.receiptNumber) setReceiptNumber(result.receiptNumber);
+                      if (!result.emailSent) {
+                        setReceiptError(result.error || 'Could not send receipt');
+                      }
+                    } catch {
+                      setReceiptStatus('failed');
+                      setReceiptError('Network error. Please try again.');
+                    }
+                  }}
+                >
+                  {receiptStatus === 'sending' ? (
+                    <ActivityIndicator size="small" color={CTA_COLOR} />
+                  ) : (
+                    <MaterialIcons name="send" size={16} color={CTA_COLOR} />
+                  )}
+                  <Text style={styles.resendBtnText}>
+                    {receiptStatus === 'sending' ? 'Sending...' : receiptStatus === 'sent' ? 'Resend Receipt' : 'Send Receipt Email'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {/* Show receipt error detail if resend failed */}
+              {receiptStatus === 'failed' && receiptError && hasStoredEmail === true && (
+                <Text style={styles.receiptErrorDetail}>{receiptError}</Text>
+              )}
             </View>
+
 
 
             {/* ===== SHARE SECTION ===== */}
@@ -991,4 +1209,134 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
   },
   supportText: { flex: 1, fontSize: FontSize.xs, color: Colors.textLight, lineHeight: 16 },
+
+  // Email Receipt Section
+  emailReceiptSection: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  receiptSentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  receiptSentText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    fontWeight: '600',
+  },
+  receiptFailedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FFF3E0',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    maxWidth: '100%',
+  },
+  receiptFailedText: {
+    fontSize: 13,
+    color: '#E65100',
+    fontWeight: '600',
+    flex: 1,
+  },
+  emailInputCard: {
+    width: '100%',
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emailInputHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  emailInputTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  emailInputSubtitle: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
+  emailInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    alignItems: 'stretch',
+  },
+  emailTextInput: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 12,
+    fontSize: FontSize.md,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emailTextInputError: {
+    borderColor: Colors.error,
+    borderWidth: 2,
+  },
+  emailSendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: CTA_COLOR,
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: 12,
+    minWidth: 120,
+  },
+  emailSendBtnDisabled: {
+    opacity: 0.6,
+  },
+  emailSendBtnText: {
+    fontSize: FontSize.sm,
+    fontWeight: '700',
+    color: '#FFF',
+  },
+  emailInputErrorText: {
+    fontSize: FontSize.xs,
+    color: Colors.error,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  resendBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.surfaceAlt,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  resendBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: CTA_COLOR,
+  },
+  receiptErrorDetail: {
+    fontSize: FontSize.xs,
+    color: Colors.error,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 2,
+  },
 });

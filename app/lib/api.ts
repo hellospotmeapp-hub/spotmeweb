@@ -68,6 +68,155 @@ async function tryRpc(fnName: string, params: Record<string, any>): Promise<{ da
 }
 
 // ============================================================
+// HELPER: Send real-time push notification to a user
+// Looks up their push subscriptions and calls the remote
+// send-notification edge function (which has VAPID_PRIVATE_KEY)
+// ============================================================
+async function sendPushToUser(userId: string, payload: {
+  title: string;
+  body: string;
+  url?: string;
+  tag?: string;
+  needId?: string;
+  avatar?: string;
+}): Promise<void> {
+  if (!userId) return;
+
+  try {
+    // Look up all push subscriptions for this user
+    const { data: subscriptions } = await supabase.from('push_subscriptions')
+      .select('endpoint, keys')
+      .eq('user_id', userId);
+
+    if (!subscriptions || subscriptions.length === 0) {
+      console.log(`[SpotMe Push] No push subscriptions for user ${userId}`);
+      return;
+    }
+
+    console.log(`[SpotMe Push] Sending push to ${subscriptions.length} subscription(s) for user ${userId}`);
+
+    // Call the remote send-notification edge function with send_push action
+    // This is routed to the remote edge function via REMOTE_ACTIONS in supabase.ts
+    for (const sub of subscriptions) {
+      try {
+        const response = await fetch(`${supabaseUrl}/functions/v1/send-notification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseKey}`,
+            'apikey': supabaseKey,
+          },
+          body: JSON.stringify({
+            action: 'send_push',
+            subscription: {
+              endpoint: sub.endpoint,
+              keys: sub.keys,
+            },
+            payload: {
+              title: payload.title,
+              body: payload.body,
+              url: payload.url || (payload.needId ? `/need/${payload.needId}` : '/'),
+              tag: payload.tag || 'spotme-contribution',
+              data: {
+                needId: payload.needId || '',
+                url: payload.url || (payload.needId ? `/need/${payload.needId}` : '/'),
+              },
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          console.warn(`[SpotMe Push] Push delivery failed for endpoint ${sub.endpoint.slice(0, 50)}...:`, errText);
+          
+          // If subscription is expired/invalid (410 Gone or 404), remove it
+          if (response.status === 410 || response.status === 404) {
+            console.log(`[SpotMe Push] Removing expired subscription: ${sub.endpoint.slice(0, 50)}...`);
+            await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+          }
+        } else {
+          console.log(`[SpotMe Push] Push sent successfully to ${sub.endpoint.slice(0, 50)}...`);
+        }
+      } catch (err: any) {
+        console.warn(`[SpotMe Push] Push delivery error:`, err.message);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[SpotMe Push] Failed to send push notification:`, err.message);
+  }
+}
+
+// ============================================================
+// HELPER: Send push notification to need creator when they
+// receive a contribution. Also handles goal_met notifications.
+// ============================================================
+async function notifyNeedCreator(
+  needId: string,
+  contributorName: string,
+  amount: number,
+  contributorAvatar: string,
+  isAnonymous: boolean,
+): Promise<void> {
+  if (!needId) return;
+
+  try {
+    const { data: need } = await supabase.from('needs')
+      .select('user_id, title, raised_amount, goal_amount')
+      .eq('id', needId)
+      .single();
+
+    if (!need?.user_id) return;
+
+    const displayName = isAnonymous ? 'A kind stranger' : contributorName;
+
+    // 1. Save in-app notification
+    await supabase.from('notifications').insert({
+      user_id: need.user_id,
+      type: 'contribution',
+      title: 'New Spot!',
+      message: `${displayName} spotted $${amount.toFixed(2)} on "${need.title}"`,
+      need_id: needId,
+      avatar: isAnonymous ? '' : contributorAvatar,
+    });
+
+    // 2. Send real-time push notification
+    await sendPushToUser(need.user_id, {
+      title: 'New Spot!',
+      body: `${displayName} spotted $${amount.toFixed(2)} on "${need.title}"`,
+      needId,
+      tag: `spotme-contribution-${needId}`,
+      avatar: isAnonymous ? '' : contributorAvatar,
+    });
+
+    // 3. Check if goal was just met — send a separate push
+    const newRaised = Number(need.raised_amount);
+    const goalAmount = Number(need.goal_amount);
+    if (newRaised >= goalAmount) {
+      // Save goal_met notification
+      await supabase.from('notifications').insert({
+        user_id: need.user_id,
+        type: 'goal_met',
+        title: 'Goal Met!',
+        message: `Congratulations! "${need.title}" reached its $${goalAmount} goal!`,
+        need_id: needId,
+      });
+
+      // Send goal_met push
+      await sendPushToUser(need.user_id, {
+        title: 'Goal Met!',
+        body: `"${need.title}" reached its $${goalAmount} goal! Request your payout now.`,
+        needId,
+        tag: `spotme-goalmet-${needId}`,
+      });
+    }
+  } catch (err: any) {
+    console.warn(`[SpotMe Push] notifyNeedCreator error:`, err.message);
+  }
+}
+
+
+
+// ============================================================
 // STRIPE-CHECKOUT HANDLER (fully local via RPC)
 //
 // Uses PostgreSQL RPC functions to call the Stripe API:
@@ -284,24 +433,15 @@ export async function handleStripeCheckout(body: any): Promise<any> {
       completed_at: new Date().toISOString(),
     }).select('id').single();
 
-    // Send notification to need owner
-    if (needId) {
-      try {
-        const { data: need } = await supabase.from('needs')
-          .select('user_id, title')
-          .eq('id', needId).single();
-        if (need?.user_id) {
-          await supabase.from('notifications').insert({
-            user_id: need.user_id,
-            type: 'contribution',
-            title: 'New Spot!',
-            message: `${isAnonymous ? 'A kind stranger' : contributorName} spotted $${amount.toFixed(2)} on "${need.title}"`,
-            need_id: needId,
-            avatar: isAnonymous ? '' : contributorAvatar,
-          });
-        }
-      } catch {}
+    // Send notification + push to need owner (fire-and-forget)
+    if (needId && type === 'contribution') {
+      notifyNeedCreator(needId, contributorName, amount, contributorAvatar, isAnonymous).catch(() => {});
+    } else if (type === 'spread' && spreadAllocations?.length) {
+      for (const alloc of spreadAllocations) {
+        notifyNeedCreator(alloc.needId, contributorName, Number(alloc.amount), contributorAvatar, isAnonymous).catch(() => {});
+      }
     }
+
 
     return {
       success: true,
@@ -387,22 +527,9 @@ export async function handleStripeCheckout(body: any): Promise<any> {
               }).eq('id', needId);
             }
 
-            // Notify the need owner
-            try {
-              const { data: need2 } = await supabase.from('needs')
-                .select('user_id, title')
-                .eq('id', needId).single();
-              if (need2?.user_id) {
-                await supabase.from('notifications').insert({
-                  user_id: need2.user_id,
-                  type: 'contribution',
-                  title: 'New Spot!',
-                  message: `${payment.is_anonymous ? 'A kind stranger' : payment.contributor_name} spotted $${amount.toFixed(2)} on "${need2.title}"`,
-                  need_id: needId,
-                  avatar: payment.is_anonymous ? '' : payment.contributor_avatar,
-                });
-              }
-            } catch {}
+            // Notify the need owner + send push (fire-and-forget)
+            notifyNeedCreator(needId, payment.contributor_name || 'Someone', amount, payment.contributor_avatar || '', payment.is_anonymous || false).catch(() => {});
+
           } else if (type === 'spread' && payment.spread_allocations) {
             const allocations = typeof payment.spread_allocations === 'string'
               ? JSON.parse(payment.spread_allocations)
@@ -1330,6 +1457,18 @@ export async function handleProcessContribution(body: any): Promise<any> {
       .order('created_at', { ascending: false })
       .limit(100);
 
+    // Fetch all unique user_ids to get profile data
+    const userIds = [...new Set((needs || []).map((n: any) => n.user_id).filter(Boolean))];
+    let profileMap: Record<string, any> = {};
+    if (userIds.length > 0) {
+      const { data: profiles } = await supabase.from('profiles')
+        .select('id, name, avatar, city, verified, trust_score, trust_level')
+        .in('id', userIds);
+      for (const p of (profiles || [])) {
+        profileMap[p.id] = p;
+      }
+    }
+
     // Fetch contributions for each need
     const needsWithContributions = await Promise.all(
       (needs || []).map(async (need: any) => {
@@ -1339,12 +1478,21 @@ export async function handleProcessContribution(body: any): Promise<any> {
           .order('created_at', { ascending: false })
           .limit(20);
 
+        // Use profile data as fallback when need's user_name is empty
+        const profile = profileMap[need.user_id] || {};
+        const userName = (need.user_name && need.user_name.trim()) ? need.user_name : (profile.name || 'SpotMe User');
+        const userAvatar = (need.user_avatar && need.user_avatar.trim()) ? need.user_avatar : (profile.avatar || '');
+        const userCity = (need.user_city && need.user_city.trim()) ? need.user_city : (profile.city || '');
+
         return {
           id: need.id,
           userId: need.user_id,
-          userName: need.user_name,
-          userAvatar: need.user_avatar,
-          userCity: need.user_city,
+          userName,
+          userAvatar,
+          userCity,
+          userVerified: profile.verified || false,
+          userTrustScore: profile.trust_score || 0,
+          userTrustLevel: profile.trust_level || 'new',
           title: need.title,
           message: need.message,
           category: need.category,
@@ -1373,6 +1521,7 @@ export async function handleProcessContribution(body: any): Promise<any> {
 
     return { success: true, needs: needsWithContributions };
   }
+
 
   // ---- DELETE NEED ----
   if (action === 'delete_need') {
@@ -1611,8 +1760,19 @@ export async function handleProcessContribution(body: any): Promise<any> {
       }).eq('id', needId);
     }
 
+    // Send push notification to need creator (fire-and-forget)
+    notifyNeedCreator(
+      needId,
+      body.contributorName || 'Someone',
+      amount,
+      body.contributorAvatar || '',
+      body.isAnonymous || false,
+    ).catch(() => {});
+
     return { success: true };
   }
+
+
 
   // ---- REQUEST PAYOUT ----
   if (action === 'request_payout') {
@@ -1704,8 +1864,44 @@ export async function handleProcessContribution(body: any): Promise<any> {
     if (body.updates?.avatar) updates.avatar = body.updates.avatar;
 
     await supabase.from('profiles').update(updates).eq('id', body.profileId);
+
+    // If avatar was updated, sync it to all needs and contributions owned by this user
+    // so their new profile picture appears consistently across all their existing need cards
+    if (body.updates?.avatar && body.profileId) {
+      const newAvatar = body.updates.avatar;
+      try {
+        await supabase.from('needs').update({ user_avatar: newAvatar }).eq('user_id', body.profileId);
+        console.log(`[update_profile] Synced avatar to needs for user ${body.profileId}`);
+      } catch (e: any) {
+        console.warn('[update_profile] Failed to sync avatar to needs:', e?.message);
+      }
+      try {
+        await supabase.from('contributions').update({ user_avatar: newAvatar }).eq('user_id', body.profileId);
+        console.log(`[update_profile] Synced avatar to contributions for user ${body.profileId}`);
+      } catch (e: any) {
+        console.warn('[update_profile] Failed to sync avatar to contributions:', e?.message);
+      }
+    }
+
+    // If name was updated, also sync to needs
+    if (body.updates?.name && body.profileId) {
+      const newName = sanitize(body.updates.name);
+      try {
+        await supabase.from('needs').update({ user_name: newName }).eq('user_id', body.profileId);
+      } catch {}
+    }
+
+    // If city was updated, also sync to needs
+    if (body.updates?.city !== undefined && body.profileId) {
+      const newCity = sanitize(body.updates.city);
+      try {
+        await supabase.from('needs').update({ user_city: newCity }).eq('user_id', body.profileId);
+      } catch {}
+    }
+
     return { success: true };
   }
+
 
   // ---- FETCH RECEIPTS ----
   if (action === 'fetch_receipts') {
@@ -1812,7 +2008,6 @@ export async function handleProcessContribution(body: any): Promise<any> {
   if (action === 'add_payment_method') {
     return { success: true, paymentMethod: { id: `pm_${Date.now()}`, cardLast4: body.cardLast4, cardBrand: body.cardBrand || 'visa' } };
   }
-
   // ---- REMOVE PAYMENT METHOD ----
   if (action === 'remove_payment_method') {
     return { success: true };
@@ -1823,9 +2018,418 @@ export async function handleProcessContribution(body: any): Promise<any> {
     return { success: true };
   }
 
+  // ════════════════════════════════════════════════════════════
+  // POST COMMENT (with threaded reply support)
+  // ════════════════════════════════════════════════════════════
+  if (action === 'post_comment') {
+    const { needId, userId, userName, userAvatar, message, parentCommentId } = body;
+    console.log('[post_comment] needId:', needId, 'userId:', userId, 'parentCommentId:', parentCommentId || 'none');
+
+    if (!needId) return { success: false, error: 'Missing needId' };
+    if (!userId) return { success: false, error: 'You must be logged in to comment' };
+    if (!message || !message.trim()) return { success: false, error: 'Comment message is required' };
+
+    const trimmedMessage = message.trim();
+    if (trimmedMessage.length > 1000) {
+      return { success: false, error: 'Comment is too long (max 1000 characters)' };
+    }
+
+    // Check that the need exists
+    let need: any = null;
+    try {
+      const { data } = await supabase.from('needs').select('id, title, user_id').eq('id', needId).single();
+      need = data;
+    } catch (e: any) {
+      console.log('[post_comment] Need lookup error:', e?.message);
+    }
+    if (!need) return { success: false, error: 'Need not found' };
+
+    // If this is a reply, validate the parent comment
+    let parentComment: any = null;
+    if (parentCommentId) {
+      try {
+        const { data } = await supabase.from('need_comments').select('id, need_id, user_id, user_name').eq('id', parentCommentId).single();
+        parentComment = data;
+      } catch (e: any) {
+        console.log('[post_comment] Parent comment lookup error:', e?.message);
+      }
+      if (!parentComment) return { success: false, error: 'Parent comment not found' };
+      if (parentComment.need_id !== needId) return { success: false, error: 'Parent comment does not belong to this need' };
+    }
+
+    // Insert the comment
+    const insertData: Record<string, any> = {
+      need_id: needId,
+      user_id: userId,
+      user_name: userName || 'Anonymous',
+      user_avatar: userAvatar || '',
+      message: trimmedMessage,
+    };
+    if (parentCommentId) {
+      insertData.parent_comment_id = parentCommentId;
+    }
+
+    let comment: any = null;
+    try {
+      const { data, error: insertErr } = await supabase.from('need_comments').insert(insertData).select().single();
+      if (insertErr) {
+        console.error('[post_comment] Insert error:', insertErr.message);
+        return { success: false, error: 'Failed to post comment: ' + insertErr.message };
+      }
+      comment = data;
+    } catch (e: any) {
+      console.error('[post_comment] Insert exception:', e?.message);
+      return { success: false, error: 'Failed to post comment' };
+    }
+
+    console.log('[post_comment] Comment created:', comment.id, parentCommentId ? `(reply to ${parentCommentId})` : '(top-level)');
+
+    // Notify the need owner (if commenter is not the owner)
+    if (need.user_id && need.user_id !== userId) {
+      try {
+        const prefix = parentComment ? 'replied on' : 'commented on';
+        await supabase.from('notifications').insert({
+          user_id: need.user_id,
+          type: 'comment',
+          title: parentComment ? 'New Reply' : 'New Comment',
+          message: `${userName || 'Someone'} ${prefix} "${need.title}": "${trimmedMessage.substring(0, 80)}${trimmedMessage.length > 80 ? '...' : ''}"`,
+          need_id: needId,
+          avatar: userAvatar || '',
+        });
+      } catch (e: any) {
+        console.log('[post_comment] Notification failed (non-critical):', e?.message);
+      }
+    }
+
+    // If reply, also notify parent comment author
+    if (parentComment && parentComment.user_id && parentComment.user_id !== userId && parentComment.user_id !== need.user_id) {
+      try {
+        await supabase.from('notifications').insert({
+          user_id: parentComment.user_id,
+          type: 'comment_reply',
+          title: 'New Reply',
+          message: `${userName || 'Someone'} replied to your comment on "${need.title}": "${trimmedMessage.substring(0, 80)}${trimmedMessage.length > 80 ? '...' : ''}"`,
+          need_id: needId,
+          avatar: userAvatar || '',
+        });
+      } catch {}
+    }
+
+    // Log activity
+    try {
+      await supabase.from('activity_feed').insert({
+        type: 'comment',
+        user_id: userId,
+        user_name: userName || 'Someone',
+        user_avatar: userAvatar || '',
+        need_id: needId,
+        need_title: need.title,
+        message: parentComment
+          ? `replied to ${parentComment.user_name}'s comment on "${need.title}"`
+          : `commented on "${need.title}"`,
+      });
+    } catch {}
+
+    return {
+      success: true,
+      comment: {
+        id: comment.id,
+        needId: comment.need_id,
+        userId: comment.user_id,
+        userName: comment.user_name,
+        userAvatar: comment.user_avatar,
+        message: comment.message,
+        parentCommentId: comment.parent_comment_id || null,
+        parentUserName: parentComment?.user_name || null,
+        createdAt: comment.created_at,
+      },
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // FETCH COMMENTS (threaded tree structure)
+  // ════════════════════════════════════════════════════════════
+  if (action === 'fetch_comments') {
+    const { needId, limit: reqLimit, offset: reqOffset } = body;
+    if (!needId) return { success: false, error: 'Missing needId' };
+
+    const limit = Math.min(reqLimit || 10, 50);
+    const offset = reqOffset || 0;
+
+    console.log('[fetch_comments] needId:', needId, 'limit:', limit, 'offset:', offset);
+
+    // Fetch top-level comments (no parent) with pagination
+    let topLevelComments: any[] = [];
+    try {
+      const { data, error: fetchErr } = await supabase.from('need_comments')
+        .select('*')
+        .eq('need_id', needId)
+        .is('parent_comment_id', null)
+        .order('created_at', { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (!fetchErr) topLevelComments = data || [];
+    } catch (e: any) {
+      console.log('[fetch_comments] Top-level query error:', e?.message);
+      return { success: true, comments: [], total: 0, totalAll: 0, hasMore: false };
+    }
+
+    // Count top-level comments for pagination
+    let totalTopLevel = 0;
+    try {
+      const { count } = await supabase.from('need_comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('need_id', needId)
+        .is('parent_comment_id', null);
+      totalTopLevel = count || 0;
+    } catch {}
+
+    // Count ALL comments for the badge
+    let totalAll = 0;
+    try {
+      const { count } = await supabase.from('need_comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('need_id', needId);
+      totalAll = count || 0;
+    } catch {}
+
+    const hasMore = (offset + limit) < totalTopLevel;
+
+    // Fetch all replies for the top-level comments
+    let repliesMap: Record<string, any[]> = {};
+    if (topLevelComments.length > 0) {
+      const topIds = topLevelComments.map((c: any) => c.id);
+      try {
+        const { data: allReplies } = await supabase.from('need_comments')
+          .select('*')
+          .eq('need_id', needId)
+          .in('parent_comment_id', topIds)
+          .order('created_at', { ascending: true });
+        for (const r of (allReplies || [])) {
+          if (!repliesMap[r.parent_comment_id]) repliesMap[r.parent_comment_id] = [];
+          repliesMap[r.parent_comment_id].push(r);
+        }
+      } catch (e: any) {
+        console.log('[fetch_comments] Replies query error:', e?.message);
+      }
+    }
+
+    // Build tree
+    const commentsTree = topLevelComments.map((c: any) => {
+      const replies = (repliesMap[c.id] || []).map((r: any) => ({
+        id: r.id,
+        needId: r.need_id,
+        userId: r.user_id,
+        userName: r.user_name,
+        userAvatar: r.user_avatar,
+        message: r.message,
+        parentCommentId: r.parent_comment_id || null,
+        createdAt: r.created_at,
+      }));
+      return {
+        id: c.id,
+        needId: c.need_id,
+        userId: c.user_id,
+        userName: c.user_name,
+        userAvatar: c.user_avatar,
+        message: c.message,
+        parentCommentId: c.parent_comment_id || null,
+        createdAt: c.created_at,
+        replyCount: replies.length,
+        replies,
+      };
+    });
+
+    console.log('[fetch_comments] Returning', commentsTree.length, 'top-level,', totalAll, 'total');
+
+    return {
+      success: true,
+      comments: commentsTree,
+      total: totalTopLevel,
+      totalAll,
+      hasMore,
+    };
+  }
+
+  // ---- FETCH NEED BY ID ----
+  if (action === 'fetch_need_by_id') {
+    const { needId } = body;
+    if (!needId) return { success: false, error: 'Missing needId' };
+
+    try {
+      const { data: need } = await supabase.from('needs').select('*').eq('id', needId).single();
+      if (!need) return { success: false, error: 'Need not found' };
+
+      // Fetch profile
+      let user: any = {};
+      if (need.user_id) {
+        try {
+          const { data } = await supabase.from('profiles')
+            .select('id, name, avatar, city, verified, trust_score, trust_level')
+            .eq('id', need.user_id)
+            .single();
+          if (data) user = data;
+        } catch {}
+      }
+
+      // Fetch contributions
+      let contributions: any[] = [];
+      try {
+        const { data } = await supabase.from('contributions')
+          .select('*')
+          .eq('need_id', needId)
+          .order('created_at', { ascending: false });
+        contributions = data || [];
+      } catch {}
+
+      const userName = (need.user_name && need.user_name.trim()) ? need.user_name : (user.name || 'SpotMe User');
+      const userAvatar = (need.user_avatar && need.user_avatar.trim()) ? need.user_avatar : (user.avatar || '');
+      const userCity = (need.user_city && need.user_city.trim()) ? need.user_city : (user.city || '');
+
+      return {
+        success: true,
+        need: {
+          id: need.id,
+          userId: need.user_id,
+          userName,
+          userAvatar,
+          userCity,
+          userVerified: user.verified || false,
+          userTrustScore: user.trust_score || 0,
+          userTrustLevel: user.trust_level || 'new',
+          title: need.title,
+          message: need.message,
+          category: need.category,
+          goalAmount: Number(need.goal_amount),
+          raisedAmount: Number(need.raised_amount),
+          contributorCount: need.contributor_count || 0,
+          status: need.status,
+          photo: need.photo,
+          verificationStatus: need.verification_status,
+          createdAt: need.created_at,
+          expiresAt: need.expires_at || null,
+          updatedAt: need.updated_at || null,
+          featured: need.featured || false,
+          contributions: (contributions || []).map((c: any) => ({
+            id: c.id,
+            userId: c.user_id,
+            userName: c.user_name,
+            userAvatar: c.user_avatar,
+            amount: Number(c.amount),
+            note: c.note,
+            timestamp: c.created_at,
+          })),
+        },
+      };
+    } catch (e: any) {
+      return { success: false, error: 'Need not found' };
+    }
+  }
+
+  // ---- FETCH IMPACT STATS ----
+  if (action === 'fetch_impact_stats') {
+    try {
+      const { data: needsData } = await supabase.from('needs').select('raised_amount, status, contributor_count');
+      const tr = (needsData || []).reduce((s: number, n: any) => s + Number(n.raised_amount), 0);
+      const ts = (needsData || []).reduce((s: number, n: any) => s + (n.contributor_count || 0), 0);
+      return {
+        success: true,
+        stats: {
+          totalRaised: tr, totalSpots: ts,
+          goalsCompleted: (needsData || []).filter((n: any) => ['Goal Met', 'Payout Requested', 'Paid'].includes(n.status)).length,
+          activeNeeds: (needsData || []).filter((n: any) => n.status === 'Collecting').length,
+          totalNeeds: (needsData || []).length,
+        },
+      };
+    } catch {
+      return { success: true, stats: { totalRaised: 0, totalSpots: 0, goalsCompleted: 0, activeNeeds: 0, totalNeeds: 0 } };
+    }
+  }
+
+  // ---- FETCH PENDING NEEDS ----
+  if (action === 'fetch_pending_needs') {
+    try {
+      const { data: needsData } = await supabase.from('needs')
+        .select('*')
+        .in('verification_status', ['pending', 'flagged', 'info_requested'])
+        .order('created_at', { ascending: true });
+      return {
+        success: true,
+        needs: (needsData || []).map((n: any) => ({
+          id: n.id, userId: n.user_id, userName: n.user_name || 'Unknown', userAvatar: n.user_avatar || '',
+          title: n.title, message: n.message, category: n.category, goalAmount: Number(n.goal_amount),
+          photo: n.photo, verificationStatus: n.verification_status, createdAt: n.created_at,
+        })),
+      };
+    } catch {
+      return { success: true, needs: [] };
+    }
+  }
+
+  // ---- SPREAD THE LOVE ----
+  if (action === 'spread_the_love') {
+    const { allocations, contributorName, contributorId, contributorAvatar, isAnonymous } = body;
+    const dn = isAnonymous ? 'A kind stranger' : (contributorName || 'Anonymous');
+    for (const alloc of (allocations || [])) {
+      await supabase.from('contributions').insert({
+        need_id: alloc.needId,
+        user_id: contributorId || null,
+        user_name: dn,
+        user_avatar: isAnonymous ? '' : (contributorAvatar || ''),
+        amount: Number(alloc.amount),
+        note: 'Spread the Love',
+        is_anonymous: isAnonymous || false,
+      });
+      const { data: need } = await supabase.from('needs')
+        .select('raised_amount, goal_amount, contributor_count')
+        .eq('id', alloc.needId).single();
+      if (need) {
+        const newRaised = Math.min(Number(need.raised_amount) + Number(alloc.amount), Number(need.goal_amount));
+        await supabase.from('needs').update({
+          raised_amount: newRaised,
+          contributor_count: (need.contributor_count || 0) + 1,
+          status: newRaised >= Number(need.goal_amount) ? 'Goal Met' : 'Collecting',
+        }).eq('id', alloc.needId);
+      }
+    }
+    return { success: true };
+  }
+
+  // ---- CHECK NEED LIMIT ----
+  if (action === 'check_need_limit') {
+    const { userId } = body;
+    if (!userId) return { success: false, error: 'Missing userId' };
+    try {
+      const { count } = await supabase.from('needs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('status', 'Collecting');
+      const activeCount = count || 0;
+      return {
+        success: true,
+        activeCount,
+        maxAllowed: 4,
+        canCreate: activeCount < 4,
+        remaining: Math.max(0, 4 - activeCount),
+      };
+    } catch {
+      return { success: true, activeCount: 0, maxAllowed: 4, canCreate: true, remaining: 4 };
+    }
+  }
+
+  // ---- MARK READ (notifications) ----
+  if (action === 'mark_read') {
+    if (body.markAll && body.userId) {
+      await supabase.from('notifications').update({ read: true }).eq('user_id', body.userId);
+    } else if (body.notificationIds?.length) {
+      await supabase.from('notifications').update({ read: true }).in('id', body.notificationIds);
+    }
+    return { success: true };
+  }
+
   console.warn(`[SpotMe API] Unknown process-contribution action: ${action}`);
   return { success: false, error: `Unknown action: ${action}` };
 }
+
 
 
 
@@ -1966,13 +2570,16 @@ export async function handleUploadThankYouVideo(body: any): Promise<any> {
 }
 
 // ============================================================
-// UPLOAD-AVATAR HANDLER (stub)
+// UPLOAD-AVATAR HANDLER (legacy stub — no longer called)
+// Avatar uploads now go directly to Supabase Storage REST API
+// via uploadAvatar() in imageUpload.ts, bypassing this router.
+// This stub remains only as a safety net for any stray calls.
 // ============================================================
 export async function handleUploadAvatar(body: any): Promise<any> {
-  // Avatar upload is handled via Supabase Storage directly
-  // This is just a stub to prevent 500 errors
-  return { success: true, avatarUrl: body.avatarUrl || '' };
+  console.warn('[SpotMe API] handleUploadAvatar stub called — avatar uploads should use direct Storage API in imageUpload.ts');
+  return { success: true, avatarUrl: '' };
 }
+
 
 // ============================================================
 // TRACK-WALKTHROUGH HANDLER (stub)

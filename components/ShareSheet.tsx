@@ -32,7 +32,8 @@ export default function ShareSheet({
   userId,
 }: ShareSheetProps) {
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<'link' | 'qr'>('link');
+  const [copiedCaption, setCopiedCaption] = useState(false);
+  const [activeTab, setActiveTab] = useState<'link' | 'qr' | 'preview'>('link');
 
   const getBaseUrl = () => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -40,7 +41,6 @@ export default function ShareSheet({
     }
     return 'https://spotmeone.com';
   };
-
 
   const getShareUrl = useCallback(() => {
     const base = getBaseUrl();
@@ -60,12 +60,37 @@ export default function ShareSheet({
     return 'SpotMe - Help your neighbors with everyday needs. No tragedy, just life.';
   }, [type, userName, needTitle, needRaised, needGoal]);
 
+  const getSMSText = useCallback(() => {
+    if (needTitle && userName) {
+      const remaining = (needGoal != null && needRaised != null) ? needGoal - needRaised : (needGoal || 0);
+      return `Hey! ${userName} needs help with "${needTitle}" on SpotMe. $${remaining} still needed. Every dollar goes directly to them. Can you help?\n\n${getShareUrl()}`;
+    }
+    return `Check out SpotMe - help your neighbors with everyday needs!\n\n${getShareUrl()}`;
+  }, [needTitle, userName, needGoal, needRaised, getShareUrl]);
+
+  const getEmailSubject = useCallback(() => {
+    if (needTitle && userName) {
+      return `Help ${userName}: ${needTitle} on SpotMe`;
+    }
+    return 'Check out SpotMe - Help Your Neighbors';
+  }, [needTitle, userName]);
+
+  const getEmailBody = useCallback(() => {
+    const url = getShareUrl();
+    if (needTitle && userName) {
+      const remaining = (needGoal != null && needRaised != null) ? needGoal - needRaised : (needGoal || 0);
+      const pct = (needRaised != null && needGoal) ? Math.round((needRaised / needGoal) * 100) : 0;
+      return `Hey!\n\n${userName} needs help with "${needTitle}" on SpotMe.\n\n$${remaining} is still needed (${pct}% funded so far).\n\nEvery dollar goes directly to them — SpotMe takes 0% platform fees.\n\nCheck it out: ${url}\n\n— Sent via SpotMe\nNo tragedy. Just life.`;
+    }
+    return `Hey!\n\nCheck out SpotMe — a community where neighbors help each other with everyday needs.\n\n${url}\n\nNo tragedy. Just life.`;
+  }, [needTitle, userName, needGoal, needRaised, getShareUrl]);
+
   const getTikTokCaption = useCallback(() => {
     if (needTitle && userName) {
       const remaining = (needGoal != null && needRaised != null) ? needGoal - needRaised : (needGoal || 0);
-      return `${userName} needs $${remaining} for "${needTitle}" 💛 Can you help? Link in bio! #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove #NoTragedyJustLife`;
+      return `${userName} needs $${remaining} for "${needTitle}" - Can you help? Link in bio! #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove #NoTragedyJustLife`;
     }
-    return 'Help your neighbors with everyday needs on SpotMe 💛 #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove';
+    return 'Help your neighbors with everyday needs on SpotMe #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove';
   }, [needTitle, userName, needGoal, needRaised]);
 
 
@@ -91,6 +116,24 @@ export default function ShareSheet({
         }
         break;
 
+      case 'copy-message':
+        if (Platform.OS === 'web') {
+          const msg = getSMSText();
+          try {
+            await navigator.clipboard.writeText(msg);
+          } catch {
+            const ta = document.createElement('textarea');
+            ta.value = msg;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+        }
+        break;
+
       case 'copy-caption':
         if (Platform.OS === 'web') {
           const caption = getTikTokCaption();
@@ -104,8 +147,23 @@ export default function ShareSheet({
             document.execCommand('copy');
             document.body.removeChild(ta);
           }
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2500);
+          setCopiedCaption(true);
+          setTimeout(() => setCopiedCaption(false), 2500);
+        }
+        break;
+
+      case 'sms':
+        if (Platform.OS === 'web') {
+          const smsText = getSMSText();
+          window.open(`sms:?body=${encodeURIComponent(smsText)}`, '_self');
+        }
+        break;
+
+      case 'email':
+        if (Platform.OS === 'web') {
+          const subject = getEmailSubject();
+          const body = getEmailBody();
+          window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
         }
         break;
 
@@ -208,24 +266,36 @@ export default function ShareSheet({
                     </View>
                   </View>
                 )}
+                {/* Share URL preview */}
+                <View style={styles.previewUrlRow}>
+                  <MaterialIcons name="link" size={12} color={Colors.textLight} />
+                  <Text style={styles.previewUrl} numberOfLines={1}>{getShareUrl()}</Text>
+                </View>
               </View>
             )}
 
-            {/* Tab Toggle: Link vs QR */}
+            {/* Tab Toggle: Link vs QR vs Preview */}
             <View style={styles.tabRow}>
               <TouchableOpacity
                 style={[styles.tabBtn, activeTab === 'link' && styles.tabBtnActive]}
                 onPress={() => setActiveTab('link')}
               >
-                <MaterialIcons name="link" size={18} color={activeTab === 'link' ? Colors.white : Colors.textSecondary} />
-                <Text style={[styles.tabBtnText, activeTab === 'link' && styles.tabBtnTextActive]}>Share Link</Text>
+                <MaterialIcons name="link" size={16} color={activeTab === 'link' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.tabBtnText, activeTab === 'link' && styles.tabBtnTextActive]}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.tabBtn, activeTab === 'qr' && styles.tabBtnActive]}
                 onPress={() => setActiveTab('qr')}
               >
-                <MaterialIcons name="qr-code-2" size={18} color={activeTab === 'qr' ? Colors.white : Colors.textSecondary} />
+                <MaterialIcons name="qr-code-2" size={16} color={activeTab === 'qr' ? Colors.white : Colors.textSecondary} />
                 <Text style={[styles.tabBtnText, activeTab === 'qr' && styles.tabBtnTextActive]}>QR Code</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabBtn, activeTab === 'preview' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('preview')}
+              >
+                <MaterialIcons name="visibility" size={16} color={activeTab === 'preview' ? Colors.white : Colors.textSecondary} />
+                <Text style={[styles.tabBtnText, activeTab === 'preview' && styles.tabBtnTextActive]}>Preview</Text>
               </TouchableOpacity>
             </View>
 
@@ -243,8 +313,33 @@ export default function ShareSheet({
                   </TouchableOpacity>
                 </View>
 
+                {/* Copy as Message */}
+                <TouchableOpacity style={styles.copyMessageBtn} onPress={() => handleShare('copy-message')} activeOpacity={0.7}>
+                  <MaterialIcons name="content-paste" size={16} color={Colors.primary} />
+                  <Text style={styles.copyMessageText}>Copy as ready-to-send message</Text>
+                </TouchableOpacity>
+
+                {/* Direct Share: SMS & Email */}
+                <Text style={styles.sectionLabel}>Send Directly</Text>
+                <View style={styles.directShareRow}>
+                  <TouchableOpacity style={styles.directShareBtn} onPress={() => handleShare('sms')} activeOpacity={0.7}>
+                    <View style={[styles.directShareIcon, { backgroundColor: '#34C759' }]}>
+                      <MaterialIcons name="sms" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.directShareLabel}>Text Message</Text>
+                    <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.directShareBtn} onPress={() => handleShare('email')} activeOpacity={0.7}>
+                    <View style={[styles.directShareIcon, { backgroundColor: '#5856D6' }]}>
+                      <MaterialIcons name="email" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.directShareLabel}>Email</Text>
+                    <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />
+                  </TouchableOpacity>
+                </View>
+
                 {/* Social Share Grid */}
-                <Text style={styles.sectionLabel}>Share to</Text>
+                <Text style={styles.sectionLabel}>Share on Social</Text>
                 <View style={styles.socialGrid}>
                   <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('tiktok')} activeOpacity={0.7}>
                     <View style={[styles.socialIcon, { backgroundColor: '#000' }]}>
@@ -297,12 +392,14 @@ export default function ShareSheet({
                   </View>
                   <Text style={styles.captionText}>{getTikTokCaption()}</Text>
                   <TouchableOpacity style={styles.captionCopyBtn} onPress={() => handleShare('copy-caption')} activeOpacity={0.7}>
-                    <MaterialIcons name="content-copy" size={16} color={Colors.primary} />
-                    <Text style={styles.captionCopyText}>Copy Caption</Text>
+                    <MaterialIcons name={copiedCaption ? 'check' : 'content-copy'} size={16} color={copiedCaption ? Colors.success : Colors.primary} />
+                    <Text style={[styles.captionCopyText, copiedCaption && { color: Colors.success }]}>
+                      {copiedCaption ? 'Copied!' : 'Copy Caption'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </>
-            ) : (
+            ) : activeTab === 'qr' ? (
               /* QR Code Tab */
               <View style={styles.qrSection}>
                 <View style={styles.qrCard}>
@@ -345,6 +442,62 @@ export default function ShareSheet({
                   <Text style={styles.qrCopyBtnText}>Copy Link Instead</Text>
                 </TouchableOpacity>
               </View>
+            ) : (
+              /* Social Preview Tab */
+              <View style={styles.previewSection}>
+                <Text style={styles.previewSectionTitle}>How your link looks on social media</Text>
+                <Text style={styles.previewSectionSub}>
+                  When someone shares this link on social media, messaging apps, or iMessage, they'll see this preview:
+                </Text>
+
+                {/* OG Preview - Twitter/Facebook style */}
+                <View style={styles.ogPreviewCard}>
+                  {needPhoto && (
+                    <Image source={{ uri: needPhoto }} style={styles.ogPreviewImage} />
+                  )}
+                  <View style={styles.ogPreviewContent}>
+                    <Text style={styles.ogPreviewSite}>spotmeone.com</Text>
+                    <Text style={styles.ogPreviewTitle} numberOfLines={2}>
+                      Help {userName}: {needTitle}
+                    </Text>
+                    <Text style={styles.ogPreviewDesc} numberOfLines={2}>
+                      ${remaining} still needed ({progress}% funded). Can you spot them? Every dollar goes directly to them.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* iMessage Preview */}
+                <Text style={styles.previewTypeLabel}>iMessage / Text Preview</Text>
+                <View style={styles.imessagePreview}>
+                  <View style={styles.imessageBubble}>
+                    <Text style={styles.imessageText}>
+                      Hey! {userName} needs help with "{needTitle}" on SpotMe. ${remaining} still needed. Can you help?
+                    </Text>
+                    <View style={styles.imessageLinkPreview}>
+                      {needPhoto && (
+                        <Image source={{ uri: needPhoto }} style={styles.imessageLinkImage} />
+                      )}
+                      <View style={styles.imessageLinkContent}>
+                        <Text style={styles.imessageLinkDomain}>spotmeone.com</Text>
+                        <Text style={styles.imessageLinkTitle} numberOfLines={1}>Help {userName}: {needTitle}</Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Share info */}
+                <View style={styles.ogInfoBox}>
+                  <MaterialIcons name="info-outline" size={16} color={Colors.secondary} />
+                  <Text style={styles.ogInfoText}>
+                    This link includes Open Graph meta tags so it displays beautifully when shared on Facebook, Twitter, iMessage, Slack, Discord, and more.
+                  </Text>
+                </View>
+
+                <TouchableOpacity style={styles.previewShareBtn} onPress={() => setActiveTab('link')} activeOpacity={0.7}>
+                  <MaterialIcons name="share" size={18} color={Colors.white} />
+                  <Text style={styles.previewShareBtnText}>Share This Link</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* Hashtag Tips */}
@@ -371,10 +524,12 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
     paddingHorizontal: Spacing.xxl,
-    paddingBottom: 30,
-    maxHeight: '90%',
+    paddingBottom: Platform.OS === 'web' ? 44 : 30,
+    maxHeight: '92%',
   },
   handle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginTop: Spacing.md, marginBottom: Spacing.md },
+
+
 
   // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.lg },
@@ -406,12 +561,14 @@ const styles = StyleSheet.create({
   previewProgressRow: { flexDirection: 'row', justifyContent: 'space-between' },
   previewRaised: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.primary },
   previewGoal: { fontSize: FontSize.xs, color: Colors.textLight },
+  previewUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.xs },
+  previewUrl: { fontSize: FontSize.xs, color: Colors.textLight, flex: 1 },
 
   // Tabs
   tabRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg },
-  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs, paddingVertical: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.surfaceAlt },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.surfaceAlt },
   tabBtnActive: { backgroundColor: Colors.primary },
-  tabBtnText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textSecondary },
+  tabBtnText: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textSecondary },
   tabBtnTextActive: { color: Colors.white },
 
   // URL Box
@@ -422,13 +579,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceAlt,
     borderRadius: BorderRadius.lg,
     padding: Spacing.md,
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
   urlText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, fontWeight: '500' },
   copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryLight, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: BorderRadius.sm },
   copyBtnText: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.primary },
+
+  // Copy Message
+  copyMessageBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, paddingVertical: Spacing.sm, marginBottom: Spacing.lg },
+  copyMessageText: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.primary },
+
+  // Direct Share
+  directShareRow: { gap: Spacing.sm, marginBottom: Spacing.xl },
+  directShareBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surfaceAlt, padding: Spacing.md, borderRadius: BorderRadius.lg },
+  directShareIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  directShareLabel: { flex: 1, fontSize: FontSize.md, fontWeight: '600', color: Colors.text },
 
   // Social Grid
   sectionLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.md },
@@ -477,6 +644,44 @@ const styles = StyleSheet.create({
   qrHint: { fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', lineHeight: 20, paddingHorizontal: Spacing.lg },
   qrCopyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, paddingVertical: Spacing.md, paddingHorizontal: Spacing.xxl, borderRadius: BorderRadius.full },
   qrCopyBtnText: { fontSize: FontSize.md, fontWeight: '700', color: Colors.white },
+
+  // Social Preview Tab
+  previewSection: { gap: Spacing.lg, marginBottom: Spacing.lg },
+  previewSectionTitle: { fontSize: FontSize.md, fontWeight: '800', color: Colors.text },
+  previewSectionSub: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
+  previewTypeLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5 },
+
+  // OG Preview Card
+  ogPreviewCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    ...Shadow.sm,
+  },
+  ogPreviewImage: { width: '100%', height: 160 },
+  ogPreviewContent: { padding: Spacing.md, gap: 4 },
+  ogPreviewSite: { fontSize: FontSize.xs, color: Colors.textLight, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.3 },
+  ogPreviewTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text, lineHeight: 20 },
+  ogPreviewDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 18 },
+
+  // iMessage Preview
+  imessagePreview: { alignItems: 'flex-end', paddingHorizontal: Spacing.sm },
+  imessageBubble: { maxWidth: '85%', backgroundColor: '#007AFF', borderRadius: 18, borderBottomRightRadius: 4, overflow: 'hidden' },
+  imessageText: { color: '#FFF', fontSize: FontSize.sm, lineHeight: 20, padding: Spacing.md, paddingBottom: Spacing.sm },
+  imessageLinkPreview: { backgroundColor: Colors.white, borderRadius: BorderRadius.sm, margin: Spacing.xs, overflow: 'hidden' },
+  imessageLinkImage: { width: '100%', height: 100 },
+  imessageLinkContent: { padding: Spacing.sm, gap: 2 },
+  imessageLinkDomain: { fontSize: FontSize.xs, color: Colors.textLight, fontWeight: '500' },
+  imessageLinkTitle: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.text },
+
+  // OG Info
+  ogInfoBox: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, backgroundColor: Colors.secondaryLight, padding: Spacing.md, borderRadius: BorderRadius.lg },
+  ogInfoText: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 18 },
+
+  previewShareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, paddingVertical: Spacing.lg, borderRadius: BorderRadius.xl },
+  previewShareBtnText: { fontSize: FontSize.md, fontWeight: '700', color: Colors.white },
 
   // Hashtags
   hashtagBox: {

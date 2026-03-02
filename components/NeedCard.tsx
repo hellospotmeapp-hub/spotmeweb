@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, memo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+
 import { useRouter } from 'expo-router';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { Need } from '@/app/lib/data';
@@ -8,8 +9,7 @@ import ProgressBar from './ProgressBar';
 import CategoryBadge from './CategoryBadge';
 import StatusBadge from './StatusBadge';
 import ExpirationTimer from './ExpirationTimer';
-
-const DEFAULT_AVATAR = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png';
+import GracefulImage from './GracefulImage';
 
 const NEED_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -46,8 +46,9 @@ function getTimeAgo(dateStr: string): string {
   return `${Math.floor(diffDays / 30)}mo ago`;
 }
 
+// Wrap in React.memo to prevent re-renders when parent state changes but need data hasn't
+function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
 
-export default function NeedCard({ need, onContribute, compact }: NeedCardProps) {
   const router = useRouter();
   const progress = need.raisedAmount / need.goalAmount;
   const expired = isExpiredByTime(need);
@@ -70,9 +71,14 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
   if (compact) {
     return (
       <TouchableOpacity style={styles.compactCard} onPress={handlePress} activeOpacity={0.7}>
-        {need.photo && (
-          <Image source={{ uri: need.photo }} style={styles.compactImage} />
-        )}
+        {need.photo ? (
+          <GracefulImage
+            uri={need.photo}
+            type="photo"
+            style={styles.compactImage}
+            category={need.category}
+          />
+        ) : null}
         <View style={styles.compactContent}>
           <Text style={styles.compactTitle} numberOfLines={1}>{need.title}</Text>
           <ProgressBar progress={progress} height={4} />
@@ -90,7 +96,11 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.userInfo} onPress={() => router.push(`/user/${need.userId}`)} activeOpacity={0.7}>
-          <Image source={{ uri: need.userAvatar || DEFAULT_AVATAR }} style={styles.avatar} />
+          <GracefulImage
+            uri={need.userAvatar}
+            type="avatar"
+            style={styles.avatar}
+          />
           <View>
             <View style={styles.nameRow}>
               <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
@@ -117,9 +127,15 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
       </View>
 
       {/* Photo */}
-      {need.photo && (
+      {need.photo ? (
         <View>
-          <Image source={{ uri: need.photo }} style={[styles.photo, expired && { opacity: 0.7 }]} />
+          <GracefulImage
+            uri={need.photo}
+            type="photo"
+            style={styles.photo}
+            category={need.category}
+            containerStyle={expired ? { opacity: 0.7 } : undefined}
+          />
           {expired && (
             <View style={styles.expiredOverlay}>
               <MaterialIcons name="timer-off" size={16} color={Colors.white} />
@@ -127,7 +143,7 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
             </View>
           )}
         </View>
-      )}
+      ) : null}
 
       {/* Content */}
       <View style={styles.content}>
@@ -233,7 +249,23 @@ export default function NeedCard({ need, onContribute, compact }: NeedCardProps)
   );
 }
 
+const NeedCard = memo(NeedCardInner, (prev, next) => {
+  return (
+    prev.need.id === next.need.id &&
+    prev.need.raisedAmount === next.need.raisedAmount &&
+    prev.need.status === next.need.status &&
+    prev.need.contributorCount === next.need.contributorCount &&
+    prev.compact === next.compact &&
+    prev.onContribute === next.onContribute
+  );
+});
+
+export default NeedCard;
+
+
+
 const styles = StyleSheet.create({
+
   card: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.xl,
@@ -296,13 +328,14 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   shareBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   photo: {
     width: '100%',
     height: 200,
@@ -382,10 +415,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 12,
+    minHeight: 44,
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.primaryLight,
   },
+
   spotButtonText: {
     fontSize: FontSize.sm,
     fontWeight: '700',

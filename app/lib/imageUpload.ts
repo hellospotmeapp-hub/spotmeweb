@@ -15,6 +15,55 @@ const MIN_VALID_BASE64 = 400;
 const MAX_BASE64_SIZE = 500_000;
 
 // ============================================================
+// PROGRESS CALLBACK TYPE
+// ============================================================
+export type UploadProgressCallback = (progress: number, status: 'compressing' | 'uploading' | 'retrying' | 'success' | 'error') => void;
+
+// ============================================================
+// RETRY CONFIGURATION
+// ============================================================
+const MAX_RETRIES = 3;
+const BASE_DELAY_MS = 1000; // 1s, 2s, 4s exponential backoff
+
+async function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================================
+// PHOTO CACHE — in-memory cache for prefetched user photos
+// ============================================================
+const _photoCache = new Map<string, string[]>();
+
+/** Prefetch and cache a user's uploaded need photos */
+export async function prefetchUserPhotos(userId: string, photoUrls: string[]): Promise<number> {
+  if (!userId || !photoUrls.length) return 0;
+  
+  // Store in cache
+  _photoCache.set(userId, photoUrls);
+  
+  // Prefetch images using RN Image.prefetch
+  let loaded = 0;
+  const { Image } = require('react-native');
+  
+  await Promise.allSettled(
+    photoUrls.filter(Boolean).map(async (url) => {
+      try {
+        const ok = await Image.prefetch(url);
+        if (ok) loaded++;
+      } catch {}
+    })
+  );
+  
+  console.log(`[ImageUpload] Prefetched ${loaded}/${photoUrls.length} photos for user ${userId.substring(0, 8)}`);
+  return loaded;
+}
+
+/** Get cached photo URLs for a user */
+export function getCachedUserPhotos(userId: string): string[] {
+  return _photoCache.get(userId) || [];
+}
+
+// ============================================================
 // UNIVERSAL PICKER (avatar - small, square-ish)
 // ============================================================
 export function pickImage(): Promise<ImagePickResult | null> {
@@ -23,11 +72,11 @@ export function pickImage(): Promise<ImagePickResult | null> {
 }
 
 // ============================================================
-// NEED PHOTO PICKER (larger, no crop)
+// NEED PHOTO PICKER (larger, no crop — 1200px, 80% quality)
 // ============================================================
 export function pickNeedPhoto(): Promise<ImagePickResult | null> {
   if (Platform.OS === 'web') return pickNeedPhotoWeb();
-  return pickImageNative({ maxSize: 800, quality: 0.65, allowsEditing: false });
+  return pickImageNative({ maxSize: 1200, quality: 0.8, allowsEditing: false });
 }
 
 // ============================================================
@@ -42,14 +91,11 @@ interface NativePickOptions {
 
 async function pickImageNative(opts: NativePickOptions): Promise<ImagePickResult | null> {
   try {
-    // Dynamic import so web builds don't break if the native module isn't available
     const ImagePicker = await import('expo-image-picker');
 
-    // Request permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       console.warn('[ImageUpload] Media library permission denied');
-      // Try to show an alert
       try {
         const { Alert } = require('react-native');
         Alert.alert(
@@ -83,19 +129,35 @@ async function pickImageNative(opts: NativePickOptions): Promise<ImagePickResult
 
     if (!base64 || base64.length < MIN_VALID_BASE64) {
       console.error(`[ImageUpload] Native picker returned invalid base64 (${base64.length} chars)`);
-      // Try to read the file manually as a fallback
       return null;
     }
 
-    // If the base64 is too large, we need to re-compress
+    // If too large, compress with expo-image-manipulator
     if (base64.length > MAX_BASE64_SIZE) {
-      console.warn(`[ImageUpload] Native image too large (${(base64.length / 1024).toFixed(0)}KB), needs compression`);
-      // On native, we can try picking again with lower quality
-      // For now, return what we have and let uploadNeedPhoto handle re-compression
+      console.warn(`[ImageUpload] Native image too large (${(base64.length / 1024).toFixed(0)}KB), compressing to 1200px/80%`);
+      try {
+        const ImageManipulator = await import('expo-image-manipulator');
+        const manipResult = await ImageManipulator.manipulateAsync(
+          uri,
+          [{ resize: { width: Math.min(width || 1200, opts.maxSize) } }],
+          { compress: opts.quality, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        if (manipResult.base64 && manipResult.base64.length >= MIN_VALID_BASE64) {
+          console.log(`[ImageUpload] Compressed to ${(manipResult.base64.length / 1024).toFixed(0)}KB`);
+          return {
+            uri: manipResult.uri,
+            base64: manipResult.base64,
+            mimeType: 'image/jpeg',
+            width: manipResult.width,
+            height: manipResult.height,
+          };
+        }
+      } catch (compErr) {
+        console.warn('[ImageUpload] Native compression failed:', compErr);
+      }
     }
 
     console.log(`[ImageUpload] Native picked: ${(base64.length / 1024).toFixed(0)}KB, ${width}x${height}`);
-
     return { uri, base64, mimeType, width, height };
   } catch (err: any) {
     console.error('[ImageUpload] Native picker error:', err);
@@ -126,7 +188,7 @@ export async function pickImageFromCamera(): Promise<ImagePickResult | null> {
 
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: false,
-      quality: 0.65,
+      quality: 0.8,
       base64: true,
       exif: false,
     });
@@ -216,7 +278,8 @@ function pickNeedPhotoWeb(): Promise<ImagePickResult | null> {
       const file = e.target?.files?.[0]; cleanup();
       if (!file) { resolve(null); return; }
       try {
-        resolve(await compressImage(file, 800, 0.65));
+        // Compress to 1200px max, 80% JPEG quality
+        resolve(await compressImage(file, 1200, 0.8));
       } catch (err) {
         console.error('[ImageUpload] Need photo compression failed:', err);
         try {
@@ -238,7 +301,7 @@ function pickNeedPhotoWeb(): Promise<ImagePickResult | null> {
 }
 
 // ============================================================
-// WEB IMAGE COMPRESSION
+// WEB IMAGE COMPRESSION — targets 1200px, 80% JPEG
 // ============================================================
 function compressImage(file: File, maxSize: number, quality: number): Promise<ImagePickResult> {
   return new Promise((resolve, reject) => {
@@ -294,10 +357,10 @@ function compressToTarget(img: HTMLImageElement, maxDim: number, startQuality: n
   const attempts = [
     { maxDim, quality: startQuality },
     { maxDim, quality: 0.5 },
-    { maxDim: Math.min(maxDim, 600), quality: 0.5 },
-    { maxDim: 400, quality: 0.4 },
-    { maxDim: 300, quality: 0.3 },
-    { maxDim: 250, quality: 0.25 },
+    { maxDim: Math.min(maxDim, 800), quality: 0.5 },
+    { maxDim: 600, quality: 0.4 },
+    { maxDim: 400, quality: 0.3 },
+    { maxDim: 300, quality: 0.25 },
   ];
 
   for (const attempt of attempts) {
@@ -408,22 +471,58 @@ function recompressBase64(base64: string, maxDim: number, quality: number): Prom
 }
 
 // ============================================================
-// UPLOAD FUNCTIONS
+// UPLOAD FUNCTIONS — with retry logic + progress callback
 // ============================================================
+
+// Helper: convert base64 to Uint8Array
+function base64ToBytes(base64: string): Uint8Array {
+  let clean = base64;
+  if (clean.includes(',')) {
+    clean = clean.split(',').pop() || '';
+  }
+  clean = clean.replace(/^data:image\/\w+;base64,?/, '').trim();
+  
+  const binaryString = atob(clean);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Upload a need photo with retry logic and progress reporting.
+ * - Compresses to 1200px max width, 80% JPEG quality
+ * - Retries up to 3 times with exponential backoff (1s, 2s, 4s)
+ * - Reports progress via callback
+ */
 export async function uploadNeedPhoto(
-  userId: string, imageBase64: string, mimeType: string = 'image/jpeg', needTitle?: string
-): Promise<{ success: boolean; photoUrl?: string; error?: string }> {
+  userId: string,
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  needTitle?: string,
+  onProgress?: UploadProgressCallback
+): Promise<{ success: boolean; photoUrl?: string; error?: string; retryCount?: number }> {
+  const report = (p: number, s: 'compressing' | 'uploading' | 'retrying' | 'success' | 'error') => {
+    onProgress?.(p, s);
+  };
+
   try {
     if (!imageBase64 || imageBase64.length < MIN_VALID_BASE64) {
       console.error(`[ImageUpload] Base64 too short (${imageBase64?.length || 0} chars)`);
+      report(0, 'error');
       return { success: false, error: 'Photo could not be processed. Please try a different image.' };
     }
 
-    // Re-compress if too large (web only - native images from expo-image-picker are already compressed)
-    if (imageBase64.length > 1_200_000 && Platform.OS === 'web') {
-      console.warn(`[ImageUpload] Base64 too large (${(imageBase64.length/1024).toFixed(0)}KB), re-compressing...`);
+    // ---- COMPRESSION PHASE ----
+    report(0.05, 'compressing');
+
+    // Re-compress if too large (web only)
+    if (imageBase64.length > 800_000 && Platform.OS === 'web') {
+      console.warn(`[ImageUpload] Base64 large (${(imageBase64.length/1024).toFixed(0)}KB), re-compressing to 1200px/80%...`);
+      report(0.1, 'compressing');
       try {
-        const recompressed = await recompressBase64(imageBase64, 600, 0.4);
+        const recompressed = await recompressBase64(imageBase64, 1200, 0.8);
         if (recompressed && recompressed.base64.length >= MIN_VALID_BASE64) {
           imageBase64 = recompressed.base64;
           mimeType = 'image/jpeg';
@@ -434,26 +533,123 @@ export async function uploadNeedPhoto(
       }
     }
 
-    if (imageBase64.length > 1_500_000) {
+    report(0.2, 'compressing');
+
+    if (imageBase64.length > 2_000_000) {
+      report(0, 'error');
       return { success: false, error: 'Image is too large even after compression. Please try a smaller photo.' };
     }
 
     if (imageBase64.length < MIN_VALID_BASE64) {
+      report(0, 'error');
       return { success: false, error: 'Photo processing failed. Please try selecting a different image.' };
     }
 
-    console.log(`[ImageUpload] Uploading ${(imageBase64.length/1024).toFixed(0)}KB base64 to server`);
+    // Convert base64 to binary
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(imageBase64);
+    } catch (decodeErr: any) {
+      console.error('[ImageUpload] Base64 decode failed:', decodeErr.message);
+      report(0, 'error');
+      return { success: false, error: 'Failed to process image. Please try a different photo.' };
+    }
 
-    const { data, error } = await supabase.functions.invoke('upload-need-photo', {
-      body: { userId, imageBase64, mimeType, needTitle },
-    });
-    if (error) return { success: false, error: error.message || 'Upload failed' };
-    if (data?.success && data.photoUrl) return { success: true, photoUrl: data.photoUrl };
-    return { success: false, error: data?.error || 'Upload failed' };
+    report(0.25, 'uploading');
+
+    const fileSizeKB = Math.round(bytes.length / 1024);
+    console.log(`[ImageUpload] Uploading ${fileSizeKB}KB to storage`);
+
+    // Determine file extension
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+    const prefix = (userId || 'anon').substring(0, 40);
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    const fileName = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
+    const bucket = 'need-photos';
+
+    const { supabaseUrl, supabaseKey } = await import('./supabaseClient');
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${fileName}`;
+
+    // ---- UPLOAD WITH RETRY + EXPONENTIAL BACKOFF ----
+    let lastError = '';
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        const backoffMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        console.log(`[ImageUpload] Retry ${attempt}/${MAX_RETRIES} after ${backoffMs}ms backoff`);
+        report(0.25, 'retrying');
+        await delay(backoffMs);
+      }
+
+      try {
+        // Simulate progress during upload
+        const progressStart = 0.3;
+        const progressEnd = 0.9;
+        
+        // Start a progress simulation timer
+        let progressValue = progressStart;
+        const progressInterval = setInterval(() => {
+          progressValue = Math.min(progressValue + 0.05, progressEnd);
+          report(progressValue, attempt > 0 ? 'retrying' : 'uploading');
+        }, 200);
+
+        const uploadResp = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'apikey': supabaseKey,
+            'Content-Type': mimeType || 'image/jpeg',
+            'x-upsert': 'true',
+          },
+          body: bytes,
+        });
+
+        clearInterval(progressInterval);
+
+        if (uploadResp.ok) {
+          const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${fileName}`;
+          console.log(`[ImageUpload] SUCCESS (attempt ${attempt + 1}): ${publicUrl}`);
+          report(1, 'success');
+          return { success: true, photoUrl: publicUrl, retryCount: attempt };
+        }
+
+        const errText = await uploadResp.text();
+        console.error(`[ImageUpload] Upload failed (attempt ${attempt + 1}, status ${uploadResp.status}): ${errText}`);
+
+        // Don't retry on 4xx errors (client errors)
+        if (uploadResp.status >= 400 && uploadResp.status < 500 && uploadResp.status !== 408 && uploadResp.status !== 429) {
+          let userError = 'Photo upload failed. Please try again.';
+          try {
+            const errObj = JSON.parse(errText);
+            if (errObj.error === 'Bucket not found') {
+              userError = 'Storage not configured. Please contact support.';
+            } else if (uploadResp.status === 413) {
+              userError = 'Image is too large. Please try a smaller photo.';
+            } else if (uploadResp.status === 403) {
+              userError = 'Upload permission denied. Please try again.';
+            }
+          } catch {}
+          report(0, 'error');
+          return { success: false, error: userError, retryCount: attempt };
+        }
+
+        lastError = `Upload failed (${uploadResp.status})`;
+      } catch (fetchErr: any) {
+        console.error(`[ImageUpload] Fetch error (attempt ${attempt + 1}):`, fetchErr.message);
+        lastError = fetchErr.message || 'Network error';
+      }
+    }
+
+    // All retries exhausted
+    report(0, 'error');
+    return { success: false, error: `Upload failed after ${MAX_RETRIES + 1} attempts: ${lastError}`, retryCount: MAX_RETRIES };
   } catch (err: any) {
+    console.error('[ImageUpload] Upload exception:', err.message);
+    report(0, 'error');
     return { success: false, error: err.message || 'Upload failed' };
   }
 }
+
 
 export async function uploadAvatar(
   userId: string, imageBase64: string, mimeType: string = 'image/jpeg'
@@ -469,30 +665,123 @@ export async function uploadAvatar(
         if (recompressed && recompressed.base64.length >= MIN_VALID_BASE64) {
           imageBase64 = recompressed.base64;
           mimeType = 'image/jpeg';
+          console.log(`[ImageUpload] Avatar re-compressed to ${(imageBase64.length / 1024).toFixed(0)}KB`);
         }
-      } catch {}
+      } catch (e) {
+        console.warn('[ImageUpload] Avatar re-compression failed:', e);
+      }
+    }
+
+    if (imageBase64.length > 2_000_000) {
+      return { success: false, error: 'Avatar image is too large. Please try a smaller photo.' };
     }
 
     if (imageBase64.length < MIN_VALID_BASE64) {
       return { success: false, error: 'Avatar processing failed. Please try a different image.' };
     }
 
-    const { data, error } = await supabase.functions.invoke('upload-avatar', {
-      body: { userId, imageBase64, mimeType },
-    });
-    if (error) return { success: false, error: error.message || 'Upload failed' };
-    if (data?.success && data.avatarUrl) return { success: true, avatarUrl: data.avatarUrl };
-    return { success: false, error: data?.error || 'Upload failed' };
+    console.log(`[ImageUpload] Uploading avatar ${(imageBase64.length / 1024).toFixed(0)}KB to storage directly`);
+
+    let bytes: Uint8Array;
+    try {
+      bytes = base64ToBytes(imageBase64);
+    } catch (decodeErr: any) {
+      console.error('[ImageUpload] Avatar base64 decode failed:', decodeErr.message);
+      return { success: false, error: 'Failed to process avatar. Please try a different photo.' };
+    }
+
+    console.log(`[ImageUpload] Avatar decoded ${bytes.length} bytes, uploading to Supabase storage...`);
+
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+    const prefix = (userId || 'anon').substring(0, 40);
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 10);
+    const fileName = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
+    const bucket = 'avatars';
+
+    const { supabaseUrl, supabaseKey } = await import('./supabaseClient');
+
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${fileName}`;
+
+    // Retry avatar uploads too (2 retries)
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      if (attempt > 0) {
+        await delay(BASE_DELAY_MS * Math.pow(2, attempt - 1));
+      }
+
+      try {
+        const uploadResp = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'apikey': supabaseKey,
+            'Content-Type': mimeType || 'image/jpeg',
+            'x-upsert': 'true',
+          },
+          body: bytes,
+        });
+
+        if (uploadResp.ok) {
+          const avatarUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${fileName}`;
+          console.log(`[ImageUpload] Avatar upload SUCCESS: ${avatarUrl}`);
+
+          // Sync avatar across profile and needs
+          try {
+            const { supabase: db } = await import('./supabase');
+            const { error: profileErr } = await db.from('profiles').update({ avatar: avatarUrl }).eq('id', userId);
+            if (profileErr) console.warn('[ImageUpload] Failed to update profile avatar:', profileErr.message);
+
+            const { data: updatedNeeds, error: needsErr } = await db
+              .from('needs')
+              .update({ user_avatar: avatarUrl })
+              .eq('user_id', userId)
+              .select('id');
+            if (needsErr) console.warn('[ImageUpload] Failed to sync avatar to needs:', needsErr.message);
+            else console.log(`[ImageUpload] Synced avatar to ${updatedNeeds?.length || 0} existing need(s)`);
+
+            try {
+              await db.from('contributions').update({ user_avatar: avatarUrl }).eq('user_id', userId);
+            } catch {}
+          } catch (syncErr: any) {
+            console.warn('[ImageUpload] Avatar sync error (non-fatal):', syncErr.message);
+          }
+
+          return { success: true, avatarUrl };
+        }
+
+        if (uploadResp.status >= 400 && uploadResp.status < 500 && uploadResp.status !== 408 && uploadResp.status !== 429) {
+          const errText = await uploadResp.text();
+          console.error(`[ImageUpload] Avatar upload failed (${uploadResp.status}): ${errText}`);
+          let userError = 'Avatar upload failed. Please try again.';
+          try {
+            const errObj = JSON.parse(errText);
+            if (errObj.error === 'Bucket not found') userError = 'Avatar storage not configured.';
+            else if (uploadResp.status === 413) userError = 'Avatar image is too large.';
+            else if (uploadResp.status === 403) userError = 'Upload permission denied.';
+          } catch {}
+          return { success: false, error: userError };
+        }
+      } catch (fetchErr: any) {
+        console.error(`[ImageUpload] Avatar fetch error (attempt ${attempt + 1}):`, fetchErr.message);
+        if (attempt === 2) {
+          return { success: false, error: fetchErr.message || 'Avatar upload failed' };
+        }
+      }
+    }
+
+    return { success: false, error: 'Avatar upload failed after retries' };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Upload failed' };
+    console.error('[ImageUpload] Avatar upload exception:', err.message);
+    return { success: false, error: err.message || 'Avatar upload failed' };
   }
 }
+
 
 // ============================================================
 // CONVENIENCE: PICK + UPLOAD COMBOS
 // ============================================================
 export async function pickAndUploadNeedPhoto(
-  userId: string, needTitle?: string
+  userId: string, needTitle?: string, onProgress?: UploadProgressCallback
 ): Promise<{ success: boolean; photoUrl?: string; localUri?: string; error?: string }> {
   const picked = await pickNeedPhoto();
   if (!picked) return { success: false, error: 'cancelled' };
@@ -502,7 +791,7 @@ export async function pickAndUploadNeedPhoto(
     return { success: false, localUri: picked.uri, error: 'Photo could not be processed. Please try a different image.' };
   }
   
-  const result = await uploadNeedPhoto(userId, picked.base64, picked.mimeType, needTitle);
+  const result = await uploadNeedPhoto(userId, picked.base64, picked.mimeType, needTitle, onProgress);
   return { ...result, localUri: picked.uri };
 }
 
@@ -522,5 +811,5 @@ export async function pickAndUploadAvatar(
 
 // Legacy export for compatibility
 export function processNeedImage(file: File): Promise<ImagePickResult> {
-  return compressImage(file, 800, 0.7);
+  return compressImage(file, 1200, 0.8);
 }

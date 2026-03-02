@@ -1,18 +1,20 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
 
-function TabIcon({ name, color, focused }: { name: string; color: string; focused: boolean }) {
+// Memoize tab icons to prevent re-renders on every tab switch
+const TabIcon = React.memo(function TabIcon({ name, color, focused }: { name: string; color: string; focused: boolean }) {
   return (
     <View style={[styles.tabIconContainer, focused && styles.tabIconFocused]}>
       <MaterialIcons name={name as any} size={24} color={color} />
     </View>
   );
-}
+});
 
-function NotificationTabIcon({ color, focused }: { color: string; focused: boolean }) {
+const NotificationTabIcon = React.memo(function NotificationTabIcon({ color, focused }: { color: string; focused: boolean }) {
   const { unreadNotificationCount } = useApp();
   return (
     <View style={[styles.tabIconContainer, focused && styles.tabIconFocused]}>
@@ -26,7 +28,15 @@ function NotificationTabIcon({ color, focused }: { color: string; focused: boole
       )}
     </View>
   );
-}
+});
+
+const CreateTabIcon = React.memo(function CreateTabIcon() {
+  return (
+    <View style={styles.createButton}>
+      <MaterialIcons name="add" size={28} color={Colors.white} />
+    </View>
+  );
+});
 
 export default function TabLayout() {
   return (
@@ -38,6 +48,10 @@ export default function TabLayout() {
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
+        // Freeze inactive tabs to prevent background re-renders
+        freezeOnBlur: true,
+        // Disable lazy loading so tabs are pre-rendered for instant switching
+        lazy: false,
         // Disable animations on web for faster transitions
         ...(Platform.OS === 'web' ? { animation: 'none' as any } : {}),
       }}
@@ -47,6 +61,8 @@ export default function TabLayout() {
         options={{
           title: 'Home',
           tabBarIcon: ({ color, focused }) => <TabIcon name="home" color={color} focused={focused} />,
+          // Home tab should never freeze
+          freezeOnBlur: false,
         }}
       />
       <Tabs.Screen
@@ -60,11 +76,7 @@ export default function TabLayout() {
         name="create"
         options={{
           title: 'Post',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={styles.createButton}>
-              <MaterialIcons name="add" size={28} color={Colors.white} />
-            </View>
-          ),
+          tabBarIcon: () => <CreateTabIcon />,
           tabBarLabel: () => null,
         }}
       />

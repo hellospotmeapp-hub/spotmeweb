@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
+import PushNotificationPrompt from '@/components/PushNotificationPrompt';
+
 
 const NOTIFICATION_ICONS: Record<string, { icon: string; color: string; bg: string }> = {
   contribution: { icon: 'favorite', color: Colors.primary, bg: Colors.primaryLight },
@@ -58,10 +60,12 @@ export default function NotificationsScreen() {
   const {
     notifications, markNotificationRead, markAllNotificationsRead, unreadNotificationCount,
     failedPayments, fetchFailedPayments, retryPayment, isLoggedIn,
+    showPushPrompt, pushPromptContribution, dismissPushPrompt, requestPushPermission,
   } = useApp();
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryError, setRetryError] = useState('');
   const [expandedPayment, setExpandedPayment] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -354,8 +358,18 @@ export default function NotificationsScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <PushNotificationPrompt
+        visible={showPushPrompt}
+        onClose={dismissPushPrompt}
+        onEnable={requestPushPermission}
+        contributorName={pushPromptContribution?.contributorName}
+        needTitle={pushPromptContribution?.needTitle}
+        amount={pushPromptContribution?.amount}
+      />
     </View>
   );
+
 }
 
 const styles = StyleSheet.create({

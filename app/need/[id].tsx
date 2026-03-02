@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
 import { useApp } from '@/app/lib/store';
 import { supabase } from '@/app/lib/supabase';
+import { Need } from '@/app/lib/data';
 import ProgressBar from '@/components/ProgressBar';
 import CategoryBadge from '@/components/CategoryBadge';
 import StatusBadge from '@/components/StatusBadge';
@@ -18,6 +19,11 @@ import VideoPlayer from '@/components/VideoPlayer';
 import RecordThankYouModal from '@/components/RecordThankYouModal';
 import ExpirationTimer from '@/components/ExpirationTimer';
 import EditNeedModal from '@/components/EditNeedModal';
+import CommentsSection from '@/components/CommentsSection';
+import GracefulImage from '@/components/GracefulImage';
+import ShareLinkPreview from '@/components/ShareLinkPreview';
+
+
 
 
 function getTimeAgo(dateStr: string): string {
@@ -72,8 +78,47 @@ export default function NeedDetailScreen() {
   const [payoutMessage, setPayoutMessage] = useState('');
   const [payoutSuccess, setPayoutSuccess] = useState(false);
 
-  const need = needs.find(n => n.id === id);
+  // ---- DIRECT FETCH: If need not found in local store, fetch from DB ----
+  const [fetchedNeed, setFetchedNeed] = useState<Need | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchAttempted, setFetchAttempted] = useState(false);
+
+  const localNeed = needs.find(n => n.id === id);
+  const need = localNeed || fetchedNeed;
   const topPadding = Platform.OS === 'web' ? 16 : insets.top;
+
+  // Fetch need from database if not found locally
+  useEffect(() => {
+    if (!id || localNeed || fetchAttempted) return;
+
+    // Don't fetch for local/mock IDs (n1, n2, mr1, etc.)
+    const isLocalId = /^(n\d+|mr\d+|n_|local_)/.test(id);
+    if (isLocalId) {
+      setFetchAttempted(true);
+      return;
+    }
+
+    setIsFetching(true);
+    (async () => {
+      try {
+        console.log('[NeedDetail] Need not in local store, fetching from DB:', id);
+        const { data, error } = await supabase.functions.invoke('process-contribution', {
+          body: { action: 'fetch_need_by_id', needId: id },
+        });
+        if (!error && data?.success && data.need) {
+          console.log('[NeedDetail] Fetched need from DB:', data.need.title);
+          setFetchedNeed(data.need);
+        } else {
+          console.log('[NeedDetail] Need not found in DB:', id);
+        }
+      } catch (err) {
+        console.error('[NeedDetail] Error fetching need:', err);
+      } finally {
+        setIsFetching(false);
+        setFetchAttempted(true);
+      }
+    })();
+  }, [id, localNeed, fetchAttempted]);
 
   // Fetch thank-you video
   useEffect(() => {
@@ -91,19 +136,43 @@ export default function NeedDetailScreen() {
     }
   }, [id]);
 
+  // Loading state — show while fetching from DB
+  if ((isFetching || (!need && !fetchAttempted)) && !need) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+            <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.notFound}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={{ fontSize: FontSize.md, color: Colors.textLight, fontWeight: '600', marginTop: Spacing.md }}>Loading need...</Text>
+        </View>
+      </View>
+    );
+  }
+
   if (!need) {
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+            <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
+          </TouchableOpacity>
+        </View>
         <View style={styles.notFound}>
           <MaterialIcons name="error-outline" size={64} color={Colors.borderLight} />
           <Text style={styles.notFoundTitle}>Need not found</Text>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.notFoundLink}>Go back</Text>
+          <Text style={{ fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', marginTop: 4 }}>This need may have been removed or the link is invalid.</Text>
+          <TouchableOpacity onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+            <Text style={styles.notFoundLink}>Browse all needs</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
+
 
   const progress = need.raisedAmount / need.goalAmount;
   const remaining = need.goalAmount - need.raisedAmount;
@@ -223,9 +292,14 @@ export default function NeedDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {need.photo && (
-          <Image source={{ uri: need.photo }} style={styles.photo} />
-        )}
+        {need.photo ? (
+          <GracefulImage
+            uri={need.photo}
+            type="photo"
+            style={styles.photo}
+            category={need.category}
+          />
+        ) : null}
 
         <View style={styles.content}>
           <View style={styles.badgeRow}>
@@ -236,8 +310,12 @@ export default function NeedDetailScreen() {
           <Text style={styles.title}>{need.title}</Text>
 
           <TouchableOpacity style={styles.userRow} onPress={() => router.push(`/user/${need.userId}`)} activeOpacity={0.7}>
-            <Image source={{ uri: need.userAvatar }} style={styles.avatar} />
-            <View style={styles.userInfo}>
+            <GracefulImage
+              uri={need.userAvatar}
+              type="avatar"
+              style={styles.avatar}
+            />
+            <View style={styles.userInfoBlock}>
               <View style={styles.userNameRow}>
                 <Text style={styles.userName}>{need.userName}</Text>
                 <MaterialIcons name="chevron-right" size={16} color={Colors.textLight} />
@@ -415,7 +493,11 @@ export default function NeedDetailScreen() {
               <VideoPlayer videoUrl={thankYouVideo.video_url} thumbnailUrl={thankYouVideo.thumbnail_url} compact />
               {thankYouVideo.message ? (
                 <View style={styles.thankYouMsgRow}>
-                  <Image source={{ uri: thankYouVideo.user_avatar }} style={styles.thankYouMsgAvatar} />
+                  <GracefulImage
+                    uri={thankYouVideo.user_avatar}
+                    type="avatar"
+                    style={styles.thankYouMsgAvatar}
+                  />
                   <Text style={styles.thankYouMsgText} numberOfLines={3}>"{thankYouVideo.message}"</Text>
                 </View>
               ) : null}
@@ -493,7 +575,11 @@ export default function NeedDetailScreen() {
             <Text style={styles.contributorSectionTitle}>Supporters ({need.contributions.length})</Text>
             {displayedContributions.map(contrib => (
               <View key={contrib.id} style={styles.contributorRow}>
-                <Image source={{ uri: contrib.userAvatar }} style={styles.contributorAvatar} />
+                <GracefulImage
+                  uri={contrib.userAvatar}
+                  type="avatar"
+                  style={styles.contributorAvatar}
+                />
                 <View style={styles.contributorInfo}>
                   <View style={styles.contributorNameRow}>
                     <Text style={styles.contributorName}>{contrib.userName}</Text>
@@ -519,22 +605,52 @@ export default function NeedDetailScreen() {
             )}
           </View>
 
+          {/* Comments / Discussion Section */}
+          <CommentsSection
+            needId={need.id}
+            currentUserId={currentUser.id}
+            currentUserName={currentUser.name}
+            currentUserAvatar={currentUser.avatar}
+            isLoggedIn={isLoggedIn}
+            onSignInPress={() => setShowSignInPrompt(true)}
+          />
+
+          {/* Shareable Link Section */}
           <View style={styles.shareInfoCard}>
             <MaterialIcons name="link" size={18} color={Colors.secondary} />
             <View style={styles.shareInfoContent}>
               <Text style={styles.shareInfoTitle}>Shareable Link</Text>
               <Text style={styles.shareInfoText}>
-                This need has a unique shareable page at /share/{need.id} — perfect for TikTok bio links, Instagram stories, and more.
+                This need has a unique shareable page with social media previews — perfect for TikTok bio links, Instagram stories, texts, and more.
               </Text>
             </View>
           </View>
 
+          {/* Inline Share Link Preview */}
+          <ShareLinkPreview
+            needId={need.id}
+            needTitle={need.title}
+            needMessage={need.message}
+            needPhoto={need.photo}
+            needRaised={need.raisedAmount}
+            needGoal={need.goalAmount}
+            userName={need.userName}
+            userAvatar={need.userAvatar}
+            userCity={need.userCity}
+            category={need.category}
+            contributorCount={need.contributorCount}
+            compact
+            onSharePress={() => setShowShare(true)}
+          />
+
+
           <View style={styles.feeCard}>
-            <MaterialIcons name="info-outline" size={18} color={Colors.success} />
+            <MaterialIcons name="verified-user" size={18} color={Colors.success} />
             <Text style={styles.feeText}>
-              SpotMe takes no platform fee — 100% of your contribution goes directly to the person in need. Stripe processing (2.9% + $0.30) applies. You can leave an optional tip at checkout to support SpotMe.
+              Protected by SpotMe. 0% platform fee — 100% of your contribution goes directly to the person in need. Stripe processing (2.9% + $0.30) applies. You can leave an optional tip at checkout to support SpotMe.
             </Text>
           </View>
+
         </View>
 
         <View style={{ height: 40 }} />
@@ -625,7 +741,7 @@ const styles = StyleSheet.create({
   title: { fontSize: FontSize.xxl, fontWeight: '900', color: Colors.text, lineHeight: 30 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   avatar: { width: 48, height: 48, borderRadius: 24 },
-  userInfo: { flex: 1 },
+  userInfoBlock: { flex: 1 },
   userNameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   userName: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },

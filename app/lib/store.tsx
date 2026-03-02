@@ -37,9 +37,85 @@ const storage = {
 // PENDING NEEDS CACHE — survives page refresh even if server
 // call hasn't completed yet.  Stored in localStorage under
 // 'spotme_pending_needs' as a JSON array of Need objects.
-// ============================================================
 const PENDING_NEEDS_KEY = 'spotme_pending_needs';
 const DELETED_NEEDS_KEY = 'spotme_deleted_needs';
+const PUSH_PROMPT_DISMISSED_KEY = 'spotme_push_prompt_dismissed';
+const UNLINKED_PAYMENTS_KEY = 'spotme_unlinked_payments';
+
+/** Check if push prompt has been dismissed */
+function isPushPromptDismissed(): boolean {
+  if (Platform.OS === 'web') {
+    try {
+      return localStorage.getItem(PUSH_PROMPT_DISMISSED_KEY) === 'true';
+    } catch {}
+  }
+  return memoryStore[PUSH_PROMPT_DISMISSED_KEY] === 'true';
+}
+
+/** Mark push prompt as dismissed */
+function markPushPromptDismissed(): void {
+  memoryStore[PUSH_PROMPT_DISMISSED_KEY] = 'true';
+  if (Platform.OS === 'web') {
+    try { localStorage.setItem(PUSH_PROMPT_DISMISSED_KEY, 'true'); } catch {}
+  }
+}
+
+// ============================================================
+// UNLINKED GUEST PAYMENTS — stores payment IDs made by
+// guest/local users so they can be linked after login/signup.
+// ============================================================
+
+/** Get all unlinked payment IDs from storage */
+function getUnlinkedPaymentIds(): string[] {
+  if (Platform.OS === 'web') {
+    try {
+      const raw = localStorage.getItem(UNLINKED_PAYMENTS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+  }
+  try {
+    const raw = memoryStore[UNLINKED_PAYMENTS_KEY];
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+/** Store a payment ID as unlinked (for guest users) */
+function addUnlinkedPaymentId(paymentId: string): void {
+  if (!paymentId) return;
+  try {
+    const current = getUnlinkedPaymentIds();
+    if (current.includes(paymentId)) return; // Already stored
+    const updated = [...current, paymentId];
+    const json = JSON.stringify(updated);
+    memoryStore[UNLINKED_PAYMENTS_KEY] = json;
+    if (Platform.OS === 'web') {
+      try { localStorage.setItem(UNLINKED_PAYMENTS_KEY, json); } catch {}
+    }
+    console.log(`[SpotMe UnlinkedPayments] Stored unlinked payment: ${paymentId} — ${updated.length} total`);
+  } catch (err) {
+    console.warn('[SpotMe UnlinkedPayments] Failed to store payment ID:', err);
+  }
+}
+
+/** Clear all unlinked payment IDs (called after successful linking) */
+function clearUnlinkedPaymentIds(): void {
+  try {
+    delete memoryStore[UNLINKED_PAYMENTS_KEY];
+    if (Platform.OS === 'web') {
+      try { localStorage.removeItem(UNLINKED_PAYMENTS_KEY); } catch {}
+    }
+    console.log('[SpotMe UnlinkedPayments] Cleared all unlinked payment IDs');
+  } catch {}
+}
+
+
 
 /** Read all pending (unconfirmed) needs from localStorage */
 function getPendingNeeds(): Need[] {
@@ -500,15 +576,28 @@ interface AppState {
   // Email receipt system
   sendContributionReceipt: (params: {
     paymentId?: string; paymentIntentId?: string; amount: number; tipAmount?: number;
-    needTitle?: string; needId?: string; recipientName?: string;
+    needTitle?: string; needId?: string; recipientName?: string; toEmail?: string;
   }) => Promise<{ success: boolean; emailSent?: boolean; receiptNumber?: string; error?: string }>;
   resendContributionReceipt: (params: {
     paymentId?: string; paymentIntentId?: string; amount: number; tipAmount?: number;
-    needTitle?: string; needId?: string; recipientName?: string;
+    needTitle?: string; needId?: string; recipientName?: string; toEmail?: string;
   }) => Promise<{ success: boolean; emailSent?: boolean; receiptNumber?: string; error?: string }>;
+
   fetchEmailReceiptHistory: () => Promise<any[]>;
   emailReceipts: any[];
+  // Push notification prompt
+  showPushPrompt: boolean;
+
+  pushPromptContribution: { contributorName?: string; needTitle?: string; amount?: number } | null;
+  dismissPushPrompt: () => void;
+  requestPushPermission: () => Promise<boolean>;
+  // Guest payment linking
+  storeUnlinkedPayment: (paymentId: string) => void;
+  linkGuestPayments: () => Promise<{ linked: number; error?: string }>;
+  hasUnlinkedPayments: boolean;
 }
+
+
 
 
 
@@ -612,6 +701,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [savedNeeds, setSavedNeeds] = useState<string[]>(getInitialSavedNeeds);
   const [cart, setCart] = useState<CartItem[]>(getInitialCart);
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
+
+  // ---- PUSH NOTIFICATION PROMPT STATE ----
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [pushPromptContribution, setPushPromptContribution] = useState<{ contributorName?: string; needTitle?: string; amount?: number } | null>(null);
+  const prevNotificationCountRef = useRef<number>(0);
+  const pushPromptCheckedRef = useRef(false);
+
+  // ---- GUEST PAYMENT LINKING STATE ----
+  const [hasUnlinkedPayments, setHasUnlinkedPayments] = useState(() => getUnlinkedPaymentIds().length > 0);
+
+
 
   const pollRef = useRef<any>(null);
   const dbReady = useRef(false);
@@ -854,11 +954,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: { action: 'fetch_notifications', userId: currentUser.id },
       }, 8000);
       if (!error && data?.success && data.notifications) {
-        setNotifications(data.notifications);
-        offlineManager.cacheNotifications(data.notifications);
+        const newNotifs: Notification[] = data.notifications;
+        const prevCount = prevNotificationCountRef.current;
+
+        // ---- PUSH PROMPT DETECTION ----
+        // Check if there are new contribution notifications since last poll
+        // that indicate someone contributed to the current user's need
+        if (
+          Platform.OS === 'web' &&
+          isLoggedIn &&
+          !pushEnabled &&
+          !isPushPromptDismissed() &&
+          !pushPromptCheckedRef.current &&
+          newNotifs.length > prevCount
+        ) {
+          // Find new contribution notifications (ones that weren't in the previous set)
+          const newContribNotifs = newNotifs
+            .slice(0, newNotifs.length - prevCount)
+            .filter(n => n.type === 'contribution' || n.type === 'goal_met');
+
+          if (newContribNotifs.length > 0) {
+            const latestContrib = newContribNotifs[0];
+            // Parse contribution details from the notification message
+            const amountMatch = latestContrib.message?.match(/\$(\d+(?:\.\d{2})?)/);
+            const titleMatch = latestContrib.message?.match(/"([^"]+)"/);
+            // Extract contributor name (e.g. "John spotted $5 on ...")
+            const nameMatch = latestContrib.message?.match(/^(\w[\w\s]*?)\s+spotted/);
+
+            setPushPromptContribution({
+              contributorName: nameMatch?.[1] || undefined,
+              needTitle: titleMatch?.[1] || undefined,
+              amount: amountMatch ? parseFloat(amountMatch[1]) : undefined,
+            });
+            setShowPushPrompt(true);
+            pushPromptCheckedRef.current = true; // Only show once per session
+            console.log('[SpotMe PushPrompt] Showing push notification prompt — new contribution detected');
+          }
+        }
+
+        prevNotificationCountRef.current = newNotifs.length;
+        setNotifications(newNotifs);
+        offlineManager.cacheNotifications(newNotifs);
       }
     } catch {}
   };
+
 
   const refreshNeeds = useCallback(async () => {
     await fetchNeeds();
@@ -908,6 +1048,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (data.clientSecret && data.mode === 'stripe') {
+
           if (Platform.OS === 'web') {
             const resolvedTip = data.tipAmount ?? data.applicationFee ?? tipAmount ?? 0;
             const checkoutParams = new URLSearchParams({
@@ -923,8 +1064,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (data.stripeAccount) {
               checkoutParams.set('stripe_account', data.stripeAccount);
             }
+            // Pass metadata for smart payment recovery
+            if (needId) checkoutParams.set('need_id', needId);
+            if (currentUser.id !== 'guest') checkoutParams.set('contributor_id', currentUser.id);
+            if (currentUser.name) checkoutParams.set('contributor_name', currentUser.name);
+            if (currentUser.avatar) checkoutParams.set('contributor_avatar', currentUser.avatar);
+            if (note) checkoutParams.set('note', note);
+            if (isAnonymous) checkoutParams.set('is_anonymous', 'true');
+            checkoutParams.set('type', 'contribution');
             window.location.href = `/payment-checkout?${checkoutParams.toString()}`;
           }
+
 
           return {
             success: true,
@@ -1724,6 +1874,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPayoutStatus(null);
     setCart([]);
     setSavedNeeds([]);
+    setShowPushPrompt(false);
+    setPushPromptContribution(null);
+    pushPromptCheckedRef.current = false;
     clearAllPendingNeeds(); // Clear any pending needs from localStorage on logout
     await storage.remove('spotme_user');
     await storage.remove('spotme_email');
@@ -1734,6 +1887,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 
   const updateProfile = useCallback(async (updates: Partial<User>) => {
+
     setCurrentUser(prev => {
       const updated = { ...prev, ...updates };
       storage.set('spotme_user', JSON.stringify(updated));
@@ -1800,6 +1954,147 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPushEnabled(false);
     } catch {}
   }, [currentUser.id]);
+
+  // ---- PUSH NOTIFICATION PROMPT ACTIONS ----
+  const dismissPushPrompt = useCallback(() => {
+    setShowPushPrompt(false);
+    setPushPromptContribution(null);
+    markPushPromptDismissed();
+    console.log('[SpotMe PushPrompt] Prompt dismissed — will not show again');
+  }, []);
+
+  const requestPushPermission = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'web') return false;
+    try {
+      // Step 1: Check browser support
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+        console.warn('[SpotMe PushPrompt] Browser does not support push notifications');
+        return false;
+      }
+
+      // Step 2: Request notification permission
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        console.log('[SpotMe PushPrompt] Permission denied by user');
+        return false;
+      }
+
+      // Step 3: Get service worker registration WITH TIMEOUT
+      // navigator.serviceWorker.ready can hang forever if no SW is registered
+      let registration: ServiceWorkerRegistration;
+      try {
+        registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Service worker ready timeout')), 8000)
+          ),
+        ]);
+        console.log('[SpotMe PushPrompt] Service worker ready');
+      } catch (swErr) {
+        console.warn('[SpotMe PushPrompt] Service worker not ready (timeout or error):', swErr);
+        // Fallback: permission was granted but SW isn't available
+        // Mark as enabled so user isn't prompted again
+        setPushEnabled(true);
+        setShowPushPrompt(false);
+        setPushPromptContribution(null);
+        markPushPromptDismissed();
+        if (currentUser.id !== 'guest') {
+          try {
+            await supabase.functions.invoke('send-notification', {
+              body: {
+                action: 'subscribe',
+                userId: currentUser.id,
+                subscription: {
+                  endpoint: `local-${currentUser.id}`,
+                  keys: { p256dh: '', auth: '' },
+                },
+              },
+            });
+          } catch {}
+        }
+        return true;
+      }
+
+      // Step 4: Check for existing subscription
+      let subscription = await registration.pushManager.getSubscription();
+
+      // Step 5: Subscribe with VAPID public key if no existing subscription
+      if (!subscription) {
+        const vapidPublicKey = 'BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkOs-qy19yPMis-YcUfhKBKzmOoZALNpOBRmOYlnOs';
+        try {
+          subscription = await Promise.race([
+            registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Push subscribe timeout')), 10000)
+            ),
+          ]);
+          console.log('[SpotMe PushPrompt] Push subscription created successfully');
+        } catch (subErr) {
+          console.warn('[SpotMe PushPrompt] Push subscribe failed, using fallback:', subErr);
+          // Fallback: mark as enabled and save a placeholder subscription
+          setPushEnabled(true);
+          setShowPushPrompt(false);
+          setPushPromptContribution(null);
+          markPushPromptDismissed();
+          if (currentUser.id !== 'guest') {
+            try {
+              await supabase.functions.invoke('send-notification', {
+                body: {
+                  action: 'subscribe',
+                  userId: currentUser.id,
+                  subscription: {
+                    endpoint: `local-${currentUser.id}`,
+                    keys: { p256dh: '', auth: '' },
+                  },
+                },
+              });
+            } catch {}
+          }
+          return true;
+        }
+      }
+
+      // Step 6: Save subscription to database via send-notification subscribe action
+      const subJson = subscription.toJSON();
+      try {
+        await Promise.race([
+          supabase.functions.invoke('send-notification', {
+            body: {
+              action: 'subscribe',
+              userId: currentUser.id !== 'guest' ? currentUser.id : null,
+              subscription: {
+                endpoint: subJson.endpoint,
+                keys: subJson.keys,
+              },
+            },
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Save subscription timeout')), 8000)
+          ),
+        ]);
+        console.log('[SpotMe PushPrompt] Subscription saved to database');
+      } catch (saveErr) {
+        console.warn('[SpotMe PushPrompt] Failed to save subscription to DB (non-fatal):', saveErr);
+        // Non-fatal: subscription was created locally, just couldn't save to server
+      }
+
+      // Step 7: Update state
+      setPushEnabled(true);
+      setShowPushPrompt(false);
+      setPushPromptContribution(null);
+      markPushPromptDismissed();
+
+      return true;
+    } catch (err) {
+      console.error('[SpotMe PushPrompt] requestPushPermission error:', err);
+      return false;
+    }
+  }, [currentUser.id]);
+
+
 
   const getFilteredNeeds = useCallback(() => {
     let filtered = needs.filter(n => !blockedUsers.includes(n.userId));
@@ -2381,51 +2676,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return [];
   }, [currentUser.id]);
 
-  // ---- EMAIL RECEIPT SYSTEM ----
+  // ---- EMAIL RECEIPT SYSTEM (via send-receipt-email edge function) ----
   const [emailReceipts, setEmailReceipts] = useState<any[]>([]);
 
   const sendContributionReceiptInternal = useCallback(async (params: {
     paymentId?: string; paymentIntentId?: string; amount: number; tipAmount?: number;
-    needTitle?: string; needId?: string; recipientName?: string;
+    needTitle?: string; needId?: string; recipientName?: string; toEmail?: string;
   }, isResend = false) => {
     try {
-      // Get user's email
-      let email: string | null = null;
-      try { email = await storage.get('spotme_email'); } catch {}
-      if (!email && currentUser.id !== 'guest') {
-        // Try to get from profile
-        try {
-          const { data: profileData } = await supabase.functions.invoke('process-contribution', {
-            body: { action: 'login', email: '' },
-          });
-          email = profileData?.profile?.email || null;
-        } catch {}
-      }
-
+      // Use explicit toEmail if provided, otherwise fall back to stored email
+      let email: string | null = params.toEmail || null;
       if (!email) {
-        return { success: false, error: 'No email address found. Please update your profile with an email.' };
+        try { email = await storage.get('spotme_email'); } catch {}
       }
 
       const safeAmount = Number(params.amount) || 0;
       const safeTip = Number(params.tipAmount) || 0;
       const totalCharged = safeAmount + safeTip;
 
-      const { data, error } = await supabase.functions.invoke('send-notification', {
+      const { data, error } = await supabase.functions.invoke('send-receipt-email', {
         body: {
-          action: 'send_email_receipt',
-          toEmail: email,
+          action: 'send_receipt',
+          toEmail: email || undefined,
+          contributorId: currentUser.id !== 'guest' ? currentUser.id : undefined,
           contributorName: currentUser.name || 'SpotMe User',
           amount: safeAmount,
           tipAmount: safeTip,
           totalCharged,
           needTitle: params.needTitle || '',
           recipientName: params.recipientName || '',
-          transactionRef: params.paymentIntentId || params.paymentId || '',
-          date: new Date().toISOString(),
           needId: params.needId || '',
           paymentId: params.paymentId || null,
           paymentIntentId: params.paymentIntentId || null,
-          receiptType: 'contribution',
+          transactionRef: params.paymentIntentId || params.paymentId || '',
+          date: new Date().toISOString(),
           isResend,
         },
       });
@@ -2439,6 +2723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         success: true,
         emailSent: data?.emailSent || false,
         receiptNumber: data?.receiptNumber || '',
+        sentTo: data?.sentTo || '',
         error: data?.error || null,
       };
     } catch (err: any) {
@@ -2449,23 +2734,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const sendContributionReceipt = useCallback(async (params: {
     paymentId?: string; paymentIntentId?: string; amount: number; tipAmount?: number;
-    needTitle?: string; needId?: string; recipientName?: string;
+    needTitle?: string; needId?: string; recipientName?: string; toEmail?: string;
   }) => {
     return sendContributionReceiptInternal(params, false);
   }, [sendContributionReceiptInternal]);
 
   const resendContributionReceipt = useCallback(async (params: {
     paymentId?: string; paymentIntentId?: string; amount: number; tipAmount?: number;
-    needTitle?: string; needId?: string; recipientName?: string;
+    needTitle?: string; needId?: string; recipientName?: string; toEmail?: string;
   }) => {
     return sendContributionReceiptInternal(params, true);
   }, [sendContributionReceiptInternal]);
 
+
   const fetchEmailReceiptHistory = useCallback(async () => {
     if (currentUser.id === 'guest') return [];
     try {
-      const { data, error } = await supabase.functions.invoke('send-notification', {
-        body: { action: 'fetch_receipt_history', userId: currentUser.id },
+      let email: string | null = null;
+      try { email = await storage.get('spotme_email'); } catch {}
+
+      const { data, error } = await supabase.functions.invoke('send-receipt-email', {
+        body: {
+          action: 'fetch_history',
+          userId: currentUser.id,
+          email: email || undefined,
+        },
       });
       if (!error && data?.success) {
         setEmailReceipts(data.receipts || []);
@@ -2474,6 +2767,100 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {}
     return [];
   }, [currentUser.id]);
+
+  // ============================================================
+  // GUEST PAYMENT LINKING
+  // ============================================================
+
+  const isRealUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+  const storeUnlinkedPayment = useCallback((paymentId: string) => {
+    if (!paymentId) return;
+    addUnlinkedPaymentId(paymentId);
+    setHasUnlinkedPayments(true);
+    console.log(`[SpotMe GuestLink] Stored unlinked payment: ${paymentId}`);
+  }, []);
+
+  const linkGuestPaymentsInternal = useCallback(async (): Promise<{ linked: number; error?: string }> => {
+    const paymentIds = getUnlinkedPaymentIds();
+    if (paymentIds.length === 0) {
+      return { linked: 0 };
+    }
+
+    // Only link if user has a real UUID (not guest, not local_)
+    if (currentUser.id === 'guest' || currentUser.id.startsWith('local_') || !isRealUUID(currentUser.id)) {
+      console.log(`[SpotMe GuestLink] User ID is not a real UUID yet (${currentUser.id}), skipping link`);
+      return { linked: 0, error: 'User does not have a real UUID yet' };
+    }
+
+    console.log(`[SpotMe GuestLink] Attempting to link ${paymentIds.length} payment(s) to user ${currentUser.id}`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('link-guest-payment', {
+        body: {
+          action: 'link_payments',
+          userId: currentUser.id,
+          paymentIds,
+          userName: currentUser.name,
+          userAvatar: currentUser.avatar,
+        },
+      });
+
+      if (error) {
+        console.error('[SpotMe GuestLink] Edge function error:', error);
+        return { linked: 0, error: error.message || 'Failed to link payments' };
+      }
+
+      if (data?.success) {
+        const linked = data.linked || 0;
+        console.log(`[SpotMe GuestLink] Successfully linked ${linked} payment(s)`);
+
+        // Clear stored payment IDs
+        clearUnlinkedPaymentIds();
+        setHasUnlinkedPayments(false);
+
+        // Update totalGiven if payments were linked
+        if (linked > 0) {
+          // Add a notification
+          setNotifications(prev => [{
+            id: `not_link_${Date.now()}`,
+            type: 'contribution' as const,
+            title: 'Payments Linked',
+            message: data.message || `${linked} previous payment${linked > 1 ? 's have' : ' has'} been linked to your account.`,
+            timestamp: new Date().toISOString(),
+            read: false,
+          }, ...prev]);
+        }
+
+        return { linked };
+      }
+
+      return { linked: 0, error: data?.error || 'Unknown error' };
+    } catch (err: any) {
+      console.error('[SpotMe GuestLink] Exception:', err);
+      return { linked: 0, error: err.message || 'Failed to link payments' };
+    }
+  }, [currentUser.id, currentUser.name, currentUser.avatar]);
+
+  // ---- AUTO-LINK: When user transitions to a real UUID, link any stored payments ----
+  const linkAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!isLoggedIn) {
+      linkAttemptedRef.current = false;
+      return;
+    }
+    if (currentUser.id === 'guest' || currentUser.id.startsWith('local_')) return;
+    if (!isRealUUID(currentUser.id)) return;
+    if (linkAttemptedRef.current) return;
+
+    const paymentIds = getUnlinkedPaymentIds();
+    if (paymentIds.length === 0) return;
+
+    linkAttemptedRef.current = true;
+    console.log(`[SpotMe GuestLink] User now has real UUID ${currentUser.id}, auto-linking ${paymentIds.length} payment(s)`);
+    linkGuestPaymentsInternal();
+  }, [isLoggedIn, currentUser.id, linkGuestPaymentsInternal]);
+
 
   return (
     <AppContext.Provider value={{
@@ -2496,11 +2883,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       autoPayoutEnabled, setAutoPayoutEnabled, processAutoPayouts,
       processRefund, fetchRefundablePayments, refundablePayments,
       sendContributionReceipt, resendContributionReceipt, fetchEmailReceiptHistory, emailReceipts,
+      showPushPrompt, pushPromptContribution, dismissPushPrompt, requestPushPermission,
+      storeUnlinkedPayment, linkGuestPayments: linkGuestPaymentsInternal, hasUnlinkedPayments,
     }}>
+
       {children}
     </AppContext.Provider>
   );
 }
+
 
 
 
