@@ -31,6 +31,8 @@ export default function CreateScreen() {
   const [isCustomGoal, setIsCustomGoal] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+
 
   // Photo upload state
   const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
@@ -49,11 +51,12 @@ export default function CreateScreen() {
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [rawPickedUri, setRawPickedUri] = useState<string>('');
   const [rawPickedBase64, setRawPickedBase64] = useState<string>('');
-
   // Animation refs
   const bannerAnim = useRef(new Animated.Value(0)).current;
   const bannerShown = useRef(false);
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
 
   // Slide transition animation
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -423,8 +426,10 @@ export default function CreateScreen() {
     } else {
       hapticLight();
     }
+    setShowValidation(false);
     setStep(newStep);
   };
+
 
   const handleReset = () => {
     if (autoAdvanceTimer.current) {
@@ -441,7 +446,8 @@ export default function CreateScreen() {
     setIsCustomGoal(false);
     setSubmitted(false);
     setShowConfetti(false);
-    setPhotoLocalUri(null);
+    setShowValidation(false);
+
     setPhotoBase64('');
     setPhotoUrl(null);
     setPhotoError(null);
@@ -514,7 +520,108 @@ export default function CreateScreen() {
     );
   }
 
+  // ---- SIGN IN PROMPT: Show when user is not logged in ----
+  if (!isLoggedIn) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <ScrollView
+          contentContainerStyle={styles.signInPromptScroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Icon */}
+          <View style={styles.signInIconGlow}>
+            <View style={styles.signInIconCircle}>
+              <MaterialIcons name="edit-note" size={40} color={Colors.primary} />
+            </View>
+          </View>
+
+          {/* Title */}
+          <Text style={styles.signInTitle}>Sign in to post a need</Text>
+
+          {/* Subtitle */}
+          <Text style={styles.signInSubtitle}>
+            Create an account or sign in to share your need with the SpotMe community. It only takes a moment.
+          </Text>
+
+          {/* Benefits */}
+          <View style={styles.signInBenefits}>
+            <View style={styles.signInBenefitRow}>
+              <View style={[styles.signInBenefitIcon, { backgroundColor: Colors.primaryLight }]}>
+                <MaterialIcons name="campaign" size={18} color={Colors.primary} />
+              </View>
+              <View style={styles.signInBenefitTextWrap}>
+                <Text style={styles.signInBenefitTitle}>Share your story</Text>
+                <Text style={styles.signInBenefitDesc}>Post a need and let others know how they can help</Text>
+              </View>
+            </View>
+            <View style={styles.signInBenefitRow}>
+              <View style={[styles.signInBenefitIcon, { backgroundColor: Colors.secondaryLight }]}>
+                <MaterialIcons name="people" size={18} color={Colors.secondary} />
+              </View>
+              <View style={styles.signInBenefitTextWrap}>
+                <Text style={styles.signInBenefitTitle}>Get spotted by the community</Text>
+                <Text style={styles.signInBenefitDesc}>Real people helping real people, every day</Text>
+              </View>
+            </View>
+            <View style={styles.signInBenefitRow}>
+              <View style={[styles.signInBenefitIcon, { backgroundColor: Colors.accentLight }]}>
+                <MaterialIcons name="account-balance-wallet" size={18} color={Colors.accent} />
+              </View>
+              <View style={styles.signInBenefitTextWrap}>
+                <Text style={styles.signInBenefitTitle}>Receive funds directly</Text>
+                <Text style={styles.signInBenefitDesc}>100% of contributions go to you — no platform fees</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Sign In Button */}
+          <TouchableOpacity
+            style={styles.signInBtn}
+            onPress={() => router.push('/auth')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="login" size={20} color={Colors.white} />
+            <Text style={styles.signInBtnText}>Sign In</Text>
+          </TouchableOpacity>
+
+          {/* Create Account Button */}
+          <TouchableOpacity
+            style={styles.signUpBtn}
+            onPress={() => router.push('/auth')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="person-add" size={20} color={Colors.primary} />
+            <Text style={styles.signUpBtnText}>Create Account</Text>
+          </TouchableOpacity>
+
+          {/* Browse Needs Link */}
+          <TouchableOpacity
+            style={styles.browseLinkBtn}
+            onPress={() => {
+              try {
+                router.navigate('/(tabs)/' as any);
+              } catch {
+                // fallback
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="explore" size={16} color={Colors.textSecondary} />
+            <Text style={styles.browseLinkText}>Browse needs instead</Text>
+          </TouchableOpacity>
+
+          {/* Security Footer */}
+          <View style={styles.signInSecurityFooter}>
+            <MaterialIcons name="lock" size={12} color={Colors.textLight} />
+            <Text style={styles.signInSecurityText}>Your info is safe. We never share your data.</Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
   const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+
   const wrapperProps = Platform.OS === 'web' ? {} : { behavior: 'padding' as const };
 
   return (
@@ -556,7 +663,8 @@ export default function CreateScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
+
         <Animated.View style={{
           opacity: contentOpacity,
           transform: [{ translateX: contentTranslateX }],
@@ -604,30 +712,57 @@ export default function CreateScreen() {
             <View style={styles.stepContent}>
               <Text style={styles.stepTitle}>Tell your story</Text>
               <Text style={styles.stepDescription}>Be honest and specific. People connect with real stories.</Text>
-
-              <Text style={styles.inputLabel}>Title</Text>
+              <View style={styles.photoLabelRow}>
+                <Text style={[styles.inputLabel, showValidation && title.trim().length < 3 && { color: Colors.error }]}>
+                  Title {showValidation && title.trim().length < 3 ? '(required)' : ''}
+                </Text>
+              </View>
               <TextInput
-                style={styles.textInput}
+                style={[
+                  styles.textInput,
+                  showValidation && title.trim().length < 3 && { borderColor: Colors.error, borderWidth: 2 },
+                ]}
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={(t) => { setTitle(t); if (showValidation) setShowValidation(false); }}
                 placeholder="e.g., Electric bill is due Friday"
                 placeholderTextColor={Colors.textLight}
                 maxLength={60}
               />
-              <Text style={styles.charCount}>{title.length}/60</Text>
+              {showValidation && title.trim().length < 3 ? (
+                <Text style={{ fontSize: FontSize.xs, color: Colors.error, marginTop: Spacing.xs, marginBottom: Spacing.xl }}>
+                  Title must be at least 3 characters
+                </Text>
+              ) : (
+                <Text style={styles.charCount}>{title.length}/60</Text>
+              )}
 
-              <Text style={styles.inputLabel}>Your message</Text>
+              <View style={styles.photoLabelRow}>
+                <Text style={[styles.inputLabel, showValidation && message.trim().length < 10 && { color: Colors.error }]}>
+                  Your message {showValidation && message.trim().length < 10 ? '(required)' : ''}
+                </Text>
+              </View>
               <TextInput
-                style={[styles.textInput, styles.textArea]}
+                style={[
+                  styles.textInput,
+                  styles.textArea,
+                  showValidation && message.trim().length < 10 && { borderColor: Colors.error, borderWidth: 2 },
+                ]}
                 value={message}
-                onChangeText={setMessage}
+                onChangeText={(m) => { setMessage(m); if (showValidation) setShowValidation(false); }}
                 placeholder="Explain your situation in a sentence or two. What happened and how will this help?"
                 placeholderTextColor={Colors.textLight}
                 multiline
                 maxLength={200}
                 textAlignVertical="top"
               />
-              <Text style={styles.charCount}>{message.length}/200</Text>
+              {showValidation && message.trim().length < 10 ? (
+                <Text style={{ fontSize: FontSize.xs, color: Colors.error, marginTop: Spacing.xs, marginBottom: Spacing.xl }}>
+                  Message must be at least 10 characters
+                </Text>
+              ) : (
+                <Text style={styles.charCount}>{message.length}/200</Text>
+              )}
+
 
               {/* Photo Upload Section */}
               <View style={styles.photoSection}>
@@ -931,12 +1066,25 @@ export default function CreateScreen() {
         <TouchableOpacity
           style={[
             styles.nextButton,
-            !canProceed() && styles.nextButtonDisabled,
+            !canProceed() && !showValidation && styles.nextButtonDisabled,
             step === 1 && { flex: 1 },
             step === 3 && isUploadingPhoto && styles.nextButtonDisabled,
           ]}
-          onPress={() => step < 3 ? handleStepChange(step + 1) : handleSubmit()}
-          disabled={!canProceed() || (step === 3 && isUploadingPhoto)}
+          onPress={() => {
+            if (step === 3 && isUploadingPhoto) return;
+            if (!canProceed()) {
+              // Show validation errors and scroll to top so user sees what's missing
+              setShowValidation(true);
+              hapticLight();
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
+              return;
+            }
+            if (step < 3) {
+              handleStepChange(step + 1);
+            } else {
+              handleSubmit();
+            }
+          }}
           activeOpacity={0.8}
         >
           {step === 3 && isUploadingPhoto ? (
@@ -953,6 +1101,7 @@ export default function CreateScreen() {
             </>
           )}
         </TouchableOpacity>
+
       </View>
 
       {/* Image Editor Modal */}
@@ -1617,5 +1766,142 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600' as const,
     color: Colors.primary,
+  },
+
+  // ---- Sign In Prompt Styles ----
+  signInPromptScroll: {
+    flexGrow: 1,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: Spacing.xxl,
+    paddingVertical: Spacing.xxxl,
+    ...(Platform.OS === 'web' ? { paddingTop: 40 } : {}),
+  },
+  signInIconGlow: {
+    marginBottom: Spacing.xl,
+  },
+  signInIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.primaryLight,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    borderWidth: 3,
+    borderColor: Colors.primary + '25',
+  },
+  signInTitle: {
+    fontSize: FontSize.xxl,
+    fontWeight: '900' as const,
+    color: Colors.text,
+    textAlign: 'center' as const,
+    marginBottom: Spacing.sm,
+  },
+  signInSubtitle: {
+    fontSize: FontSize.md,
+    color: Colors.textSecondary,
+    textAlign: 'center' as const,
+    lineHeight: 22,
+    marginBottom: Spacing.xxl,
+    paddingHorizontal: Spacing.md,
+    maxWidth: 340,
+  },
+  signInBenefits: {
+    width: '100%',
+    maxWidth: 400,
+    gap: Spacing.lg,
+    marginBottom: Spacing.xxl,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.xl,
+  },
+  signInBenefitRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: Spacing.md,
+  },
+  signInBenefitIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginTop: 2,
+  },
+  signInBenefitTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  signInBenefitTitle: {
+    fontSize: FontSize.md,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  signInBenefitDesc: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+  },
+  signInBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: Spacing.sm,
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    width: '100%',
+    maxWidth: 400,
+    marginBottom: Spacing.sm,
+    minHeight: 52,
+    ...Shadow.md,
+  },
+  signInBtnText: {
+    fontSize: FontSize.lg,
+    fontWeight: '800' as const,
+    color: Colors.white,
+  },
+  signUpBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: Spacing.sm,
+    backgroundColor: Colors.primaryLight,
+    paddingVertical: Spacing.lg,
+    borderRadius: BorderRadius.xl,
+    width: '100%',
+    maxWidth: 400,
+    marginBottom: Spacing.lg,
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  signUpBtnText: {
+    fontSize: FontSize.lg,
+    fontWeight: '700' as const,
+    color: Colors.primary,
+  },
+  browseLinkBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.xs,
+    paddingVertical: Spacing.md,
+    marginBottom: Spacing.lg,
+    minHeight: 44,
+  },
+  browseLinkText: {
+    fontSize: FontSize.md,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
+  },
+  signInSecurityFooter: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  signInSecurityText: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
   },
 });
