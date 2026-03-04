@@ -1,0 +1,42 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "XXXXXXXXXX.com.spotmeone.app"
+        ],
+        "components": [
+          {
+            "/": "/share/*",
+            "comment": "Share landing pages open in app"
+          },
+          {
+            "/": "/need/*",
+            "comment": "Need detail pages open in app"
+          },
+          {
+            "/": "/user/*",
+            "comment": "User profile pages open in app"
+          },
+          {
+            "/": "/thankyou/*",
+            "comment": "Thank you video pages open in app"
+          },
+          {
+            "/": "/payment-success",
+            "comment": "Payment success callback opens in app"
+          },
+          {
+            "/": "/payment-checkout",
+            "comment": "Payment checkout opens in app"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "XXXXXXXXXX.com.spotmeone.app"
+    ]
+  }
+}
