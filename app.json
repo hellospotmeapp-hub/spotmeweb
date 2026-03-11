@@ -20,14 +20,18 @@
         ],
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": []
-      }
+      },
+      "bundleIdentifier": "com.thespotmeapp.supportcontributecommunitycom.thespotmeapp.supportcontributecommunity"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -58,6 +62,12 @@
     },
     "runtimeVersion": {
       "policy": "sdkVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "56c34e83-706e-4b0a-a3a6-eae5e8d22f97"
+      }
     }
   }
 }
