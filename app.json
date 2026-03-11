@@ -9,6 +9,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
+     "bundleIdentifier": "com.spotmeone.app",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "SpotMe needs camera access to take photos for your needs and profile.",
