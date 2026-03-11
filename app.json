@@ -4,12 +4,11 @@
     "slug": "support-contribute-community",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "support-contribute-community",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "ios": {
-     "bundleIdentifier": "com.thespotmeapp.community",
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "SpotMe needs camera access to take photos for your needs and profile.",
@@ -21,32 +20,26 @@
         ],
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": []
-      },
-      
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.RECORD_AUDIO"
-      ],
-      "package": "com.spotmeone.spotme"
+      "edgeToEdgeEnabled": true
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
+          "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
@@ -65,13 +58,6 @@
     },
     "runtimeVersion": {
       "policy": "sdkVersion"
-    },
-    "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "56c34e83-706e-4b0a-a3a6-eae5e8d22f97"
-      }
-    },
-    "owner": "thespotmeapp"
+    }
   }
 }
