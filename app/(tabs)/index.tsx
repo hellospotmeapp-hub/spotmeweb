@@ -325,12 +325,12 @@ const [showWaitlist, setShowWaitlist] = useState(false);
       <button onClick={() => setShowWaitlist(false)} style={{ float: 'right', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>✕</button>
       <div style={{ textAlign: 'center', paddingTop: 8 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#E8694A', marginBottom: 8 }}>SpotMe Waitlist 🧡</div>
-        <div style={{ fontSize: 14, color: '#666', marginBottom: 20, lineHeight: 1.5 }}>Be the first to know when SpotMe goes live. No tragedy required. Just community.</div>
-        <input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} /
-      </div>
-      <button onClick={() => { const el = document.getElementById('waitlist-email') as HTMLInputElement; if(el && el.value) { window.open(`https://magic.beehiiv.com/v1/d9161fa1-6402-47d7-b3b6-b82d93d5259f?email=${el.value}`, '_blank'); setShowWaitlist(false); }}} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button>    </div>
-  </div>
-)})})}      </ScrollView>
+<input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} />
+<button onClick={() => { const el = document.getElementById('waitlist-email') as HTMLInputElement; if(el && el.value) { window.open(`https://magic.beehiiv.com/v1/d9161fa1-6402-47d7-b3b6-b82d93d5259f?email=${el.value}`, '_blank'); setShowWaitlist(false); }}} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button><div style={{ fontSize: 14, color: '#666', marginBottom: 20, lineHeight: 1.5 }}>Be the first to know when SpotMe goes live. No tragedy required. Just community.</div>
+</div>
+</div>
+}}
+      </ScrollView>
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
       <SignInPromptModal visible={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} userName={signInPromptNeed?.userName} userAvatar={signInPromptNeed?.userAvatar} needTitle={signInPromptNeed?.title} remaining={signInPromptNeed?.remaining} />
