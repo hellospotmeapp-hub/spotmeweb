@@ -33,8 +33,16 @@ function hasStoredAuth(): boolean {
   } catch {}
   return false;
 }
-
-function HomeScreenContent() {
+const MOCK_NEEDS = [
+  { id: 'mock1', title: 'Gas to get to work this week', message: "My check doesn't hit until Friday and I'm running on empty literally 😅", userName: 'Aisha Williams', userAvatar: '', goalAmount: 40, raisedAmount: 28, contributorCount: 6, category: 'Transportation', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Atlanta, GA' },
+  { id: 'mock2', title: 'Phone bill suspended — need it for work', message: 'Just need $35 to get it back on until payday next Thursday.', userName: 'Marcus J.', userAvatar: '', goalAmount: 35, raisedAmount: 15, contributorCount: 3, category: 'Bills', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Houston, TX' },
+  { id: 'mock3', title: 'Groceries for me and my two kids', message: 'Single mama of two — fridge is pretty bare right now. Just need enough for basics 🙏', userName: 'Tamara Reed', userAvatar: '', goalAmount: 60, raisedAmount: 42, contributorCount: 9, category: 'Groceries', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Charlotte, NC' },
+  { id: 'mock4', title: 'Bus pass to start my new job Monday', message: 'Just need $20 for a weekly pass so I can actually get there on time.', userName: 'DeShawn P.', userAvatar: '', goalAmount: 20, raisedAmount: 20, contributorCount: 5, category: 'Transportation', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Memphis, TN' },
+  { id: 'mock5', title: 'Birthday hair appointment ✨', message: 'Birthday is Saturday and I just want to get my hair done. Sometimes a girl just needs a treat yourself moment.', userName: 'Latoya M.', userAvatar: '', goalAmount: 75, raisedAmount: 55, contributorCount: 11, category: 'Self Care', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Birmingham, AL' },
+  { id: 'mock6', title: 'Light bill past due — kids at home', message: "It'll be cut off tomorrow. I've got kids at home — just need a little help to keep the lights on.", userName: 'Jasmine K.', userAvatar: '', goalAmount: 48, raisedAmount: 30, contributorCount: 7, category: 'Bills', status: 'Collecting', createdAt: new Date().toISOString(), location: 'New Orleans, LA' },
+  { id: 'mock7', title: 'Lunch on a double shift 😮‍💨', message: "Working a double and forgot lunch. Been on my feet since 6am and still got 6 hours to go.", userName: 'RJ Thomas', userAvatar: '', goalAmount: 12, raisedAmount: 8, contributorCount: 2, category: 'Food', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Jackson, MS' },
+  { id: 'mock8', title: "Backpack for my daughter's picture day", message: 'Hers broke and school picture day is Friday. Just $25 would mean the world to both of us 🖤', userName: 'Nia Brooks', userAvatar: '', goalAmount: 25, raisedAmount: 10, contributorCount: 4, category: 'Kids', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Nashville, TN' },
+];function HomeScreenContent() {
   // ALL hooks must be called unconditionally at the top - no early returns before hooks!
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -283,18 +291,23 @@ function HomeScreenContent() {
           </View>
         </View>
 
-        {filteredNeeds.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialIcons name="search-off" size={48} color={Colors.textLight} />
-            <Text style={styles.emptyTitle}>No needs in this category</Text>
-            <Text style={styles.emptySubtitle}>Try browsing a different category</Text>
-          </View>
-        ) : (
-          filteredNeeds.map((need: any) => (
-            <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
-          ))
-        )}
-
+    {filteredNeeds.length === 0 ? (
+  MOCK_NEEDS.filter(n => selectedCategory === 'All' || n.category === selectedCategory).length === 0 ? (
+    <View style={styles.emptyState}>
+      <MaterialIcons name="search-off" size={48} color={Colors.textLight} />
+      <Text style={styles.emptyTitle}>No needs in this category</Text>
+      <Text style={styles.emptySubtitle}>Try browsing a different category</Text>
+    </View>
+  ) : (
+    MOCK_NEEDS.filter(n => selectedCategory === 'All' || n.category === selectedCategory).map((need) => (
+      <NeedCard key={need.id} need={need} onContribute={() => {}} />
+    ))
+  )
+) : (
+  filteredNeeds.map((need: any) => (
+    <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+  ))
+)}
         {Platform.OS === 'web' && (
           <View style={styles.webFooter}>
             <Text style={styles.webFooterLogo}>SpotMe</Text>
