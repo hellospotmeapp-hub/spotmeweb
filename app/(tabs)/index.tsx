@@ -324,7 +324,7 @@ const [showWaitlist, setShowWaitlist] = useState(false);
     <div style={{ position: 'relative', backgroundColor: 'white', borderRadius: 20, padding: 16, width: '100%', maxWidth: 340, overflow: 'hidden' }}>
       <button onClick={() => setShowWaitlist(false)} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888', zIndex: 1 }}>✕</button>
       <script async src="https://subscribe-forms.beehiiv.com/embed.js"></script>
-      <div style={{ transform: 'scale(0.45)', transformOrigin: 'top left', width: '167%', height: 150, overflow: 'hidden' }}>
+      <div style={{ transform: 'scale(0.38)', transformOrigin: 'top left', width: '220%', height: 130, overflow: 'hidden' }}>
         <iframe src="https://subscribe-forms.beehiiv.com/af274e85-f64c-4af9-bb3e-28ada13a4fa6" className="beehiiv-embed" frameBorder="0" scrolling="no" style={{ width: '560px', height: 343, border: 'none', background: 'transparent' }}></iframe>
       </div>
     </div>
