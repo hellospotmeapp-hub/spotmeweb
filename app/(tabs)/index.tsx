@@ -1,5 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, RefreshControl, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, RefreshControl, Platform, ActivityIndicator } from 'react-native';
 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -60,10 +59,9 @@ const MOCK_NEEDS = [
   useEffect(() => {
     // Reduced from 500ms to 50ms - auth state settles almost instantly
     const timer = setTimeout(() => setAuthSettled(true), 50);
-    return () => clearTimeout(timer);
+    const waitlistTimer = setTimeout(() => setShowWaitlist(true), 4000);return () => { clearTimeout(timer); clearTimeout(waitlistTimer); };
   }, []);
-
-
+const [showWaitlist, setShowWaitlist] = useState(false);
   // Extract values safely - BEFORE any conditional returns
   const needs = Array.isArray(appContext.needs) ? appContext.needs : [];
   const contribute = appContext.contribute;
@@ -321,7 +319,15 @@ const MOCK_NEEDS = [
           </View>
         )}
         <View style={{ height: 40 }} />
-      </ScrollView>
+        {showWaitlist && Platform.OS === 'web' && (
+  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ position: 'relative', backgroundColor: 'white', borderRadius: 20, padding: 24, maxWidth: 600, width: '90%' }}>
+      <button onClick={() => setShowWaitlist(false)} style={{ position: 'absolute', top: 12, right: 12, background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#888' }}>✕</button>
+      <script async src="https://subscribe-forms.beehiiv.com/embed.js"></script>
+      <iframe src="https://subscribe-forms.beehiiv.com/af274e85-f64c-4af9-bb3e-28ada13a4fa6" className="beehiiv-embed" frameBorder="0" scrolling="no" style={{ width: '100%', height: 343, border: 'none', background: 'transparent' }}></iframe>
+    </div>
+  </div>
+)}      </ScrollView>
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
       <SignInPromptModal visible={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} userName={signInPromptNeed?.userName} userAvatar={signInPromptNeed?.userAvatar} needTitle={signInPromptNeed?.title} remaining={signInPromptNeed?.remaining} />
