@@ -319,18 +319,20 @@ const [showWaitlist, setShowWaitlist] = useState(false);
           </View>
         )}
         <View style={{ height: 40 }} />
-     {showWaitlist && Platform.OS === 'web' && (
+ {showWaitlist && Platform.OS === 'web' && (
   <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
     <div style={{ backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 340 }}>
       <button onClick={() => setShowWaitlist(false)} style={{ float: 'right', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>✕</button>
       <div style={{ textAlign: 'center', paddingTop: 8 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#E8694A', marginBottom: 8 }}>SpotMe Waitlist 🧡</div>
-<input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} />
-<button onClick={() => window.open('https://spotmewaitlist.beehiiv.com', '_blank')} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button></div>
-</div>
-</div>
-
-</ScrollView>
+        <div style={{ fontSize: 14, color: '#666', marginBottom: 20, lineHeight: 1.5 }}>Be the first to know when SpotMe goes live. No tragedy required. Just community.</div>
+        <input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} />
+        <button onClick={() => window.open('https://spotmewaitlist.beehiiv.com', '_blank')} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button>
+      </div>
+    </div>
+  </div>
+)}
+</ScrollView> 
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
       <SignInPromptModal visible={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} userName={signInPromptNeed?.userName} userAvatar={signInPromptNeed?.userAvatar} needTitle={signInPromptNeed?.title} remaining={signInPromptNeed?.remaining} />
