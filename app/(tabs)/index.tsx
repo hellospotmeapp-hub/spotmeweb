@@ -330,7 +330,7 @@ const [showWaitlist, setShowWaitlist] = useState(false);
 </div>
 </div>
 </div>
-</div>
+
 }}      </ScrollView>
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
