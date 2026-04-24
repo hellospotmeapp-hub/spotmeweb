@@ -326,8 +326,7 @@ const [showWaitlist, setShowWaitlist] = useState(false);
       <div style={{ textAlign: 'center', paddingTop: 8 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#E8694A', marginBottom: 8 }}>SpotMe Waitlist 🧡</div>
 <input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} />
-<button onClick={() => { const el = document.getElementById('waitlist-email') as HTMLInputElement; if(el && el.value) { window.open(`https://magic.beehiiv.com/v1/d9161fa1-6402-47d7-b3b6-b82d93d5259f?email=${el.value}`, '_blank'); setShowWaitlist(false); }}} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button><div style={{ fontSize: 14, color: '#666', marginBottom: 20, lineHeight: 1.5 }}>Be the first to know when SpotMe goes live. No tragedy required. Just community.</div>
-</div>
+<button onClick={() => window.open('https://spotmewaitlist.beehiiv.com', '_blank')} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button></div>
 </div>
 </div>
 
