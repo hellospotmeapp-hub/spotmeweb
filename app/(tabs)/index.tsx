@@ -320,16 +320,18 @@ const [showWaitlist, setShowWaitlist] = useState(false);
         )}
         <View style={{ height: 40 }} />
      {showWaitlist && Platform.OS === 'web' && (
-  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-    <div style={{ position: 'relative', backgroundColor: 'white', borderRadius: 20, padding: 16, width: '100%', maxWidth: 340, overflow: 'hidden' }}>
-      <button onClick={() => setShowWaitlist(false)} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888', zIndex: 1 }}>✕</button>
-      <script async src="https://subscribe-forms.beehiiv.com/embed.js"></script>
-      <div style={{ transform: 'scale(0.38)', transformOrigin: 'top left', width: '220%', height: 130, overflow: 'hidden' }}>
-        <iframe src="https://subscribe-forms.beehiiv.com/af274e85-f64c-4af9-bb3e-28ada13a4fa6" className="beehiiv-embed" frameBorder="0" scrolling="no" style={{ width: '560px', height: 343, border: 'none', background: 'transparent' }}></iframe>
+  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 340 }}>
+      <button onClick={() => setShowWaitlist(false)} style={{ float: 'right', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>✕</button>
+      <div style={{ textAlign: 'center', paddingTop: 8 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: '#E8694A', marginBottom: 8 }}>SpotMe Waitlist 🧡</div>
+        <div style={{ fontSize: 14, color: '#666', marginBottom: 20, lineHeight: 1.5 }}>Be the first to know when SpotMe goes live. No tragedy required. Just community.</div>
+        <input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} />
+        <button onClick={() => { const el = document.getElementById('waitlist-email') as HTMLInputElement; if(el && el.value) { fetch(`https://api.beehiiv.com/v2/publications/pub_af274e85-f64c-4af9-bb3e-28ada13a4fa6/subscriptions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: el.value }) }); setShowWaitlist(false); alert('You\'re on the list! 🧡'); }}} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button>
       </div>
     </div>
   </div>
-)})}      </ScrollView>
+)})})}      </ScrollView>
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
       <SignInPromptModal visible={showSignInPrompt} onClose={() => setShowSignInPrompt(false)} userName={signInPromptNeed?.userName} userAvatar={signInPromptNeed?.userAvatar} needTitle={signInPromptNeed?.title} remaining={signInPromptNeed?.remaining} />
