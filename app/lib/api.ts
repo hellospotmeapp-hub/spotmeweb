@@ -1862,8 +1862,7 @@ export async function handleProcessContribution(body: any): Promise<any> {
     if (body.updates?.name) updates.name = sanitize(body.updates.name);
     if (body.updates?.bio !== undefined) updates.bio = sanitize(body.updates.bio);
     if (body.updates?.city !== undefined) updates.city = sanitize(body.updates.city);
-    if (body.updates?.avatar) updates.avatar = body.updates.avatar;
-
+    if (body.updates?.avatar !== undefined) updates.avatar = body.updates.avatar;
     await supabase.from('profiles').update(updates).eq('id', body.profileId);
 
     // If avatar was updated, sync it to all needs and contributions owned by this user
