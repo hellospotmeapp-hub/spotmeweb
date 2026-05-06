@@ -1808,8 +1808,9 @@ export async function handleProcessContribution(body: any): Promise<any> {
       password: body.password,
       bio: sanitize(body.bio),
       city: sanitize(body.city),
+      avatar: body.avatar || '',   
     }).select().single();
-
+    
     if (profile) {
       return {
         success: true,
