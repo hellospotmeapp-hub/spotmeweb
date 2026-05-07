@@ -1,12 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Use environment variables with fallback to hardcoded values
-export const supabaseUrl =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_database_URL) ||
-  'https://wadkuixhehslrteepluf.databasepad.com';
+export const supabaseUrl = 'https://wjhxrpwobnyntokegrtx.supabase.co';
 
-export const supabaseKey =
-  (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_database_ANON_KEY) ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjRhNDhjOGQ1LWM2NGEtNGM5Ni04YWJiLWNhOGIxNzBhYzBmYyJ9.eyJwcm9qZWN0SWQiOiJ3YWRrdWl4aGVoc2xydGVlcGx1ZiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzcxMDM2ODc1LCJleHAiOjIwODYzOTY4NzUsImlzcyI6ImZhbW91cy5kYXRhYmFzZXBhZCIsImF1ZCI6ImZhbW91cy5jbGllbnRzIn0.8D4-YKtj3LLq5nDrGKY2mDnG7CqfeliSBh4XLgJq88c';
+export const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHhycHdvYm55bnRva2VncnR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NzU2MzUsImV4cCI6MjA4NzA1MTYzNX0.g48dLZoH6ZNbmSv9emGuvYvLgFIQm33xjCbtwvEZB_0';
 
 export const supabaseClient = createClient(supabaseUrl, supabaseKey);
