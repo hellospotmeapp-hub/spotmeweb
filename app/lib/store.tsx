@@ -1065,13 +1065,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               checkoutParams.set('stripe_account', data.stripeAccount);
             }
             // Pass metadata for smart payment recovery
-            if (needId) checkoutParams.set('need_id', needId);
-            if (currentUser.id !== 'guest') checkoutParams.set('contributor_id', currentUser.id);
-            if (currentUser.name) checkoutParams.set('contributor_name', currentUser.name);
-            if (currentUser.avatar) checkoutParams.set('contributor_avatar', currentUser.avatar);
-            if (note) checkoutParams.set('note', note);
-            if (isAnonymous) checkoutParams.set('is_anonymous', 'true');
-            checkoutParams.set('type', 'contribution');
+            
             window.location.href = `/payment-checkout?${checkoutParams.toString()}`;
           }
 
