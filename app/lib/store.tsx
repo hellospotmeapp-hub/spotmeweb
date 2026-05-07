@@ -1768,7 +1768,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTimeout(async () => {
         try {
           const { data } = await supabase.functions.invoke('process-contribution', {
-            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city },
+            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city, avatar: localUser.avatar},
           });
           if (data?.success && data.profile) {
             const syncedUser: User = {
