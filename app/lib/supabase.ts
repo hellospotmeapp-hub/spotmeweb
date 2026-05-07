@@ -9,8 +9,7 @@ const supabase = supabaseClient;
 // (These need server-side secrets like GATEWAY_API_KEY, STRIPE_SECRET_KEY, VAPID_PRIVATE_KEY)
 // ============================================================
 const REMOTE_FUNCTIONS = new Set([
-  'stripe-checkout',
-  'stripe-connect',
+
 ]);
 
 // ============================================================
