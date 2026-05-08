@@ -167,7 +167,12 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
 
   const amount = getAmount();
   const tip = getTip();
-  const totalCharge = Math.round((amount + tip) * 100) / 100;
+  // Gross up so recipient gets the full contribution amount after Stripe's fee
+  // Formula: grossCharge = (amount + tip + 0.30) / (1 - 0.029)
+  const stripeFee = amount > 0
+    ? Math.ceil(((amount + tip + 0.30) / (1 - 0.029) - amount - tip) * 100) / 100
+    : 0;
+  const totalCharge = Math.round((amount + tip + stripeFee) * 100) / 100;
   // Ref to prevent double-submission (persists across re-renders)
   const paymentInProgressRef = React.useRef(false);
 
@@ -575,25 +580,28 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                     <Text style={[styles.feeValue, { color: Colors.primary }]}>${tip.toFixed(2)}</Text>
                   </View>
                 )}
+                {stripeFee > 0 && (
+                  <View style={styles.feeRow}>
+                    <View style={styles.recipientRow}>
+                      <MaterialIcons name="lock" size={12} color={Colors.textLight} />
+                      <Text style={styles.feeLabel}>Processing fee (you cover this)</Text>
+                    </View>
+                    <Text style={styles.feeValue}>${stripeFee.toFixed(2)}</Text>
+                  </View>
+                )}
                 <View style={[styles.feeRow, styles.totalRow]}>
                   <Text style={styles.totalLabel}>You pay</Text>
                   <Text style={styles.totalValue}>${totalCharge.toFixed(2)}</Text>
                 </View>
                 <View style={styles.feeRow}>
                   <View style={styles.recipientRow}>
-                    <MaterialIcons name="person" size={14} color={Colors.success} />
+                    <MaterialIcons name="check-circle" size={14} color={Colors.success} />
                     <Text style={[styles.feeLabel, { color: Colors.success, fontWeight: '700' }]}>
                       {recipientHasAccount ? 'Sent directly to recipient' : 'Recipient receives'}
                     </Text>
                   </View>
                   <Text style={[styles.feeValue, { color: Colors.success, fontWeight: '700' }]}>
                     ${amount.toFixed(2)}
-                  </Text>
-                </View>
-                <View style={styles.processingNote}>
-                  <MaterialIcons name="info-outline" size={12} color={Colors.textLight} />
-                  <Text style={styles.processingNoteText}>
-                    Stripe processing (2.9% + $0.30) is handled separately
                   </Text>
                 </View>
               </View>
