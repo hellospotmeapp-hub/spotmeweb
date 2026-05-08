@@ -96,6 +96,11 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.userInfo} onPress={() => router.push(`/user/${need.userId}`)} activeOpacity={0.7}>
+          <GracefulImage
+            uri={need.userAvatar}
+            type="avatar"
+            style={styles.avatar}
+          />
           <View>
             <View style={styles.nameRow}>
               <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
@@ -121,24 +126,6 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
         </View>
       </View>
 
-      {/* Photo */}
-      {need.photo ? (
-        <View>
-          <GracefulImage
-            uri={need.photo}
-            type="photo"
-            style={styles.photo}
-            category={need.category}
-            containerStyle={expired ? { opacity: 0.7 } : undefined}
-          />
-          {expired && (
-            <View style={styles.expiredOverlay}>
-              <MaterialIcons name="timer-off" size={16} color={Colors.white} />
-              <Text style={styles.expiredOverlayText}>Expired</Text>
-            </View>
-          )}
-        </View>
-      ) : null}
 
       {/* Content */}
       <View style={styles.content}>
@@ -287,6 +274,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.borderLight,
+  },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
