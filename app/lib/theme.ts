@@ -7,9 +7,9 @@ export const Colors = {
   secondaryDark: '#6B8F6E', // Dark sage
   accent: '#F5C563',        // Warm gold
   accentLight: '#FFF8E7',   // Light gold
-  background: '#F7F3EF',    // Warm cream
-  surface: '#FFFAF7',       // Warm card surface
-  surfaceAlt: '#F2EDE8',    // Warm gray surface
+  background: '#FFF0EC',    // Very light coral
+  surface: '#FFFAF8',       // Soft white card surface
+  surfaceAlt: '#FFE8E1',    // Light coral surface
   text: '#2D2926',          // Warm dark
   textSecondary: '#7A746E', // Warm medium gray
   textLight: '#A9A29B',     // Light text
