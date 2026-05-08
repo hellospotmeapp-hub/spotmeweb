@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme
 import { FAQ_ITEMS } from '@/app/lib/data';
 import { useApp } from '@/app/lib/store';
 import { supabase } from '@/app/lib/supabase';
-import { pickAndUploadAvatar } from '@/app/lib/imageUpload';
+import { pickImage, uploadAvatar, ImagePickResult } from '@/app/lib/imageUpload';
 
 
 interface SettingRowProps {
@@ -91,25 +91,40 @@ export default function SettingsScreen() {
 
   // Avatar upload state
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [pendingAvatar, setPendingAvatar] = useState<ImagePickResult | null>(null);
+  const [avatarSaveError, setAvatarSaveError] = useState('');
+  const [avatarSaved, setAvatarSaved] = useState(false);
 
   const topPadding = Platform.OS === 'web' ? 16 : insets.top;
 
-  const handleChangeAvatar = async () => {
+  // Step 1: just pick the photo, show a preview + Save button
+  const handlePickAvatar = async () => {
     if (avatarUploading) return;
+    setAvatarSaveError('');
+    setAvatarSaved(false);
+    const picked = await pickImage();
+    if (!picked) return;
+    setPendingAvatar(picked);
+  };
+
+  // Step 2: user taps Save — actually upload to Supabase Storage
+  const handleSaveAvatar = async () => {
+    if (!pendingAvatar || avatarUploading) return;
     setAvatarUploading(true);
+    setAvatarSaveError('');
     try {
-      const result = await pickAndUploadAvatar(currentUser.id);
-      if (result.error === 'cancelled') {
-        setAvatarUploading(false);
-        return;
-      }
+      const result = await uploadAvatar(currentUser.id, pendingAvatar.base64, pendingAvatar.mimeType);
       if (result.success && result.avatarUrl) {
         updateProfile({ avatar: result.avatarUrl });
-      } else if (result.localUri) {
-        updateProfile({ avatar: result.localUri });
+        setPendingAvatar(null);
+        setAvatarSaved(true);
+        setTimeout(() => setAvatarSaved(false), 3000);
+      } else {
+        setAvatarSaveError(result.error || 'Upload failed. Please try again.');
       }
-    } catch (err) {
-      console.error('Avatar change error:', err);
+    } catch (err: any) {
+      console.error('Avatar save error:', err);
+      setAvatarSaveError('Upload failed. Please try again.');
     } finally {
       setAvatarUploading(false);
     }
@@ -232,9 +247,11 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.section}>
           {/* Change Profile Photo Row */}
-          <TouchableOpacity style={styles.settingRow} onPress={handleChangeAvatar} activeOpacity={0.7} disabled={avatarUploading}>
+          <TouchableOpacity style={styles.settingRow} onPress={handlePickAvatar} activeOpacity={0.7} disabled={avatarUploading}>
             <View style={styles.avatarThumbContainer}>
-              {currentUser.avatar ? (
+              {pendingAvatar ? (
+                <Image source={{ uri: pendingAvatar.uri }} style={styles.avatarThumb} />
+              ) : currentUser.avatar ? (
                 <Image source={{ uri: currentUser.avatar }} style={styles.avatarThumb} />
               ) : (
                 <View style={[styles.avatarThumb, { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
@@ -248,15 +265,46 @@ export default function SettingsScreen() {
             <View style={styles.settingContent}>
               <Text style={styles.settingLabel}>Change Profile Photo</Text>
               <Text style={styles.settingValue}>
-                {avatarUploading ? 'Uploading...' : 'Tap to select a new photo'}
+                {avatarUploading
+                  ? 'Saving...'
+                  : avatarSaved
+                  ? 'Photo saved!'
+                  : pendingAvatar
+                  ? 'Photo selected — tap Save to confirm'
+                  : 'Tap to select a new photo'}
               </Text>
+              {avatarSaveError ? (
+                <Text style={{ color: Colors.error, fontSize: 12, marginTop: 2 }}>{avatarSaveError}</Text>
+              ) : null}
             </View>
             {avatarUploading ? (
               <ActivityIndicator size="small" color={Colors.primary} />
+            ) : avatarSaved ? (
+              <MaterialIcons name="check-circle" size={22} color={Colors.success} />
             ) : (
               <MaterialIcons name="chevron-right" size={22} color={Colors.textLight} />
             )}
           </TouchableOpacity>
+
+          {/* Save / Discard buttons shown when a photo is pending */}
+          {pendingAvatar && !avatarUploading && (
+            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 12 }}>
+              <TouchableOpacity
+                onPress={() => { setPendingAvatar(null); setAvatarSaveError(''); }}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: Colors.textSecondary, fontWeight: '500' }}>Discard</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveAvatar}
+                style={{ flex: 2, paddingVertical: 10, borderRadius: 8, backgroundColor: Colors.primary, alignItems: 'center' }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: Colors.white, fontWeight: '600' }}>Save Photo</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <SettingRow icon="person" label="Edit Profile" onPress={() => router.push('/(tabs)/profile')} />
           <SettingRow icon="credit-card" label="Payment Methods" value={paymentMethods.length > 0 ? `${paymentMethods.length} card(s)` : 'Add a card'} onPress={() => setShowPaymentMethods(true)} />
           <SettingRow
