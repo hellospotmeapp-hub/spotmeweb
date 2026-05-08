@@ -330,12 +330,12 @@ export default function PayoutDashboard() {
         {/* Summary Stats */}
         {db?.summary && (
           <View style={s.statsGrid}>
-            <StatBox icon="attach-money" label="Net Received" value={`$${db.summary.netReceived.toFixed(2)}`} color={Colors.success} />
+            <StatBox icon="attach-money" label="Net Received" value={`$${db.summary.netReceived || 0)toFixed(2)}`} color={Colors.success} />
             <StatBox icon="receipt" label="Total Payments" value={db.summary.totalPayments.toString()} color={Colors.primary} />
             <StatBox icon="send" label="Transferred" value={`$${(db.summary.totalTransferred || 0).toFixed(2)}`} color={Colors.secondary} subtitle={`${db.summary.completedTransfers || 0} transfers`} />
-            <StatBox icon="hourglass-empty" label="Pending" value={`$${db.summary.pendingAmount.toFixed(2)}`} color={Colors.accent} subtitle={db.summary.pendingTransfers ? `${db.summary.pendingTransfers} awaiting` : undefined} />
-            <StatBox icon="savings" label="Paid Out" value={`$${db.summary.paidAmount.toFixed(2)}`} color="#7B9ED9" />
-            <StatBox icon="volunteer-activism" label="Tips to SpotMe" value={`$${db.summary.totalFees.toFixed(2)}`} color={Colors.textLight} subtitle="Optional tips" />
+            <StatBox icon="hourglass-empty" label="Pending" value={`$${db.summary.pendingAmount || 0)toFixed(2)}`} color={Colors.accent} subtitle={db.summary.pendingTransfers ? `${db.summary.pendingTransfers} awaiting` : undefined} />
+            <StatBox icon="savings" label="Paid Out" value={`$${db.summary.paidAmount || 0)toFixed(2)}`} color="#7B9ED9" />
+            <StatBox icon="volunteer-activism" label="Tips to SpotMe" value={`$${db.summary.totalFees || 0)toFixed(2)}`} color={Colors.textLight} subtitle="Optional tips" />
           </View>
         )}
 
