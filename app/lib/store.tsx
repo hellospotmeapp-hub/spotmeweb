@@ -1728,6 +1728,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
+      // Establish a real Supabase auth session immediately so the user gets
+      // their permanent UUID from the start. This means any needs or profile
+      // updates they make right after signup will pass RLS — no 3-second window
+      // where writes fail because they still have a local_ ID.
+      let immediateAuthId: string | null = null;
+      try {
+        const { data: authData } = await supabase.auth.signUp({ email, password });
+        if (authData?.user?.id) {
+          immediateAuthId = authData.user.id;
+          console.log('[signup] Auth session established immediately, UUID:', immediateAuthId.slice(0, 8));
+        }
+      } catch (authErr) {
+        console.warn('[signup] Immediate auth signUp failed (will retry via create_profile):', authErr);
+      }
+
       const avatarIndex = Math.floor(Math.random() * 8);
       const avatarUrls = [
         'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png',
@@ -1741,7 +1756,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ];
 
       const localUser: User = {
-        id: generateLocalId(),
+        id: immediateAuthId || generateLocalId(),
         name: (name && name.trim()) ? name.trim() : 'SpotMe User',
         avatar: avatarUrls[avatarIndex] || '',
         bio: (bio && bio.trim()) ? bio.trim() : '',
@@ -1775,7 +1790,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTimeout(async () => {
         try {
           const { data } = await supabase.functions.invoke('process-contribution', {
-            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city, avatar: localUser.avatar},
+            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city, avatar: localUser.avatar, authUserId: localUser.id },
           });
           if (data?.success && data.profile) {
             const syncedUser: User = {
