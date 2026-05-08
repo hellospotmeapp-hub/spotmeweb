@@ -516,6 +516,16 @@ export default function SettingsScreen() {
                   Your Stripe Connect account is set up. 100% of contributions to your needs are sent directly to you — no platform fees.
                 </Text>
               </View>
+            ) : hasPayoutAccount ? (
+              <View style={[styles.payoutStatusInactive, { borderColor: Colors.accent, borderWidth: 1 }]}>
+                <View style={styles.payoutStatusIcon}>
+                  <MaterialIcons name="warning" size={32} color={Colors.accent} />
+                </View>
+                <Text style={styles.payoutStatusTitle}>Setup Incomplete</Text>
+                <Text style={styles.payoutStatusText}>
+                  Your Stripe account was created but you haven't entered your bank details yet. Tap the button below to finish — it only takes 2 minutes.
+                </Text>
+              </View>
             ) : (
               <View style={styles.payoutStatusInactive}>
                 <View style={styles.payoutStatusIcon}>
@@ -644,7 +654,7 @@ export default function SettingsScreen() {
                   <MaterialIcons name="account-balance" size={20} color={Colors.white} />
                 )}
                 <Text style={styles.setupPayoutBtnText}>
-                  {payoutLoading ? 'Setting up...' : 'Set Up Stripe Connect Payouts'}
+                  {payoutLoading ? 'Setting up...' : hasPayoutAccount ? 'Complete Stripe Setup' : 'Set Up Stripe Connect Payouts'}
                 </Text>
               </TouchableOpacity>
             ) : (

@@ -1340,20 +1340,17 @@ export async function handleStripeConnect(body: any): Promise<any> {
       .maybeSingle();
 
     if (!account?.stripe_account_id) {
-      // No real Stripe account — gracefully complete onboarding in fallback mode
-      // so the user isn't stuck in an error loop when Stripe isn't fully configured.
-      await supabase.from('connected_accounts').upsert(
-        { user_id: body.userId, onboarding_complete: true, payouts_enabled: true, charges_enabled: true, details_submitted: true },
-        { onConflict: 'user_id' }
-      );
-      return { success: true, onboardingComplete: true, rpcUnavailable: true };
+      return {
+        success: false,
+        needsAccount: true,
+        error: 'No Stripe account found. Please tap Set Up to create your payout account first.',
+      };
     }
 
     const { data: linkData, error: rpcError } = await tryRpc('spotme_create_account_link', {
       p_account_id: account.stripe_account_id,
       p_return_url: body.returnUrl || 'https://spotmeone.com/settings',
       p_refresh_url: body.refreshUrl || 'https://spotmeone.com/settings',
-
     });
 
     if (!rpcError && linkData?.url) {
@@ -1363,18 +1360,13 @@ export async function handleStripeConnect(body: any): Promise<any> {
       };
     }
 
-    // Fallback: mark as complete (simplified flow when Stripe isn't configured)
-    await supabase.from('connected_accounts').update({
-      onboarding_complete: true,
-      payouts_enabled: true,
-      charges_enabled: true,
-      details_submitted: true,
-    }).eq('user_id', body.userId);
-
+    // RPC unavailable — surface the real error so the user knows to complete setup
+    console.warn('[SpotMe Connect] spotme_create_account_link RPC failed:', rpcError?.message);
     return {
-      success: true,
-      onboardingComplete: true,
-      rpcUnavailable: true,
+      success: false,
+      accountId: account.stripe_account_id,
+      needsSqlSetup: true,
+      error: 'Could not generate your Stripe onboarding link. Please open your Stripe dashboard to complete setup.',
     };
   }
 

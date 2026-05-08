@@ -1303,8 +1303,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (linkErr || !linkData?.success) {
-        await completePayoutOnboardingInternal();
-        return { success: true };
+        return {
+          success: false,
+          error: linkData?.error || 'Could not generate your Stripe onboarding link. Please open your Stripe dashboard at dashboard.stripe.com to complete your setup.',
+          accountId: linkData?.accountId,
+          needsSqlSetup: linkData?.needsSqlSetup,
+        };
       }
 
       return {
