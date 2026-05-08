@@ -95,7 +95,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.userInfo} onPress={() => router.push(`/user/${need.userId}`)} activeOpacity={0.7}>
+        <View style={styles.userInfo}>
           <GracefulImage
             uri={need.userAvatar}
             type="avatar"
@@ -113,7 +113,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
             </View>
             <Text style={styles.timeText}>{getTimeAgo(need.createdAt)}</Text>
           </View>
-        </TouchableOpacity>
+        </View>
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.shareBtn}
