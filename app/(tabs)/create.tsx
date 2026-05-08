@@ -20,7 +20,7 @@ const MAX_GOAL = 300;
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { createNeed, isLoggedIn, currentUser } = useApp();
+  const { createNeed, isLoggedIn, currentUser, updateProfile } = useApp();
   
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
@@ -33,6 +33,12 @@ export default function CreateScreen() {
   const [showConfetti, setShowConfetti] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
+
+  // Profile gate state
+  const [gateName, setGateName] = useState('');
+  const [gateCity, setGateCity] = useState('');
+  const [gateSaving, setGateSaving] = useState(false);
+  const [gateError, setGateError] = useState('');
 
   // Photo upload state
   const [photoLocalUri, setPhotoLocalUri] = useState<string | null>(null);
@@ -614,6 +620,137 @@ export default function CreateScreen() {
           <View style={styles.signInSecurityFooter}>
             <MaterialIcons name="lock" size={12} color={Colors.textLight} />
             <Text style={styles.signInSecurityText}>Your info is safe. We never share your data.</Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ---- Profile gate helpers ----
+  const DEFAULT_NAMES = ['spotme user', 'apple user', 'google user', 'guest', 'user', ''];
+  const isDefaultName = (name: string) =>
+    DEFAULT_NAMES.includes(name.toLowerCase().trim()) ||
+    /^(apple|google|spotme)\s+user$/i.test(name.trim());
+
+  const needsProfileCompletion = () =>
+    isDefaultName(currentUser.name || '') || !(currentUser.city || '').trim();
+
+  const handleGateSave = async () => {
+    const trimmedName = gateName.trim();
+    const trimmedCity = gateCity.trim();
+    if (!trimmedName || trimmedName.length < 2) {
+      setGateError('Please enter your real first and last name.');
+      return;
+    }
+    if (isDefaultName(trimmedName)) {
+      setGateError('Please enter your real name — not a nickname or default.');
+      return;
+    }
+    if (!trimmedCity || trimmedCity.length < 2) {
+      setGateError('Please enter your city.');
+      return;
+    }
+    setGateSaving(true);
+    setGateError('');
+    try {
+      await updateProfile({ name: trimmedName, city: trimmedCity });
+    } catch {
+      setGateError('Could not save. Please try again.');
+      setGateSaving(false);
+      return;
+    }
+    setGateSaving(false);
+  };
+
+  // ---- Profile gate screen ----
+  if (isLoggedIn && needsProfileCompletion()) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding }]}>
+        <ScrollView contentContainerStyle={styles.signInPromptScroll} showsVerticalScrollIndicator={false}>
+          <View style={styles.signInIconGlow}>
+            <View style={styles.signInIconCircle}>
+              <MaterialIcons name="person" size={40} color={Colors.primary} />
+            </View>
+          </View>
+          <Text style={styles.signInTitle}>One quick thing</Text>
+          <Text style={styles.signInSubtitle}>
+            People give more when they know who they're helping. A real name and city builds trust with your community.
+          </Text>
+
+          <View style={{ width: '100%', gap: 12, marginTop: 8, marginBottom: 4 }}>
+            <View>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.text, marginBottom: 6 }}>
+                Your name <Text style={{ color: Colors.error }}>*</Text>
+              </Text>
+              <TextInput
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: gateError && (!gateName.trim() || isDefaultName(gateName)) ? Colors.error : Colors.border,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  color: Colors.text,
+                  backgroundColor: Colors.surface,
+                }}
+                value={gateName}
+                onChangeText={t => { setGateName(t); setGateError(''); }}
+                placeholder="First and last name"
+                placeholderTextColor={Colors.textLight}
+                autoCapitalize="words"
+                autoCorrect={false}
+                editable={!gateSaving}
+              />
+            </View>
+            <View>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.text, marginBottom: 6 }}>
+                Your city <Text style={{ color: Colors.error }}>*</Text>
+              </Text>
+              <TextInput
+                style={{
+                  borderWidth: 1.5,
+                  borderColor: gateError && !gateCity.trim() ? Colors.error : Colors.border,
+                  borderRadius: 10,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                  fontSize: 15,
+                  color: Colors.text,
+                  backgroundColor: Colors.surface,
+                }}
+                value={gateCity}
+                onChangeText={t => { setGateCity(t); setGateError(''); }}
+                placeholder="e.g. Austin, TX"
+                placeholderTextColor={Colors.textLight}
+                autoCapitalize="words"
+                autoCorrect={false}
+                editable={!gateSaving}
+              />
+            </View>
+
+            {!!gateError && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <MaterialIcons name="error-outline" size={15} color={Colors.error} />
+                <Text style={{ color: Colors.error, fontSize: 13 }}>{gateError}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.signInBtn, (!gateName.trim() || !gateCity.trim() || gateSaving) && { opacity: 0.55 }]}
+              onPress={handleGateSave}
+              activeOpacity={0.8}
+              disabled={!gateName.trim() || !gateCity.trim() || gateSaving}
+            >
+              {gateSaving
+                ? <ActivityIndicator size="small" color={Colors.white} />
+                : <MaterialIcons name="check" size={20} color={Colors.white} />
+              }
+              <Text style={styles.signInBtnText}>{gateSaving ? 'Saving…' : 'Save & Continue'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.signInSecurityFooter}>
+            <MaterialIcons name="lock" size={12} color={Colors.textLight} />
+            <Text style={styles.signInSecurityText}>Your city is shown on your posts to build community trust. We never share your exact address.</Text>
           </View>
         </ScrollView>
       </View>
