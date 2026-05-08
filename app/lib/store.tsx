@@ -1789,6 +1789,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
             try { await storage.set('spotme_user', JSON.stringify(syncedUser)); } catch {}
             setCurrentUser(syncedUser);
+            // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
+            supabase.auth.signInWithPassword({ email, password }).catch(() => {});
           }
         } catch {}
       }, 3000);
@@ -1821,13 +1823,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const user = JSON.parse(storedUser);
           setCurrentUser(user);
           setIsLoggedIn(true);
+          // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
+          const pass = password || storedPass;
+          if (pass) {
+            supabase.auth.signInWithPassword({ email, password: pass }).catch(() => {});
+          }
           return { success: true };
         } catch {}
       }
 
       try {
         const { data, error: serverError } = await safeInvoke('process-contribution', {
-          body: { action: 'login', email },
+          body: { action: 'login', email, password },
         }, 8000);
 
         if (!serverError && data?.success && data.profile) {
@@ -1847,6 +1854,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             await storage.set('spotme_email', email);
             if (password) await storage.set('spotme_pass', password);
           } catch {}
+          // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
+          if (password) {
+            supabase.auth.signInWithPassword({ email, password }).catch(() => {});
+          }
           setCurrentUser(user);
           setIsLoggedIn(true);
           return { success: true };
@@ -1885,6 +1896,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPushPromptContribution(null);
     pushPromptCheckedRef.current = false;
     clearAllPendingNeeds(); // Clear any pending needs from localStorage on logout
+    try { await supabase.auth.signOut(); } catch {}
     await storage.remove('spotme_user');
     await storage.remove('spotme_email');
     await storage.remove('spotme_pass');
