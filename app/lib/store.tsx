@@ -889,7 +889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'fetch_needs' },
       }, 8000);
-      if (!error && data?.success && data.needs?.length > 0) {
+      if (!error && data?.success && Array.isArray(data.needs)) {
         // Filter out deleted needs BEFORE merging with pending
         const filteredServerNeeds = filterDeletedNeeds(data.needs);
         // Merge server data with any unconfirmed pending needs from localStorage
@@ -926,7 +926,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'fetch_needs' },
       }, 8000);
-      if (!error && data?.success && data.needs?.length > 0) {
+      if (!error && data?.success && Array.isArray(data.needs)) {
         // Filter out deleted needs BEFORE merging with pending
         const filteredServerNeeds = filterDeletedNeeds(data.needs);
         // Merge server data with any unconfirmed pending needs from localStorage
@@ -1843,6 +1843,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (pass) {
             supabase.auth.signInWithPassword({ email, password: pass }).catch(() => {});
           }
+
+          // FIX: Always refresh profile from DB in the background so stale localStorage
+          // data (e.g. "SpotMe User" from the signup window) gets corrected immediately.
+          const passForRefresh = pass;
+          setTimeout(async () => {
+            try {
+              const { data: freshData } = await safeInvoke('process-contribution', {
+                body: { action: 'login', email, password: passForRefresh || '' },
+              }, 8000);
+              if (freshData?.success && freshData.profile) {
+                const freshUser: User = {
+                  id: freshData.profile.id || user.id,
+                  name: freshData.profile.name || user.name,
+                  avatar: freshData.profile.avatar || user.avatar,
+                  bio: freshData.profile.bio || user.bio,
+                  city: freshData.profile.city || user.city,
+                  joinedDate: freshData.profile.joinedDate || user.joinedDate,
+                  totalRaised: freshData.profile.totalRaised || 0,
+                  totalGiven: freshData.profile.totalGiven || 0,
+                  verified: freshData.profile.verified || false,
+                };
+                setCurrentUser(freshUser);
+                try { await storage.set('spotme_user', JSON.stringify(freshUser)); } catch {}
+
+                // If the name or avatar changed from what was in localStorage,
+                // sync the fresh values to all existing need cards in the DB.
+                if (freshUser.name !== user.name || freshUser.avatar !== user.avatar) {
+                  const syncUpdates: Record<string, any> = {};
+                  if (freshUser.name !== user.name) syncUpdates.name = freshUser.name;
+                  if (freshUser.avatar !== user.avatar) syncUpdates.avatar = freshUser.avatar;
+                  supabase.functions.invoke('process-contribution', {
+                    body: { action: 'update_profile', profileId: freshUser.id, updates: syncUpdates },
+                  }).catch(() => {});
+                }
+              }
+            } catch {}
+          }, 800);
+
           return { success: true };
         } catch {}
       }
