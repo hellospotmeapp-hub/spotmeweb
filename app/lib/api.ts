@@ -935,6 +935,11 @@ export async function handleStripeCheckout(body: any): Promise<any> {
   // ---- ADMIN CHECK ----
   if (action === 'admin_check') {
     const ADMIN_EMAIL = 'hellospotme.app@gmail.com';
+    // Check email passed from client (read from localStorage by admin.tsx)
+    if (body.email && body.email.toLowerCase() === ADMIN_EMAIL) {
+      return { success: true, isAdmin: true };
+    }
+    // Fallback: supabase auth session
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL;
