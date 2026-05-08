@@ -234,8 +234,11 @@ export async function handleStripeCheckout(body: any): Promise<any> {
   if (action === 'create_checkout') {
     const amount = Math.min(Math.max(Number(body.amount) || 0, 0.01), 10000);
     const tipAmount = Math.max(Number(body.tipAmount) || 0, 0);
-    const totalCharge = amount + tipAmount;
-    const amountCents = Math.round(totalCharge * 100);
+    // Gross up so recipient receives the full `amount` after Stripe's 2.9% + $0.30 fee.
+    // Formula: grossCharge = (amount + tipAmount + 0.30) / (1 - 0.029)
+    const grossCharge = Math.ceil(((amount + tipAmount + 0.30) / (1 - 0.029)) * 100) / 100;
+    const stripeFee = Math.round((grossCharge - amount - tipAmount) * 100) / 100;
+    const amountCents = Math.round(grossCharge * 100);
     const needId = body.needId || null;
     const needTitle = sanitize(body.needTitle || '');
     const contributorId = body.contributorId || null;
@@ -279,6 +282,8 @@ export async function handleStripeCheckout(body: any): Promise<any> {
       contributor_name: contributorName.slice(0, 50),
       type,
       tip_amount: String(tipAmount),
+      stripe_fee: String(stripeFee),
+      contribution_amount: String(amount),
     };
 
     // Try to create a real Stripe PaymentIntent via RPC
