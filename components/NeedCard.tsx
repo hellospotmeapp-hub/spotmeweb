@@ -106,7 +106,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
               <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
               {need.userCity ? (
                 <View style={styles.cityRow}>
-                  <MaterialIcons name="place" size={12} color={Colors.textLight} />
+                  <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.75)" />
                   <Text style={styles.cityText}>{need.userCity}</Text>
                 </View>
               ) : null}
@@ -120,9 +120,9 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
             onPress={() => router.push(`/share/${need.id}`)}
             activeOpacity={0.7}
           >
-            <MaterialIcons name="share" size={16} color={Colors.textLight} />
+            <MaterialIcons name="share" size={16} color="rgba(255,255,255,0.85)" />
           </TouchableOpacity>
-          <StatusBadge status={displayStatus} />
+          <StatusBadge status={displayStatus} onDark />
         </View>
       </View>
 
@@ -265,7 +265,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.sm,
+    paddingBottom: Spacing.md,
+    backgroundColor: Colors.primary,
   },
   userInfo: {
     flexDirection: 'row',
@@ -278,7 +279,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.borderLight,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   nameRow: {
     flexDirection: 'row',
@@ -289,7 +292,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: FontSize.md,
     fontWeight: '700',
-    color: Colors.text,
+    color: Colors.white,
   },
   cityRow: {
     flexDirection: 'row',
@@ -298,11 +301,11 @@ const styles = StyleSheet.create({
   },
   cityText: {
     fontSize: FontSize.xs,
-    color: Colors.textLight,
+    color: 'rgba(255,255,255,0.75)',
   },
   timeText: {
     fontSize: FontSize.xs,
-    color: Colors.textLight,
+    color: 'rgba(255,255,255,0.75)',
     marginTop: 1,
   },
   headerRight: {
@@ -311,10 +314,10 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   shareBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surfaceAlt,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
