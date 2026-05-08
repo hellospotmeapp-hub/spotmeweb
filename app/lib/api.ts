@@ -1822,8 +1822,10 @@ export async function handleProcessContribution(body: any): Promise<any> {
 
     // FIX (Bug 3): Create a real Supabase auth account so the user gets a valid
     // auth session. This makes RLS policies work for all subsequent writes.
-    let authUserId: string | null = null;
-    if (body.email && body.password) {
+    // If the client already called signUp and passed back the UUID, use it directly
+    // to avoid a redundant signUp call on the same email.
+    let authUserId: string | null = body.authUserId || null;
+    if (!authUserId && body.email && body.password) {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: body.email,
         password: body.password,
