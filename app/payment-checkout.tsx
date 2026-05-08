@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme
 import { supabase } from '@/app/lib/supabase';
 
 // Platform Stripe publishable key — used with stripeAccount for connected account payments
-const STRIPE_PK = 'pk_test_51T3T9CFR9hrEIHkaJycvgkSZkTxyGdMJnd2Cd7FvTFqJsqAYLPP7FfM4eJuMD7KQTnWAPa8pGT4iCuLntYWWYk0o00jnOuAkpe';
+const STRIPE_PK = 'pk_live_51T3T8o2Xr21chucT33UexOe8CdpMp6pbH5UomhHXnpd1lmCxW7B7O59C5XAWCFMvH32gs8R5mIxxOG5ZS9Fig27E00Hr3PGP2Q';
 const DEFAULT_STRIPE_ACCOUNT = '';
 
 // ============================================================
