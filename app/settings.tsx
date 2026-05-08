@@ -601,20 +601,20 @@ export default function SettingsScreen() {
                 <Text style={styles.payoutSummaryTitle}>Your Payout Summary</Text>
                 <View style={styles.payoutSummaryGrid}>
                   <View style={styles.payoutSummaryStat}>
-                    <Text style={styles.payoutSummaryNumber}>${payoutSummary.totalRaised.toFixed(2)}</Text>
+                    <Text style={styles.payoutSummaryNumber}>${(payoutSummary.totalRaised ?? payoutSummary.totalReceived ?? 0).toFixed(2)}</Text>
                     <Text style={styles.payoutSummaryLabel}>Total Raised</Text>
                   </View>
                   <View style={styles.payoutSummaryStat}>
-                    <Text style={styles.payoutSummaryNumber}>${payoutSummary.pendingPayout.toFixed(2)}</Text>
+                    <Text style={styles.payoutSummaryNumber}>${(payoutSummary.pendingPayout ?? 0).toFixed(2)}</Text>
                     <Text style={styles.payoutSummaryLabel}>Pending</Text>
                   </View>
                   <View style={styles.payoutSummaryStat}>
-                    <Text style={styles.payoutSummaryNumber}>${payoutSummary.paidOut.toFixed(2)}</Text>
+                    <Text style={styles.payoutSummaryNumber}>${(payoutSummary.paidOut ?? 0).toFixed(2)}</Text>
                     <Text style={styles.payoutSummaryLabel}>Paid Out</Text>
                   </View>
-                  {payoutSummary.directPaymentsCount > 0 && (
+                  {(payoutSummary.directPaymentsCount ?? 0) > 0 && (
                     <View style={styles.payoutSummaryStat}>
-                      <Text style={[styles.payoutSummaryNumber, { color: Colors.success }]}>${payoutSummary.directPaymentsReceived.toFixed(2)}</Text>
+                      <Text style={[styles.payoutSummaryNumber, { color: Colors.success }]}>${(payoutSummary.directPaymentsReceived ?? 0).toFixed(2)}</Text>
                       <Text style={styles.payoutSummaryLabel}>Direct Deposits</Text>
                     </View>
                   )}
