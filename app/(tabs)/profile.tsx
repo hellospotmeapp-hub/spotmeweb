@@ -314,6 +314,30 @@ export default function ProfileScreen() {
             </>
           )}
           <Text style={styles.joinedText}>Member since {new Date(currentUser.joinedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+
+          {/* Verification Banner */}
+          {currentUser.verified ? (
+            <View style={styles.verifiedBanner}>
+              <MaterialIcons name="verified" size={18} color="#5CB85C" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.verifiedBannerTitle}>SpotMe Verified</Text>
+                <Text style={styles.verifiedBannerText}>Phone verified + manually reviewed. Your checkmark shows on every post.</Text>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.getVerifiedBanner}
+              onPress={() => router.push('/settings')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="verified-user" size={18} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.getVerifiedTitle}>Get SpotMe Verified</Text>
+                <Text style={styles.getVerifiedText}>Add a checkmark to build trust. Verify your phone + get reviewed.</Text>
+              </View>
+              <MaterialIcons name="chevron-right" size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Pinned Updates Preview (always visible) */}
@@ -645,7 +669,23 @@ const styles = StyleSheet.create({
   profileBio: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.sm, paddingHorizontal: Spacing.xl },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: Spacing.sm },
   locationText: { fontSize: FontSize.sm, color: Colors.textLight },
-  joinedText: { fontSize: FontSize.xs, color: Colors.textLight },
+  joinedText: { fontSize: FontSize.xs, color: Colors.textLight, marginBottom: Spacing.md },
+  verifiedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: '#EDF7EE', borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderWidth: 1, borderColor: '#5CB85C40', marginTop: Spacing.sm, width: '100%',
+  },
+  verifiedBannerTitle: { fontSize: FontSize.sm, fontWeight: '700', color: '#2D6B30' },
+  verifiedBannerText: { fontSize: FontSize.xs, color: '#3A7A3D', lineHeight: 15 },
+  getVerifiedBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.primaryLight, borderRadius: BorderRadius.lg,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    borderWidth: 1, borderColor: Colors.primary + '40', marginTop: Spacing.sm, width: '100%',
+  },
+  getVerifiedTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary },
+  getVerifiedText: { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 15 },
   editSection: { width: '100%', gap: Spacing.md, marginTop: Spacing.md },
   editInput: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, fontSize: FontSize.md, color: Colors.text, borderWidth: 1, borderColor: Colors.border },
   changePhotoBtn: {

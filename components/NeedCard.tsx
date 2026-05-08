@@ -104,6 +104,9 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
           <View>
             <View style={styles.nameRow}>
               <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
+              {need.userVerified && (
+                <MaterialIcons name="verified" size={15} color="rgba(255,255,255,0.95)" style={{ marginLeft: 3 }} />
+              )}
               {need.userCity ? (
                 <View style={styles.cityRow}>
                   <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.75)" />

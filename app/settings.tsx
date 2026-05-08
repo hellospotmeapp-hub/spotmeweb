@@ -306,6 +306,14 @@ export default function SettingsScreen() {
             </View>
           )}
           <SettingRow icon="person" label="Edit Profile" onPress={() => router.push('/(tabs)/profile')} />
+          <SettingRow
+            icon="verified-user"
+            label={currentUser.verified ? 'SpotMe Verified' : 'Get Verified'}
+            value={currentUser.verified ? 'Checkmark active on your posts' : 'Phone verify + manual review'}
+            badge={currentUser.verified ? 'Verified' : 'Get Checkmark'}
+            badgeColor={currentUser.verified ? Colors.success : Colors.primary}
+            onPress={() => router.push('/(tabs)/profile')}
+          />
           <SettingRow icon="credit-card" label="Payment Methods" value={paymentMethods.length > 0 ? `${paymentMethods.length} card(s)` : 'Add a card'} onPress={() => setShowPaymentMethods(true)} />
           <SettingRow
             icon="account-balance-wallet"
