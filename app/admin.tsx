@@ -447,37 +447,19 @@ export default function AdminDashboard() {
     );
   }
 
-  // Not an admin - show registration option (first admin only)
+  // Not an admin
   if (!isAdminUser) {
     return (
       <View style={[s.container, s.center, { paddingTop: topPadding }]}>
         <View style={s.accessDeniedCard}>
-          <MaterialIcons name="shield" size={56} color={Colors.primary} />
-          <Text style={s.accessDeniedTitle}>Admin Access</Text>
+          <MaterialIcons name="lock" size={56} color={Colors.primary} />
+          <Text style={s.accessDeniedTitle}>Admin Access Only</Text>
           <Text style={s.accessDeniedText}>
-            This dashboard is restricted to authorized administrators only.
+            This dashboard is restricted to the SpotMe administrator account.
           </Text>
           <View style={s.accessDeniedDivider} />
-          <Text style={s.accessDeniedSubtext}>
-            If no admin has been registered yet, you can claim admin access for your account. This is a one-time setup.
-          </Text>
-          <TouchableOpacity
-            style={[s.registerAdminBtn, registering && { opacity: 0.6 }]}
-            onPress={registerAsAdmin}
-            disabled={registering}
-            activeOpacity={0.8}
-          >
-            {registering ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <MaterialIcons name="admin-panel-settings" size={20} color={Colors.white} />
-            )}
-            <Text style={s.registerAdminBtnText}>
-              {registering ? 'Registering...' : 'Register as Admin'}
-            </Text>
-          </TouchableOpacity>
           <Text style={s.accessDeniedNote}>
-            Logged in as: {currentUser.name} ({currentUser.id.substring(0, 8)}...)
+            Logged in as: {currentUser.name}
           </Text>
         </View>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>

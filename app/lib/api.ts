@@ -934,36 +934,26 @@ export async function handleStripeCheckout(body: any): Promise<any> {
 
   // ---- ADMIN CHECK ----
   if (action === 'admin_check') {
-    const { data } = await supabase.from('admin_users')
-      .select('*')
-      .eq('user_id', body.userId)
-      .single();
-    return { success: true, isAdmin: !!data };
+    const ADMIN_EMAIL = 'hellospotme.app@gmail.com';
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL;
+      return { success: true, isAdmin };
+    } catch {
+      return { success: true, isAdmin: false };
+    }
   }
 
   // ---- ADMIN REGISTER ----
   if (action === 'admin_register') {
-    // Check if any admins exist
-    const { count } = await supabase.from('admin_users')
-      .select('*', { count: 'exact', head: true });
-
-    if ((count || 0) > 0) {
-      return { success: false, error: 'Admin already registered. Contact existing admin.' };
-    }
-
-    await supabase.from('admin_users').insert({
-      user_id: body.userId,
-    });
-
-    return { success: true, isAdmin: true };
+    return { success: false, error: 'Admin access is email-based. Contact hellospotme.app@gmail.com.' };
   }
 
   // ---- ADMIN STATS ----
   if (action === 'admin_stats') {
     // Verify admin
-    const { data: admin } = await supabase.from('admin_users')
-      .select('*').eq('user_id', body.userId).single();
-    if (!admin) return { success: false, error: 'Not an admin' };
+    const { data: { user: adminAuthUser } } = await supabase.auth.getUser();
+    if (adminAuthUser?.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
 
     const { count: totalNeeds } = await supabase.from('needs')
       .select('*', { count: 'exact', head: true });
@@ -1131,9 +1121,8 @@ export async function handleStripeCheckout(body: any): Promise<any> {
 
   // ---- TIP ANALYTICS ----
   if (action === 'tip_analytics') {
-    const { data: admin } = await supabase.from('admin_users')
-      .select('*').eq('user_id', body.userId).single();
-    if (!admin) return { success: false, error: 'Not an admin' };
+    const { data: { user: adminAuthUser2 } } = await supabase.auth.getUser();
+    if (adminAuthUser2?.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
 
     const { data: payments } = await supabase.from('payments')
       .select('amount, tip_amount, created_at')
