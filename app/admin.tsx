@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from 
 import { supabase } from '@/app/lib/supabase';
 import { useApp } from '@/app/lib/store';
 
-type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips';
+type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
 
 
 
@@ -179,6 +179,11 @@ export default function AdminDashboard() {
   const [tipAnalytics, setTipAnalytics] = useState<any>(null);
   const [tipAnalyticsLoading, setTipAnalyticsLoading] = useState(false);
 
+  // Verifications state
+  const [verificationRequests, setVerificationRequests] = useState<any[]>([]);
+  const [verificationsLoading, setVerificationsLoading] = useState(false);
+  const [verificationAction, setVerificationAction] = useState<Record<string, 'loading' | 'done'>>({});
+
 
   // Check admin access on mount
   useEffect(() => {
@@ -330,6 +335,36 @@ export default function AdminDashboard() {
     if (activeTab === 'tips' && isAdminUser) fetchTipAnalytics();
   }, [activeTab, isAdminUser]);
 
+  const fetchVerificationRequests = useCallback(async () => {
+    setVerificationsLoading(true);
+    try {
+      const { data } = await supabase.from('verification_requests')
+        .select('id, user_id, name, city, phone, status, notes, created_at, profiles(name, avatar, city)')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setVerificationRequests(data || []);
+    } catch {}
+    setVerificationsLoading(false);
+  }, []);
+
+  const handleVerificationAction = async (reqId: string, userId: string, action: 'approve' | 'reject', notes = '') => {
+    setVerificationAction(prev => ({ ...prev, [reqId]: 'loading' }));
+    try {
+      await supabase.from('verification_requests').update({ status: action === 'approve' ? 'approved' : 'rejected', notes, reviewed_at: new Date().toISOString() }).eq('id', reqId);
+      if (action === 'approve') {
+        await supabase.from('profiles').update({ verified: true }).eq('id', userId);
+      }
+      setVerificationAction(prev => ({ ...prev, [reqId]: 'done' }));
+      setVerificationRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: action === 'approve' ? 'approved' : 'rejected' } : r));
+    } catch {
+      setVerificationAction(prev => { const n = { ...prev }; delete n[reqId]; return n; });
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'verifications' && isAdminUser) fetchVerificationRequests();
+  }, [activeTab, isAdminUser]);
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchStats(true);
@@ -337,6 +372,7 @@ export default function AdminDashboard() {
     if (activeTab === 'security') fetchErrorLogs();
     if (activeTab === 'onboarding') fetchWalkthroughStats();
     if (activeTab === 'tips') fetchTipAnalytics();
+    if (activeTab === 'verifications') fetchVerificationRequests();
   };
 
 
@@ -518,6 +554,7 @@ export default function AdminDashboard() {
         <TabButton tab="activity" current={activeTab} label="Activity" icon="timeline" onPress={() => setActiveTab('activity')} />
         <TabButton tab="onboarding" current={activeTab} label="Onboarding" icon="play-circle-outline" onPress={() => setActiveTab('onboarding')} />
         <TabButton tab="tips" current={activeTab} label="Tips" icon="volunteer-activism" onPress={() => setActiveTab('tips')} />
+        <TabButton tab="verifications" current={activeTab} label="Verify" icon="verified-user" onPress={() => setActiveTab('verifications')} badge={verificationRequests.filter(r => r.status === 'pending').length || undefined} />
 
       </ScrollView>
 
@@ -1228,6 +1265,120 @@ export default function AdminDashboard() {
                     ))}
                   </View>
                 )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* VERIFICATIONS TAB */}
+        {activeTab === 'verifications' && (
+          <>
+            <View style={s.tabHeader}>
+              <Text style={s.tabHeaderTitle}>Verification Requests</Text>
+              <TouchableOpacity onPress={fetchVerificationRequests} style={{ opacity: verificationsLoading ? 0.5 : 1 }}>
+                <MaterialIcons name="refresh" size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* How it works */}
+            <View style={[s.sectionCard, { backgroundColor: '#EDF7EE', borderColor: '#5CB85C30', borderWidth: 1 }]}>
+              <View style={s.sectionHeader}>
+                <MaterialIcons name="info-outline" size={18} color="#5CB85C" />
+                <Text style={[s.sectionTitle, { color: '#2D6B30' }]}>Verification Process</Text>
+              </View>
+              <Text style={[s.securityDesc, { color: '#3A7A3D' }]}>
+                1. User verifies their phone number via SMS{'\n'}
+                2. They submit a request with their real name + city{'\n'}
+                3. You review and approve — they get a ✓ checkmark on all their posts
+              </Text>
+            </View>
+
+            {verificationsLoading ? (
+              <View style={s.whLoadingWrap}><ActivityIndicator size="small" color={Colors.primary} /><Text style={s.whLoadingText}>Loading requests...</Text></View>
+            ) : verificationRequests.length === 0 ? (
+              <View style={s.emptyState}>
+                <MaterialIcons name="verified-user" size={48} color={Colors.borderLight} />
+                <Text style={s.emptyText}>No verification requests yet</Text>
+                <Text style={[s.emptySubtext, { textAlign: 'center', marginTop: 4 }]}>Users can request verification from their profile page</Text>
+              </View>
+            ) : (
+              <>
+                {/* Pending first */}
+                {['pending', 'approved', 'rejected'].map(statusGroup => {
+                  const grouped = verificationRequests.filter(r => r.status === statusGroup);
+                  if (grouped.length === 0) return null;
+                  const groupColor = statusGroup === 'approved' ? Colors.success : statusGroup === 'rejected' ? Colors.error : Colors.accent;
+                  return (
+                    <View key={statusGroup} style={s.sectionCard}>
+                      <View style={s.sectionHeader}>
+                        <MaterialIcons
+                          name={statusGroup === 'approved' ? 'check-circle' : statusGroup === 'rejected' ? 'cancel' : 'hourglass-empty'}
+                          size={18} color={groupColor}
+                        />
+                        <Text style={[s.sectionTitle, { color: groupColor, textTransform: 'capitalize' }]}>{statusGroup} ({grouped.length})</Text>
+                      </View>
+                      {grouped.map(req => {
+                        const isPending = req.status === 'pending';
+                        const isActing = verificationAction[req.id] === 'loading';
+                        return (
+                          <View key={req.id} style={{ borderTopWidth: 1, borderTopColor: Colors.borderLight, paddingTop: 12, marginTop: 8 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                              {req.profiles?.avatar ? (
+                                <Image source={{ uri: req.profiles.avatar }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                              ) : (
+                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+                                  <MaterialIcons name="person" size={20} color={Colors.textLight} />
+                                </View>
+                              )}
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: Colors.text }}>{req.name || req.profiles?.name || 'Unknown'}</Text>
+                                <Text style={{ fontSize: FontSize.xs, color: Colors.textSecondary }}>{req.city || req.profiles?.city || '—'}</Text>
+                              </View>
+                              <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>{formatDate(req.created_at)}</Text>
+                            </View>
+                            {req.phone && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                                <MaterialIcons name="phone" size={14} color={Colors.success} />
+                                <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary }}>Phone verified: {req.phone}</Text>
+                              </View>
+                            )}
+                            {req.notes ? (
+                              <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, fontStyle: 'italic', marginBottom: 8 }}>Note: {req.notes}</Text>
+                            ) : null}
+                            {isPending && (
+                              <View style={{ flexDirection: 'row', gap: 10 }}>
+                                <TouchableOpacity
+                                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.success + '15', borderRadius: BorderRadius.lg, paddingVertical: 10, borderWidth: 1, borderColor: Colors.success + '40', opacity: isActing ? 0.5 : 1 }}
+                                  onPress={() => handleVerificationAction(req.id, req.user_id, 'approve')}
+                                  disabled={isActing}
+                                  activeOpacity={0.8}
+                                >
+                                  {isActing ? <ActivityIndicator size="small" color={Colors.success} /> : <MaterialIcons name="check-circle" size={16} color={Colors.success} />}
+                                  <Text style={{ color: Colors.success, fontWeight: '700', fontSize: FontSize.sm }}>Approve</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.error + '15', borderRadius: BorderRadius.lg, paddingVertical: 10, borderWidth: 1, borderColor: Colors.error + '40', opacity: isActing ? 0.5 : 1 }}
+                                  onPress={() => handleVerificationAction(req.id, req.user_id, 'reject')}
+                                  disabled={isActing}
+                                  activeOpacity={0.8}
+                                >
+                                  <MaterialIcons name="cancel" size={16} color={Colors.error} />
+                                  <Text style={{ color: Colors.error, fontWeight: '700', fontSize: FontSize.sm }}>Reject</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                            {verificationAction[req.id] === 'done' && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <MaterialIcons name="check-circle" size={16} color={Colors.success} />
+                                <Text style={{ fontSize: FontSize.sm, color: Colors.success, fontWeight: '600' }}>Done</Text>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
               </>
             )}
           </>

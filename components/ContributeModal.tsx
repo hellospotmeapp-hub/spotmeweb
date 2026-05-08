@@ -416,6 +416,19 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 </View>
               )}
 
+              {/* SpotMe Trust Banner */}
+              <View style={styles.trustBanner}>
+                <View style={styles.trustBannerLeft}>
+                  <MaterialIcons name="verified-user" size={20} color="#5CB85C" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.trustBannerTitle}>SpotMe Verified Process</Text>
+                  <Text style={styles.trustBannerText}>
+                    Every recipient goes through phone verification + manual review before receiving funds. Real people. Real needs.
+                  </Text>
+                </View>
+              </View>
+
               {/* Amount Selection */}
               <Text style={styles.sectionLabel}>Choose amount</Text>
               <View style={styles.amountGrid}>
@@ -766,6 +779,18 @@ const styles = StyleSheet.create({
   submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, paddingVertical: Spacing.lg, borderRadius: BorderRadius.xl, ...Shadow.md },
   submitButtonDisabled: { opacity: 0.5 },
   submitButtonText: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.white },
+  trustBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md,
+    backgroundColor: '#EDF7EE', borderRadius: BorderRadius.lg,
+    padding: Spacing.md, marginBottom: Spacing.lg,
+    borderWidth: 1, borderColor: '#5CB85C30',
+  },
+  trustBannerLeft: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#5CB85C18', alignItems: 'center', justifyContent: 'center',
+  },
+  trustBannerTitle: { fontSize: FontSize.sm, fontWeight: '700', color: '#2D6B30', marginBottom: 2 },
+  trustBannerText: { fontSize: FontSize.xs, color: '#3A7A3D', lineHeight: 16 },
   stripeFooter: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginTop: Spacing.md, paddingBottom: Spacing.md },
   disclaimerText: { flex: 1, fontSize: FontSize.xs, color: Colors.textLight, lineHeight: 16 },
   successContainer: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
