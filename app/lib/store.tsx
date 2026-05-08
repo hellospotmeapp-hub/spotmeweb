@@ -1259,8 +1259,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data: accountData, error: accountErr } = await supabase.functions.invoke('stripe-connect', {
         body: {
           action: 'create_account',
+          userId: currentUser.id,
           email: `${currentUser.id}@spotmeone.com`,
-
           name: currentUser.name,
         },
       });
