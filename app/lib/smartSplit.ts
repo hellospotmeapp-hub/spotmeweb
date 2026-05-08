@@ -133,36 +133,47 @@ export function smartSplit(
       }
     }
 
-    // Phase 2: Distribute remaining budget to the next need that wasn't fully funded
+    // Phase 2: Spread remaining budget across multiple unfunded needs (up to 5)
     if (remainingBudget > 0) {
       const unfundedNeeds = sortedNeeds.filter(
         n => !allocations.find(a => a.needId === n.id)
       );
 
       if (unfundedNeeds.length > 0) {
-        const nextNeed = unfundedNeeds[0];
-        const needRemaining = nextNeed.goalAmount - nextNeed.raisedAmount;
-        const allocation = Math.min(remainingBudget, needRemaining);
-        const roundedAllocation = Math.round(allocation * 100) / 100;
+        const maxSpread = Math.min(unfundedNeeds.length, 5);
+        const spreadNeeds = unfundedNeeds.slice(0, maxSpread);
+        const perNeed = Math.floor((remainingBudget / maxSpread) * 100) / 100;
+        let distributed = 0;
 
-        if (roundedAllocation > 0) {
-          allocations.push({
-            needId: nextNeed.id,
-            needTitle: nextNeed.title,
-            userName: nextNeed.userName,
-            userAvatar: nextNeed.userAvatar,
-            userCity: nextNeed.userCity,
-            category: nextNeed.category,
-            amount: roundedAllocation,
-            goalAmount: nextNeed.goalAmount,
-            raisedBefore: nextNeed.raisedAmount,
-            raisedAfter: nextNeed.raisedAmount + roundedAllocation,
-            willComplete: roundedAllocation >= needRemaining,
-            remaining: needRemaining,
-          });
-          remainingBudget = Math.round((remainingBudget - roundedAllocation) * 100) / 100;
-          if (roundedAllocation >= needRemaining) goalsCompleted++;
+        for (let i = 0; i < spreadNeeds.length; i++) {
+          const need = spreadNeeds[i];
+          const needRemaining = need.goalAmount - need.raisedAmount;
+          const isLast = i === spreadNeeds.length - 1;
+          const allocation = isLast
+            ? Math.round((remainingBudget - distributed) * 100) / 100
+            : Math.min(perNeed, needRemaining);
+          const roundedAllocation = Math.round(allocation * 100) / 100;
+
+          if (roundedAllocation > 0) {
+            allocations.push({
+              needId: need.id,
+              needTitle: need.title,
+              userName: need.userName,
+              userAvatar: need.userAvatar,
+              userCity: need.userCity,
+              category: need.category,
+              amount: roundedAllocation,
+              goalAmount: need.goalAmount,
+              raisedBefore: need.raisedAmount,
+              raisedAfter: need.raisedAmount + roundedAllocation,
+              willComplete: roundedAllocation >= needRemaining,
+              remaining: needRemaining,
+            });
+            distributed = Math.round((distributed + roundedAllocation) * 100) / 100;
+            if (roundedAllocation >= needRemaining) goalsCompleted++;
+          }
         }
+        remainingBudget = Math.round((remainingBudget - distributed) * 100) / 100;
       }
     }
   } else {
