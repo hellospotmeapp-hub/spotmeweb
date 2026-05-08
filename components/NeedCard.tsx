@@ -126,24 +126,6 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
         </View>
       </View>
 
-      {/* Photo */}
-      {need.photo ? (
-        <View>
-          <GracefulImage
-            uri={need.photo}
-            type="photo"
-            style={styles.photo}
-            category={need.category}
-            containerStyle={expired ? { opacity: 0.7 } : undefined}
-          />
-          {expired && (
-            <View style={styles.expiredOverlay}>
-              <MaterialIcons name="timer-off" size={16} color={Colors.white} />
-              <Text style={styles.expiredOverlayText}>Expired</Text>
-            </View>
-          )}
-        </View>
-      ) : null}
 
       {/* Content */}
       <View style={styles.content}>
