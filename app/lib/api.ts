@@ -1688,7 +1688,8 @@ export async function handleProcessContribution(body: any): Promise<any> {
   if (action === 'create_need') {
     const expiresAt = body.expiresAt || new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: need } = await supabase.from('needs').insert({
+    // FIX (Bug 1): Capture the insert error so failures are never silently swallowed
+    const { data: need, error: insertError } = await supabase.from('needs').insert({
       user_id: body.userId,
       title: sanitize(body.title),
       message: sanitize(body.message),
@@ -1703,6 +1704,11 @@ export async function handleProcessContribution(body: any): Promise<any> {
       contributor_count: 0,
       expires_at: expiresAt,
     }).select().single();
+
+    if (insertError) {
+      console.error('[create_need] Database insert failed:', insertError.message, '| code:', insertError.code);
+      return { success: false, error: insertError.message || 'Database error — could not save need' };
+    }
 
     if (need) {
       return {
@@ -1786,6 +1792,18 @@ export async function handleProcessContribution(body: any): Promise<any> {
       .select('*').eq('email', body.email).single();
 
     if (existing) {
+      // FIX (Bug 3): Existing user — try to establish a real Supabase auth session
+      // so subsequent inserts (needs, contributions) pass RLS checks.
+      if (body.password) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: body.email,
+          password: body.password,
+        });
+        if (signInErr) {
+          // Legacy account with no Supabase auth entry — silently continue.
+          console.warn('[create_profile] Auth sign-in skipped for legacy account:', signInErr.message);
+        }
+      }
       return {
         success: true,
         profile: {
@@ -1802,15 +1820,35 @@ export async function handleProcessContribution(body: any): Promise<any> {
       };
     }
 
-    const { data: profile } = await supabase.from('profiles').insert({
+    // FIX (Bug 3): Create a real Supabase auth account so the user gets a valid
+    // auth session. This makes RLS policies work for all subsequent writes.
+    let authUserId: string | null = null;
+    if (body.email && body.password) {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: body.email,
+        password: body.password,
+      });
+      if (!authError && authData?.user?.id) {
+        authUserId = authData.user.id;
+      } else {
+        console.warn('[create_profile] Supabase auth signUp failed:', authError?.message);
+      }
+    }
+
+    const { data: profile, error: profileError } = await supabase.from('profiles').insert({
+      ...(authUserId ? { id: authUserId } : {}),
       name: sanitize(body.name),
       email: body.email,
       password: body.password,
       bio: sanitize(body.bio),
       city: sanitize(body.city),
-      avatar: body.avatar || '',   
+      avatar: body.avatar || '',
     }).select().single();
-    
+
+    if (profileError) {
+      console.error('[create_profile] Profile insert failed:', profileError.message);
+    }
+
     if (profile) {
       return {
         success: true,
@@ -1832,6 +1870,47 @@ export async function handleProcessContribution(body: any): Promise<any> {
 
   // ---- LOGIN ----
   if (action === 'login') {
+    // FIX (Bug 3): Try Supabase auth first to establish a real session.
+    // This ensures subsequent writes (needs, contributions) pass RLS checks.
+    if (body.email && body.password) {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: body.email,
+        password: body.password,
+      });
+      if (!authError && authData?.user?.id) {
+        // Auth succeeded — look up profile by auth UID, fall back to email lookup
+        const { data: profileById } = await supabase.from('profiles')
+          .select('*').eq('id', authData.user.id).single();
+        const { data: profileByEmail } = profileById
+          ? { data: null }
+          : await supabase.from('profiles').select('*').eq('email', body.email).single();
+        const profile = profileById || profileByEmail;
+        if (profile) {
+          return {
+            success: true,
+            profile: {
+              id: profile.id,
+              name: profile.name,
+              avatar: profile.avatar,
+              bio: profile.bio,
+              city: profile.city,
+              joinedDate: profile.created_at,
+              totalRaised: Number(profile.total_raised),
+              totalGiven: Number(profile.total_given),
+              verified: profile.verified,
+              trustScore: profile.trust_score,
+              trustLevel: profile.trust_level,
+            },
+          };
+        }
+      } else {
+        // Auth failed — legacy account with no Supabase auth entry. Fall through
+        // to profile-only lookup so existing users are never locked out.
+        console.warn('[login] Auth failed, falling back to legacy profile lookup:', authError?.message);
+      }
+    }
+
+    // Legacy fallback: look up by email only (no real auth session established)
     const { data: profile } = await supabase.from('profiles')
       .select('*').eq('email', body.email).single();
 

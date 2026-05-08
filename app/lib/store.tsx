@@ -1515,12 +1515,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-
       if (data?.success && data.need) {
         // Server confirmed — update local state with real server data and clear pending cache
         setNeeds(prev => prev.map(n => n.id === localNeed.id ? { ...data.need, expiresAt: data.need.expiresAt || expiresAt } : n));
         removePendingNeed(localNeed.id);
         console.log(`[SpotMe PendingNeeds] Need confirmed by server: ${localNeed.id} → ${data.need.id}`);
+      } else if (!data?.success) {
+        // FIX (Bug 2): Insert failed — remove the fake local need so the user
+        // isn't left looking at something that was never actually saved.
+        setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
+        removePendingNeed(localNeed.id);
+        console.error('[SpotMe] Need creation failed:', data?.error);
+        setNotifications(prev => [{
+          id: `not_${Date.now()}`,
+          type: 'welcome' as const,
+          title: 'Need Not Saved',
+          message: data?.error || 'Your need could not be saved. Please try again.',
+          timestamp: new Date().toISOString(),
+          read: false,
+        }, ...prev]);
       }
       offlineManager.markOnline();
 
