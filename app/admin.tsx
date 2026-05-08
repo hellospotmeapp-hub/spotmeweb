@@ -191,16 +191,39 @@ export default function AdminDashboard() {
   }, [currentUser.id]);
 
   const checkAdminAccess = async () => {
+    const ADMIN_EMAIL = 'hellospotme.app@gmail.com';
     if (!isLoggedIn || currentUser.id === 'guest') {
       setIsAdminUser(false);
       setAdminCheckDone(true);
       return;
     }
     try {
-      const { data } = await supabase.functions.invoke('stripe-checkout', {
-        body: { action: 'admin_check', userId: currentUser.id },
-      });
-      setIsAdminUser(data?.isAdmin || false);
+      // Read the stored login email directly from localStorage — most reliable source
+      let storedEmail: string | null = null;
+      try {
+        storedEmail = typeof localStorage !== 'undefined'
+          ? localStorage.getItem('spotme_email')
+          : null;
+      } catch {}
+
+      if (storedEmail?.toLowerCase() === ADMIN_EMAIL) {
+        setIsAdminUser(true);
+        setAdminCheckDone(true);
+        return;
+      }
+
+      // Fallback: check supabase auth session
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const sessionEmail = sessionData?.session?.user?.email?.toLowerCase();
+        if (sessionEmail === ADMIN_EMAIL) {
+          setIsAdminUser(true);
+          setAdminCheckDone(true);
+          return;
+        }
+      } catch {}
+
+      setIsAdminUser(false);
     } catch {
       setIsAdminUser(false);
     }
