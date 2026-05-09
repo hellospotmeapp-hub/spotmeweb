@@ -33,6 +33,7 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState(currentUser.name);
   const [editBio, setEditBio] = useState(currentUser.bio);
   const [editCity, setEditCity] = useState(currentUser.city);
+  const [profileError, setProfileError] = useState('');
   const [showThankYouModal, setShowThankYouModal] = useState(false);
   const [thankYouNeedId, setThankYouNeedId] = useState('');
   const [thankYouMsg, setThankYouMsg] = useState('');
@@ -175,7 +176,19 @@ export default function ProfileScreen() {
 
 
 
-  const handleSaveProfile = () => { updateProfile({ name: editName.trim() || currentUser.name, bio: editBio, city: editCity }); setEditing(false); };
+  const handleSaveProfile = () => {
+    if (!editCity.trim()) {
+      setProfileError('City is required — please add your city before saving.');
+      return;
+    }
+    if (!editName.trim()) {
+      setProfileError('Name is required — please enter your name before saving.');
+      return;
+    }
+    setProfileError('');
+    updateProfile({ name: editName.trim(), bio: editBio.trim(), city: editCity.trim() });
+    setEditing(false);
+  };
 
   // Payout eligibility check for a need
   const canRequestPayoutForNeed = (need: Need): boolean => {
@@ -248,7 +261,18 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings')}>
               <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => { setEditing(!editing); if (!editing) { setEditName(currentUser.name); setEditBio(currentUser.bio); setEditCity(currentUser.city); } }}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => {
+              if (editing) {
+                // Cancel — discard changes
+                setEditName(currentUser.name);
+                setEditBio(currentUser.bio);
+                setEditCity(currentUser.city);
+                setProfileError('');
+                setEditing(false);
+              } else {
+                setEditing(true);
+              }
+            }}>
               <MaterialIcons name={editing ? 'close' : 'edit'} size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -292,8 +316,25 @@ export default function ProfileScreen() {
               <TextInput style={styles.editInput} value={editName} onChangeText={setEditName} placeholder="Your name..." placeholderTextColor={Colors.textLight} maxLength={40} autoFocus />
               <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>Bio</Text>
               <TextInput style={styles.editInput} value={editBio} onChangeText={setEditBio} placeholder="Your bio..." placeholderTextColor={Colors.textLight} multiline maxLength={120} />
-              <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>City</Text>
-              <TextInput style={styles.editInput} value={editCity} onChangeText={setEditCity} placeholder="Your city..." placeholderTextColor={Colors.textLight} maxLength={40} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: -4 }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5 }}>City</Text>
+                <Text style={{ fontSize: 12, color: Colors.error, fontWeight: '700' }}>*</Text>
+              </View>
+              <TextInput style={styles.editInput} value={editCity} onChangeText={v => { setEditCity(v); if (profileError) setProfileError(''); }} placeholder="e.g. Atlanta, GA" placeholderTextColor={Colors.textLight} maxLength={40} />
+              {!!profileError && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF0EE', borderRadius: 8, padding: 10, marginTop: 4 }}>
+                  <MaterialIcons name="error-outline" size={16} color={Colors.error} />
+                  <Text style={{ fontSize: 13, color: Colors.error, flex: 1 }}>{profileError}</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', marginTop: 12, marginBottom: 4, flexDirection: 'row', gap: 6 }}
+                onPress={handleSaveProfile}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="check" size={18} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Save Profile</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.changePhotoBtn} onPress={() => setShowAvatarPicker(true)} disabled={avatarUploading} activeOpacity={0.7}>
                 {avatarUploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
