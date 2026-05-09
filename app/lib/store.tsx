@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { supabase, safeInvoke } from './supabase';
-import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate, MOCK_NEEDS, MOCK_NOTIFICATIONS, MOCK_THANK_YOU_UPDATES, CURRENT_USER } from './data';
+import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate, MOCK_NOTIFICATIONS, MOCK_THANK_YOU_UPDATES, CURRENT_USER } from './data';
 import { offlineManager, QueuedAction } from './offlineManager';
 
 
@@ -513,7 +513,7 @@ interface AppState {
   syncOfflineActions: () => Promise<void>;
   // Actions
   contribute: (needId: string, amount: number, note?: string) => void;
-  contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number) => Promise<PaymentResult>;
+  contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string) => Promise<PaymentResult>;
   spreadWithPayment: (allocations: any[], totalAmount: number, spreadMode: string, isAnonymous?: boolean) => Promise<PaymentResult>;
   createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => void;
   editNeed: (needId: string, updates: { title?: string; message?: string; photo?: string; goalAmount?: number }) => Promise<boolean>;
@@ -679,7 +679,7 @@ function getInitialSavedNeeds(): string[] {
 const AppContext = createContext<AppState | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [needs, setNeeds] = useState<Need[]>(() => applyExpirations(MOCK_NEEDS));
+  const [needs, setNeeds] = useState<Need[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
   const [thankYouUpdates, setThankYouUpdates] = useState<ThankYouUpdate[]>(MOCK_THANK_YOU_UPDATES);
 
@@ -1006,7 +1006,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---- STRIPE CONNECT PAYMENT: Single Contribution ----
   const contributeWithPayment = useCallback(async (
-    needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number
+    needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string
   ): Promise<PaymentResult> => {
     try {
       const need = needs.find(n => n.id === needId);
@@ -1029,8 +1029,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           needId,
           needTitle: need?.title || '',
           contributorId: currentUser.id !== 'guest' ? currentUser.id : null,
-          contributorName: currentUser.name,
-          contributorAvatar: currentUser.avatar,
+          contributorName: currentUser.id === 'guest' && guestEmail ? guestEmail.split('@')[0] : currentUser.name,
+          contributorAvatar: currentUser.id === 'guest' ? '' : currentUser.avatar,
+          guestEmail: currentUser.id === 'guest' ? (guestEmail || '') : '',
           note: note || '',
           isAnonymous: isAnonymous || false,
           tipAmount: tipAmount || 0,
