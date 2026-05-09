@@ -956,31 +956,120 @@ export async function handleStripeCheckout(body: any): Promise<any> {
 
   // ---- ADMIN STATS ----
   if (action === 'admin_stats') {
-    // Verify admin
     if (body.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
 
-    const { count: totalNeeds } = await supabase.from('needs')
-      .select('*', { count: 'exact', head: true });
-    const { count: totalPayments } = await supabase.from('payments')
-      .select('*', { count: 'exact', head: true });
-    const { count: totalProfiles } = await supabase.from('profiles')
-      .select('*', { count: 'exact', head: true });
-    const { data: completedPayments } = await supabase.from('payments')
-      .select('amount, tip_amount')
-      .eq('status', 'completed');
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const totalRevenue = (completedPayments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
-    const totalTips = (completedPayments || []).reduce((sum: number, p: any) => sum + Number(p.tip_amount || 0), 0);
+    const [
+      { data: profiles },
+      { data: needs },
+      { data: recentPayments },
+      { data: allPayments },
+      { count: failedCount },
+      { count: recentNeedsCount },
+      { data: webhookData },
+      { data: errorData },
+    ] = await Promise.all([
+      supabase.from('profiles').select('id, name, avatar, city, verified, total_raised, total_given, created_at').order('created_at', { ascending: false }).limit(200),
+      supabase.from('needs').select('id, title, category, goal_amount, raised_amount, status, contributor_count, created_at, user_id').order('created_at', { ascending: false }).limit(200),
+      supabase.from('payments').select('id, amount, tip_amount, contributor_name, contributor_avatar, need_id, created_at, is_anonymous, destination_charge').eq('status', 'completed').order('created_at', { ascending: false }).limit(200),
+      supabase.from('payments').select('amount').eq('status', 'completed'),
+      supabase.from('payments').select('*', { count: 'exact', head: true }).eq('status', 'failed'),
+      supabase.from('needs').select('*', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo),
+      supabase.from('webhook_logs').select('processed, created_at').order('created_at', { ascending: false }).limit(500),
+      supabase.from('error_logs').select('severity, resolved').limit(500),
+    ]);
+
+    const totalUsers = (profiles || []).length;
+    const totalNeeds = (needs || []).length;
+    const activeNeeds = (needs || []).filter((n: any) => n.status === 'Collecting' || n.status === 'active').length;
+    const totalGoalsMet = (needs || []).filter((n: any) => n.status === 'Goal Met' || n.status === 'completed').length;
+    const totalRaised = (allPayments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+    const totalContributions = (allPayments || []).length;
+    const recentContributionsCount = (recentPayments || []).filter((p: any) => p.created_at >= sevenDaysAgo).length;
+
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(Date.now() - (6 - i) * 24 * 60 * 60 * 1000);
+      return { date: d.toISOString().slice(0, 10), label: d.toLocaleDateString('en-US', { weekday: 'short' }), amount: 0, count: 0 };
+    });
+    (recentPayments || []).forEach((p: any) => {
+      const day = days.find(d => d.date === (p.created_at || '').slice(0, 10));
+      if (day) { day.amount = Math.round((day.amount + Number(p.amount || 0)) * 100) / 100; day.count++; }
+    });
+
+    const categoryBreakdown: Record<string, { count: number; raised: number }> = {};
+    (needs || []).forEach((n: any) => {
+      const cat = n.category || 'Other';
+      if (!categoryBreakdown[cat]) categoryBreakdown[cat] = { count: 0, raised: 0 };
+      categoryBreakdown[cat].count++;
+      categoryBreakdown[cat].raised += Number(n.raised_amount || 0);
+    });
+
+    const contributorMap: Record<string, { name: string; avatar: string; total: number; count: number }> = {};
+    (recentPayments || []).forEach((p: any) => {
+      if (p.is_anonymous) return;
+      const key = p.contributor_name || 'Anonymous';
+      if (!contributorMap[key]) contributorMap[key] = { name: key, avatar: p.contributor_avatar || '', total: 0, count: 0 };
+      contributorMap[key].total = Math.round((contributorMap[key].total + Number(p.amount || 0)) * 100) / 100;
+      contributorMap[key].count++;
+    });
+    const topContributors = Object.values(contributorMap).sort((a: any, b: any) => b.total - a.total).slice(0, 10);
+
+    const wh = webhookData || [];
+    const webhookStats = { total: wh.length, processed: wh.filter((w: any) => w.processed === true).length, failed: wh.filter((w: any) => w.processed === false).length, pending: wh.filter((w: any) => w.processed == null).length };
+
+    const errs = errorData || [];
+    const errorStats = { total: errs.length, unresolved: errs.filter((e: any) => !e.resolved).length, critical: errs.filter((e: any) => e.severity === 'critical').length };
 
     return {
       success: true,
       stats: {
-        totalNeeds: totalNeeds || 0,
-        totalPayments: totalPayments || 0,
-        totalProfiles: totalProfiles || 0,
-        totalRevenue,
-        totalTips,
-        completedPayments: completedPayments?.length || 0,
+        totalUsers,
+        totalNeeds,
+        activeNeeds,
+        totalGoalsMet,
+        totalRaised,
+        totalContributions,
+        totalPayments: totalContributions,
+        totalRevenue: totalRaised,
+        failedPaymentsCount: failedCount || 0,
+        recentContributionsCount,
+        recentNeedsCount: recentNeedsCount || 0,
+        webhookStats,
+        errorStats,
+        dailyData: days,
+        categoryBreakdown,
+        topContributors,
+        recentTransactions: (recentPayments || []).slice(0, 20).map((p: any) => ({
+          id: p.id,
+          userName: p.is_anonymous ? 'A kind stranger' : (p.contributor_name || 'Anonymous'),
+          userAvatar: p.contributor_avatar || '',
+          amount: Number(p.amount || 0),
+          needId: p.need_id || '',
+          timestamp: p.created_at,
+          isAnonymous: p.is_anonymous || false,
+        })),
+        users: (profiles || []).map((u: any) => ({
+          id: u.id,
+          name: u.name || 'SpotMe User',
+          avatar: u.avatar || '',
+          city: u.city || '',
+          verified: u.verified || false,
+          totalRaised: Number(u.total_raised || 0),
+          totalGiven: Number(u.total_given || 0),
+          joinedDate: u.created_at,
+        })),
+        needs: (needs || []).map((n: any) => ({
+          id: n.id,
+          title: n.title || '',
+          category: n.category || 'Other',
+          goalAmount: Number(n.goal_amount || 0),
+          raisedAmount: Number(n.raised_amount || 0),
+          status: n.status || 'Collecting',
+          contributorCount: n.contributor_count || 0,
+          createdAt: n.created_at,
+          userId: n.user_id,
+        })),
       },
     };
   }
