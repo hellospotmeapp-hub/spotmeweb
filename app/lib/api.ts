@@ -275,6 +275,13 @@ export async function handleStripeCheckout(body: any): Promise<any> {
     }
 
     // Build metadata for Stripe
+    // These fields appear in the Stripe dashboard under each payment's Metadata section.
+    // They are the source of truth for tip tracking on platform charges (no connected account).
+    // For destination charges the tip also appears as the Stripe "Application fee" line.
+    const breakdownParts = [`Donation: $${amount.toFixed(2)}`];
+    if (tipAmount > 0) breakdownParts.push(`Tip to SpotMe: $${tipAmount.toFixed(2)}`);
+    breakdownParts.push(`Stripe fee: $${stripeFee.toFixed(2)}`);
+
     const metadata: Record<string, string> = {
       need_id: needId || '',
       need_title: needTitle.slice(0, 100),
@@ -284,6 +291,8 @@ export async function handleStripeCheckout(body: any): Promise<any> {
       tip_amount: String(tipAmount),
       stripe_fee: String(stripeFee),
       contribution_amount: String(amount),
+      payment_breakdown: breakdownParts.join(' | '),
+      tip_type: destinationCharge ? 'application_fee' : 'platform_tracked',
     };
 
     // Try to create a real Stripe PaymentIntent via RPC
