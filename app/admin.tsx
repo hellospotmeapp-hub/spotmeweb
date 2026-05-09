@@ -150,6 +150,11 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [error, setError] = useState('');
 
+  // Read stored login email — used to authenticate every admin API call
+  const getAdminEmail = (): string => {
+    try { return (typeof localStorage !== 'undefined' ? localStorage.getItem('spotme_email') : null) || ''; } catch { return ''; }
+  };
+
   // Admin access control
   const [isAdminUser, setIsAdminUser] = useState<boolean | null>(null);
   const [adminCheckDone, setAdminCheckDone] = useState(false);
@@ -250,7 +255,7 @@ export default function AdminDashboard() {
     setError('');
     try {
       const { data, error: err } = await supabase.functions.invoke('stripe-checkout', {
-        body: { action: 'admin_stats', userId: currentUser.id },
+        body: { action: 'admin_stats', userId: currentUser.id, email: getAdminEmail() },
       });
       if (err) throw new Error(err.message);
       if (data?.success) {
@@ -274,6 +279,7 @@ export default function AdminDashboard() {
         body: {
           action: 'fetch_webhook_logs',
           userId: currentUser.id,
+          email: getAdminEmail(),
           limit: 50,
           eventType: webhookTypeFilter,
           processed,
@@ -295,6 +301,7 @@ export default function AdminDashboard() {
         body: {
           action: 'fetch_error_logs',
           userId: currentUser.id,
+          email: getAdminEmail(),
           limit: 50,
           severity: errorSeverityFilter !== 'all' ? errorSeverityFilter : undefined,
         },
@@ -345,7 +352,7 @@ export default function AdminDashboard() {
     setTipAnalyticsLoading(true);
     try {
       const { data } = await supabase.functions.invoke('stripe-checkout', {
-        body: { action: 'tip_analytics', userId: currentUser.id },
+        body: { action: 'tip_analytics', userId: currentUser.id, email: getAdminEmail() },
       });
       if (data?.success) {
         setTipAnalytics(data.tipAnalytics);

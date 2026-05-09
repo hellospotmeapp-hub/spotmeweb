@@ -957,8 +957,7 @@ export async function handleStripeCheckout(body: any): Promise<any> {
   // ---- ADMIN STATS ----
   if (action === 'admin_stats') {
     // Verify admin
-    const { data: { user: adminAuthUser } } = await supabase.auth.getUser();
-    if (adminAuthUser?.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
+    if (body.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
 
     const { count: totalNeeds } = await supabase.from('needs')
       .select('*', { count: 'exact', head: true });
@@ -1126,8 +1125,7 @@ export async function handleStripeCheckout(body: any): Promise<any> {
 
   // ---- TIP ANALYTICS ----
   if (action === 'tip_analytics') {
-    const { data: { user: adminAuthUser2 } } = await supabase.auth.getUser();
-    if (adminAuthUser2?.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
+    if (body.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
 
     const { data: payments } = await supabase.from('payments')
       .select('amount, tip_amount, created_at')
