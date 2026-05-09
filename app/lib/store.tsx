@@ -1973,10 +1973,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (currentUser.id !== 'guest') {
       try {
-        await supabase.functions.invoke('process-contribution', {
+        // Re-establish Supabase auth session so the DB update passes RLS policies.
+        // Without this, profile writes silently fail and the name/city reverts on
+        // the next login when the stale DB value is fetched.
+        const storedEmail = await storage.get('spotme_email');
+        const storedPass = await storage.get('spotme_pass');
+        if (storedEmail && storedPass) {
+          await supabase.auth.signInWithPassword({ email: storedEmail, password: storedPass }).catch(() => {});
+        }
+        const { error: invokeErr } = await supabase.functions.invoke('process-contribution', {
           body: { action: 'update_profile', profileId: currentUser.id, updates },
         });
-      } catch {}
+        if (invokeErr) console.warn('[updateProfile] DB write failed:', invokeErr.message);
+      } catch (e: any) {
+        console.warn('[updateProfile] error:', e?.message);
+      }
     }
   }, [currentUser.id]);
 
