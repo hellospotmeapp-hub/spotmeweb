@@ -1258,11 +1258,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Please sign in first' };
       }
 
+      // Use the user's real email so Stripe can send them verification and payout notifications
+      let userEmail = `${currentUser.id}@spotmeone.com`;
+      try {
+        const storedEmail = await storage.get('spotme_email');
+        if (storedEmail && storedEmail.includes('@')) userEmail = storedEmail;
+      } catch {}
+
       const { data: accountData, error: accountErr } = await supabase.functions.invoke('stripe-connect', {
         body: {
           action: 'create_account',
           userId: currentUser.id,
-          email: `${currentUser.id}@spotmeone.com`,
+          email: userEmail,
           name: currentUser.name,
         },
       });
