@@ -338,127 +338,31 @@ export async function handleStripeCheckout(body: any): Promise<any> {
       };
     }
 
-    // FALLBACK — RPC not available or Stripe key not configured
-    // Determine the specific error to help the user
+    // STRIPE FAILED — determine why and surface a clear error.
+    // We never silently record a fake "completed" payment. If Stripe
+    // cannot create a PaymentIntent, the contributor is told to retry.
     const rpcMsg = (rpcError?.message || '').toLowerCase();
     const isNotFound = rpcMsg.includes('could not find') || rpcMsg.includes('does not exist') || rpcMsg.includes('42883');
     const isStripeKeyError = rpcMsg.includes('invalid api key') || rpcMsg.includes('replace_me') || rpcMsg.includes('authentication');
     const isHttpExtError = rpcMsg.includes('http') && rpcMsg.includes('extension');
 
-    let stripeSetupError = '';
+    let userFacingError = 'Our payment service is temporarily unavailable. Please try again in a moment.';
+    let debugDetail = rpcError?.message || 'unknown';
+
     if (isNotFound) {
-      stripeSetupError = 'Stripe SQL functions not found. Run the SQL from Step 3 of the setup guide in your Supabase SQL Editor.';
+      userFacingError = 'Payment setup is incomplete. Please contact support.';
+      debugDetail = 'spotme_create_payment_intent RPC function not found — run the Stripe SQL setup in Supabase.';
     } else if (isHttpExtError) {
-      stripeSetupError = 'HTTP extension not enabled. Run: CREATE EXTENSION IF NOT EXISTS http WITH SCHEMA extensions;';
+      userFacingError = 'Our payment service is temporarily unavailable. Please try again in a moment.';
+      debugDetail = 'HTTP extension not enabled in Supabase. Run: CREATE EXTENSION IF NOT EXISTS http WITH SCHEMA extensions;';
     } else if (isStripeKeyError) {
-      stripeSetupError = 'Stripe secret key not configured. Update spotme_get_stripe_key() with your sk_test_... key.';
-    } else if (rpcError) {
-      stripeSetupError = `Stripe RPC error: ${rpcError.message}`;
+      userFacingError = 'Payment setup is incomplete. Please contact support.';
+      debugDetail = 'Stripe secret key missing or invalid inside spotme_get_stripe_key() SQL function.';
     }
 
-    if (stripeSetupError) {
-      console.warn(`[SpotMe Checkout] ${stripeSetupError}`);
-    }
+    console.error(`[SpotMe Checkout] Payment blocked — Stripe RPC failed: ${debugDetail}`);
 
-    // Process as "direct mode" (no card charge) — contribution is recorded but no real payment
-    console.log(`[SpotMe Checkout] Stripe RPC unavailable (${rpcError?.message || 'unknown'}), using direct mode`);
-
-    // Record the contribution directly
-    if (needId && type === 'contribution') {
-      await supabase.from('contributions').insert({
-        need_id: needId,
-        user_id: contributorId,
-        user_name: isAnonymous ? 'A kind stranger' : contributorName,
-        user_avatar: isAnonymous ? '' : contributorAvatar,
-        amount,
-        note,
-        is_anonymous: isAnonymous,
-      });
-
-      // Update the need's raised amount
-      const { data: need } = await supabase.from('needs')
-        .select('raised_amount, goal_amount, contributor_count')
-        .eq('id', needId).single();
-
-      if (need) {
-        const newRaised = Math.min(Number(need.raised_amount) + amount, Number(need.goal_amount));
-        const newStatus = newRaised >= Number(need.goal_amount) ? 'Goal Met' : 'Collecting';
-        await supabase.from('needs').update({
-          raised_amount: newRaised,
-          contributor_count: (need.contributor_count || 0) + 1,
-          status: newStatus,
-        }).eq('id', needId);
-      }
-    } else if (type === 'spread' && spreadAllocations?.length) {
-      for (const alloc of spreadAllocations) {
-        await supabase.from('contributions').insert({
-          need_id: alloc.needId,
-          user_id: contributorId,
-          user_name: isAnonymous ? 'A kind stranger' : contributorName,
-          user_avatar: isAnonymous ? '' : contributorAvatar,
-          amount: Number(alloc.amount),
-          note: '',
-          is_anonymous: isAnonymous,
-        });
-
-        const { data: need } = await supabase.from('needs')
-          .select('raised_amount, goal_amount, contributor_count')
-          .eq('id', alloc.needId).single();
-
-        if (need) {
-          const newRaised = Math.min(Number(need.raised_amount) + Number(alloc.amount), Number(need.goal_amount));
-          const newStatus = newRaised >= Number(need.goal_amount) ? 'Goal Met' : 'Collecting';
-          await supabase.from('needs').update({
-            raised_amount: newRaised,
-            contributor_count: (need.contributor_count || 0) + 1,
-            status: newStatus,
-          }).eq('id', alloc.needId);
-        }
-      }
-    }
-
-    // Record a completed payment in direct mode
-    const { data: directPayment } = await supabase.from('payments').insert({
-      need_id: needId,
-      contributor_id: contributorId,
-      contributor_name: isAnonymous ? 'A kind stranger' : contributorName,
-      contributor_avatar: isAnonymous ? '' : contributorAvatar,
-      amount,
-      tip_amount: 0,
-      application_fee: 0,
-      recipient_receives: amount,
-      status: 'completed',
-      mode: 'direct',
-      destination_charge: false,
-      note,
-      is_anonymous: isAnonymous,
-      need_title: needTitle,
-      type,
-      spread_allocations: spreadAllocations,
-      completed_at: new Date().toISOString(),
-    }).select('id').single();
-
-    // Send notification + push to need owner (fire-and-forget)
-    if (needId && type === 'contribution') {
-      notifyNeedCreator(needId, contributorName, amount, contributorAvatar, isAnonymous).catch(() => {});
-    } else if (type === 'spread' && spreadAllocations?.length) {
-      for (const alloc of spreadAllocations) {
-        notifyNeedCreator(alloc.needId, contributorName, Number(alloc.amount), contributorAvatar, isAnonymous).catch(() => {});
-      }
-    }
-
-
-    return {
-      success: true,
-      paymentId: directPayment?.id || `direct_${Date.now()}`,
-      mode: 'direct',
-      destinationCharge: false,
-      tipAmount: 0,
-      recipientReceives: amount,
-      // Include setup error info so frontend can display it
-      stripeNotConfigured: !!stripeSetupError,
-      stripeSetupError: stripeSetupError || undefined,
-    };
+    return { success: false, error: userFacingError };
   }
 
 
@@ -778,45 +682,9 @@ export async function handleStripeCheckout(body: any): Promise<any> {
       };
     }
 
-    // Fallback: process as direct
-    // Record contribution
-    if (original.need_id && original.type !== 'spread') {
-      await supabase.from('contributions').insert({
-        need_id: original.need_id,
-        user_id: original.contributor_id,
-        user_name: original.contributor_name || 'Anonymous',
-        user_avatar: original.contributor_avatar || '',
-        amount,
-        note: original.note || '',
-        is_anonymous: original.is_anonymous || false,
-      });
-
-      const { data: need } = await supabase.from('needs')
-        .select('raised_amount, goal_amount, contributor_count')
-        .eq('id', original.need_id).single();
-
-      if (need) {
-        const newRaised = Math.min(Number(need.raised_amount) + amount, Number(need.goal_amount));
-        await supabase.from('needs').update({
-          raised_amount: newRaised,
-          contributor_count: (need.contributor_count || 0) + 1,
-          status: newRaised >= Number(need.goal_amount) ? 'Goal Met' : 'Collecting',
-        }).eq('id', original.need_id);
-      }
-    }
-
-    // Mark original as retried
-    await supabase.from('payments').update({
-      status: 'completed',
-      mode: 'direct',
-      completed_at: new Date().toISOString(),
-    }).eq('id', original.id);
-
-    return {
-      success: true,
-      paymentId: original.id,
-      mode: 'direct',
-    };
+    // Stripe RPC failed on retry — block and surface a clear error
+    console.error(`[SpotMe Retry] Payment blocked — Stripe RPC failed: ${rpcError?.message || 'unknown'}`);
+    return { success: false, error: 'Our payment service is temporarily unavailable. Please try again in a moment.' };
   }
 
   // ---- FETCH PAYOUT DASHBOARD ----
