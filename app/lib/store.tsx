@@ -1364,6 +1364,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           onboardingComplete: true,
           payoutsEnabled: true,
         });
+        // Surface auto-transfer result to the user
+        if (data.autoTransferred > 0) {
+          const msg = `Payout setup complete! $${Number(data.autoTotalDollars).toFixed(2)} from your previous contributions has been automatically transferred to your bank account. Arrives in 2–3 business days.`;
+          if (typeof window !== 'undefined') {
+            window.alert(msg);
+          }
+        }
         return true;
       }
     } catch {}

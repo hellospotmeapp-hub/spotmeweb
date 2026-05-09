@@ -1451,7 +1451,81 @@ export async function handleStripeConnect(body: any): Promise<any> {
       details_submitted: true,
     }).eq('user_id', body.userId);
 
-    return { success: true };
+    // AUTO-TRANSFER: find any outstanding platform-charge payments for this
+    // user's needs and transfer the donation portion to their new account.
+    // The tip stays in SpotMe's balance (it was never owed to the recipient).
+    const { data: connectedAccount } = await supabase
+      .from('connected_accounts')
+      .select('stripe_account_id')
+      .eq('user_id', body.userId)
+      .maybeSingle();
+
+    let autoTransferred = 0;
+    let autoFailed = 0;
+    let autoTotalDollars = 0;
+
+    if (connectedAccount?.stripe_account_id) {
+      const { data: userNeeds } = await supabase
+        .from('needs')
+        .select('id')
+        .eq('user_id', body.userId);
+
+      const needIds = (userNeeds || []).map((n: any) => n.id);
+
+      if (needIds.length > 0) {
+        const { data: pendingPayments } = await supabase
+          .from('payments')
+          .select('id, amount, tip_amount, stripe_payment_intent_id, need_id')
+          .in('need_id', needIds)
+          .eq('status', 'completed')
+          .eq('destination_charge', false);
+
+        for (const payment of (pendingPayments || [])) {
+          const donationCents = Math.round(Number(payment.amount) * 100);
+          if (donationCents < 1) continue;
+
+          const { data: transferResult, error: transferError } = await tryRpc('spotme_create_transfer', {
+            p_amount_cents: donationCents,
+            p_destination: connectedAccount.stripe_account_id,
+            p_payment_intent_id: payment.stripe_payment_intent_id || null,
+            p_metadata: {
+              payment_id: payment.id,
+              need_id: payment.need_id,
+              type: 'auto_transfer_on_onboarding',
+            },
+          });
+
+          if (!transferError && transferResult?.id) {
+            await supabase.from('payments').update({
+              destination_charge: true,
+              connected_account_id: connectedAccount.stripe_account_id,
+              status: 'transferred',
+            }).eq('id', payment.id);
+            autoTransferred++;
+            autoTotalDollars += Number(payment.amount);
+          } else {
+            console.warn('[SpotMe AutoTransfer] Transfer failed for payment', payment.id, transferError?.message);
+            autoFailed++;
+          }
+        }
+      }
+
+      // Push a notification to the user so they know funds are on the way
+      if (autoTransferred > 0) {
+        await sendPushToUser(body.userId, {
+          title: 'Your funds are on the way!',
+          body: `$${autoTotalDollars.toFixed(2)} has been transferred to your bank account. Arrives in 2–3 business days.`,
+          tag: 'auto-transfer',
+        });
+      }
+    }
+
+    return {
+      success: true,
+      autoTransferred,
+      autoFailed,
+      autoTotalDollars,
+    };
   }
 
   // ---- CREATE LOGIN LINK ----
@@ -1868,8 +1942,90 @@ export async function handleProcessContribution(body: any): Promise<any> {
 
   // ---- REQUEST PAYOUT ----
   if (action === 'request_payout') {
-    await supabase.from('needs').update({ status: 'Payout Requested' }).eq('id', body.needId);
-    return { success: true };
+    const needId = body.needId;
+    const userId = body.userId;
+
+    // Look up the user's connected Stripe account
+    const { data: connectedAccount } = await supabase
+      .from('connected_accounts')
+      .select('stripe_account_id, onboarding_complete, payouts_enabled')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    // If no connected account or not set up yet, just record the request
+    if (!connectedAccount?.stripe_account_id || !connectedAccount.onboarding_complete) {
+      await supabase.from('needs').update({ status: 'Payout Requested' }).eq('id', needId);
+      return {
+        success: true,
+        message: 'Payout request recorded. Please complete your Stripe payout setup in Settings to receive your funds.',
+        needsSetup: true,
+      };
+    }
+
+    // Find all completed platform-charge payments for this need
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id, amount, tip_amount, stripe_payment_intent_id')
+      .eq('need_id', needId)
+      .eq('status', 'completed')
+      .eq('destination_charge', false);
+
+    let transferred = 0;
+    let failed = 0;
+    let totalDollars = 0;
+
+    for (const payment of (payments || [])) {
+      const donationCents = Math.round(Number(payment.amount) * 100);
+      if (donationCents < 1) continue;
+
+      const { data: transferResult, error: transferError } = await tryRpc('spotme_create_transfer', {
+        p_amount_cents: donationCents,
+        p_destination: connectedAccount.stripe_account_id,
+        p_payment_intent_id: payment.stripe_payment_intent_id || null,
+        p_metadata: {
+          payment_id: payment.id,
+          need_id: needId,
+          type: 'manual_payout_request',
+        },
+      });
+
+      if (!transferError && transferResult?.id) {
+        await supabase.from('payments').update({
+          destination_charge: true,
+          connected_account_id: connectedAccount.stripe_account_id,
+          status: 'transferred',
+        }).eq('id', payment.id);
+        transferred++;
+        totalDollars += Number(payment.amount);
+      } else {
+        console.warn('[SpotMe Payout] Transfer failed for payment', payment.id, transferError?.message);
+        failed++;
+      }
+    }
+
+    const newStatus = transferred > 0 ? 'Paid' : 'Payout Requested';
+    await supabase.from('needs').update({ status: newStatus }).eq('id', needId);
+
+    if (transferred > 0) {
+      await sendPushToUser(userId, {
+        title: 'Payout sent!',
+        body: `$${totalDollars.toFixed(2)} is on its way to your bank account. Arrives in 2–3 business days.`,
+        tag: 'payout',
+        needId,
+      });
+    }
+
+    return {
+      success: true,
+      message: transferred > 0
+        ? `$${totalDollars.toFixed(2)} transferred to your bank account. Arrives in 2–3 business days.`
+        : failed > 0
+        ? 'Some transfers failed. Please contact support.'
+        : 'No eligible payments found for payout.',
+      transferred,
+      failed,
+      totalDollars,
+    };
   }
 
   // ---- CREATE PROFILE ----

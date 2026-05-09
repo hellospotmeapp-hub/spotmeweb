@@ -698,6 +698,98 @@ $$;
 -- These GRANTs allow supabase.rpc('function_name', ...) to work.
 -- ============================================================
 
+-- ============================================================
+-- 13. CREATE TRANSFER  (auto-payout to connected accounts)
+-- ============================================================
+-- Called when a user completes Stripe Connect onboarding and
+-- there are outstanding platform-charge payments to transfer,
+-- or when a user taps "Request Payout" in the payouts screen.
+--
+-- Parameters:
+--   p_amount_cents        — amount to transfer in cents
+--   p_destination         — Stripe connected account ID (acct_...)
+--   p_payment_intent_id   — source PaymentIntent ID for audit trail
+--   p_metadata            — JSONB metadata attached to the transfer
+-- ============================================================
+CREATE OR REPLACE FUNCTION spotme_create_transfer(
+  p_amount_cents INTEGER,
+  p_destination TEXT,
+  p_payment_intent_id TEXT DEFAULT NULL,
+  p_metadata JSONB DEFAULT '{}'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = extensions, public
+AS $$
+DECLARE
+  stripe_key TEXT;
+  request_body TEXT;
+  response extensions.http_response;
+  result JSONB;
+  meta_key TEXT;
+  meta_value TEXT;
+BEGIN
+  stripe_key := spotme_get_stripe_key();
+
+  IF stripe_key IS NULL OR stripe_key = '' OR stripe_key LIKE '%REPLACE_ME%' THEN
+    RAISE EXCEPTION 'Stripe secret key not configured.';
+  END IF;
+
+  IF p_amount_cents < 1 THEN
+    RAISE EXCEPTION 'Transfer amount must be at least 1 cent.';
+  END IF;
+
+  IF p_destination IS NULL OR p_destination = '' THEN
+    RAISE EXCEPTION 'Transfer destination account ID is required.';
+  END IF;
+
+  request_body := 'amount=' || p_amount_cents
+               || '&currency=usd'
+               || '&destination=' || p_destination;
+
+  IF p_payment_intent_id IS NOT NULL AND p_payment_intent_id != '' THEN
+    request_body := request_body
+      || '&source_transaction=' || p_payment_intent_id;
+  END IF;
+
+  IF p_metadata IS NOT NULL AND p_metadata != '{}'::jsonb THEN
+    FOR meta_key, meta_value IN SELECT * FROM jsonb_each_text(p_metadata)
+    LOOP
+      request_body := request_body
+        || '&metadata[' || meta_key || ']='
+        || replace(replace(replace(meta_value, '%', '%25'), '&', '%26'), '=', '%3D');
+    END LOOP;
+  END IF;
+
+  SELECT * INTO response FROM extensions.http((
+    'POST',
+    'https://api.stripe.com/v1/transfers',
+    ARRAY[extensions.http_header('Authorization', 'Bearer ' || stripe_key)],
+    'application/x-www-form-urlencoded',
+    request_body
+  )::extensions.http_request);
+
+  BEGIN
+    result := response.content::jsonb;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'Failed to parse Stripe transfer response: %', response.content;
+  END;
+
+  IF result ? 'error' THEN
+    RAISE EXCEPTION 'Stripe Transfer error: % (type: %)',
+      result->'error'->>'message',
+      result->'error'->>'type';
+  END IF;
+
+  RETURN result;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION spotme_create_transfer(INTEGER, TEXT, TEXT, JSONB) TO anon;
+GRANT EXECUTE ON FUNCTION spotme_create_transfer(INTEGER, TEXT, TEXT, JSONB) TO authenticated;
+
+
 -- Payment Intent functions
 GRANT EXECUTE ON FUNCTION spotme_create_payment_intent(INTEGER, TEXT, JSONB, TEXT, INTEGER) TO anon;
 GRANT EXECUTE ON FUNCTION spotme_create_payment_intent(INTEGER, TEXT, JSONB, TEXT, INTEGER) TO authenticated;
