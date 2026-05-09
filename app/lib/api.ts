@@ -1084,22 +1084,131 @@ export async function handleStripeCheckout(body: any): Promise<any> {
   if (action === 'tip_analytics') {
     if (body.email?.toLowerCase() !== 'hellospotme.app@gmail.com') return { success: false, error: 'Not an admin' };
 
-    const { data: payments } = await supabase.from('payments')
-      .select('amount, tip_amount, created_at')
+    // Fetch ALL completed payments so we can compute tip RATE (not just payments that have a tip)
+    const { data: allPayments } = await supabase.from('payments')
+      .select('amount, tip_amount, created_at, contributor_name, contributor_id, is_anonymous')
       .eq('status', 'completed')
-      .gt('tip_amount', 0);
+      .order('created_at', { ascending: false })
+      .limit(500);
 
-    const totalTips = (payments || []).reduce((sum: number, p: any) => sum + Number(p.tip_amount || 0), 0);
-    const avgTip = payments?.length ? totalTips / payments.length : 0;
-    const tipRate = 0; // Would need total payment count
+    const payments: any[] = allPayments || [];
+    const totalPayments = payments.length;
+    const withTip = payments.filter((p: any) => Number(p.tip_amount || 0) > 0);
+    const paymentsWithTip = withTip.length;
+    const paymentsWithoutTip = totalPayments - paymentsWithTip;
+
+    const totalTips = withTip.reduce((s: number, p: any) => s + Number(p.tip_amount || 0), 0);
+    const totalDonations = payments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+    const avgTip = paymentsWithTip > 0 ? totalTips / paymentsWithTip : 0;
+    const tipRate = totalPayments > 0 ? Math.round((paymentsWithTip / totalPayments) * 100) : 0;
+
+    // Median tip (among payments that have a tip)
+    const tipValues = withTip.map((p: any) => Number(p.tip_amount)).sort((a: number, b: number) => a - b);
+    const medianTip = tipValues.length > 0
+      ? (tipValues.length % 2 === 0
+        ? (tipValues[tipValues.length / 2 - 1] + tipValues[tipValues.length / 2]) / 2
+        : tipValues[Math.floor(tipValues.length / 2)])
+      : 0;
+
+    // Average tip as % of donation amount
+    const tipPcts = withTip
+      .filter((p: any) => Number(p.amount) > 0)
+      .map((p: any) => (Number(p.tip_amount) / Number(p.amount)) * 100);
+    const avgTipPercent = tipPcts.length > 0
+      ? Math.round(tipPcts.reduce((s: number, v: number) => s + v, 0) / tipPcts.length)
+      : 0;
+
+    // Tip amount buckets
+    const tipBuckets: Record<string, number> = { '$0': paymentsWithoutTip, '$1': 0, '$2': 0, '$5': 0, '$10+': 0 };
+    withTip.forEach((p: any) => {
+      const t = Number(p.tip_amount);
+      if (t >= 10) tipBuckets['$10+']++;
+      else if (t >= 5) tipBuckets['$5']++;
+      else if (t >= 2) tipBuckets['$2']++;
+      else tipBuckets['$1']++;
+    });
+
+    // Daily tip data — last 14 days
+    const dailyMap: Record<string, { tipTotal: number; tipCount: number; total: number }> = {};
+    const nowMs = Date.now();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(nowMs - i * 86400000);
+      dailyMap[d.toISOString().split('T')[0]] = { tipTotal: 0, tipCount: 0, total: 0 };
+    }
+    payments.forEach((p: any) => {
+      const key = (p.created_at || '').split('T')[0];
+      if (dailyMap[key]) {
+        dailyMap[key].total++;
+        if (Number(p.tip_amount || 0) > 0) {
+          dailyMap[key].tipTotal += Number(p.tip_amount);
+          dailyMap[key].tipCount++;
+        }
+      }
+    });
+    const dailyTipData = Object.entries(dailyMap).map(([date, d]) => ({
+      date,
+      label: new Date(date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      tipTotal: Math.round(d.tipTotal * 100) / 100,
+      tipCount: d.tipCount,
+      tipRate: d.total > 0 ? Math.round((d.tipCount / d.total) * 100) : 0,
+    }));
+
+    // Tips by donation amount range
+    const ranges: Record<string, { count: number; tipped: number; totalTips: number }> = {
+      '$1–$25':   { count: 0, tipped: 0, totalTips: 0 },
+      '$26–$50':  { count: 0, tipped: 0, totalTips: 0 },
+      '$51–$100': { count: 0, tipped: 0, totalTips: 0 },
+      '$100+':    { count: 0, tipped: 0, totalTips: 0 },
+    };
+    payments.forEach((p: any) => {
+      const amt = Number(p.amount || 0);
+      const tip = Number(p.tip_amount || 0);
+      const key = amt > 100 ? '$100+' : amt > 50 ? '$51–$100' : amt > 25 ? '$26–$50' : '$1–$25';
+      ranges[key].count++;
+      if (tip > 0) { ranges[key].tipped++; ranges[key].totalTips += tip; }
+    });
+
+    // Top tippers
+    const tipperMap: Record<string, { name: string; tipCount: number; totalTips: number; totalDonated: number }> = {};
+    withTip.forEach((p: any) => {
+      const key = p.contributor_id || p.contributor_name || 'anon';
+      const name = p.is_anonymous ? 'Anonymous' : (p.contributor_name || 'Anonymous');
+      if (!tipperMap[key]) tipperMap[key] = { name, tipCount: 0, totalTips: 0, totalDonated: 0 };
+      tipperMap[key].tipCount++;
+      tipperMap[key].totalTips  += Number(p.tip_amount);
+      tipperMap[key].totalDonated += Number(p.amount);
+    });
+    const topTippers = Object.values(tipperMap)
+      .sort((a: any, b: any) => b.totalTips - a.totalTips)
+      .slice(0, 10);
+
+    // Recent tips list
+    const recentTips = withTip.slice(0, 20).map((p: any) => ({
+      name: p.is_anonymous ? 'Anonymous' : (p.contributor_name || 'Anonymous'),
+      amount: Number(p.amount),
+      tipAmount: Number(p.tip_amount),
+      date: p.created_at,
+    }));
 
     return {
       success: true,
-      analytics: {
-        totalTips,
-        avgTip,
-        tipRate,
-        tipCount: payments?.length || 0,
+      tipAnalytics: {
+        summary: {
+          totalTips:         Math.round(totalTips * 100) / 100,
+          totalPayments,
+          paymentsWithTip,
+          paymentsWithoutTip,
+          avgTip:            Math.round(avgTip * 100) / 100,
+          medianTip:         Math.round(medianTip * 100) / 100,
+          avgTipPercent,
+          tipRate,
+          totalDonations:    Math.round(totalDonations * 100) / 100,
+        },
+        tipBuckets,
+        dailyTipData,
+        tipByDonationRange: ranges,
+        topTippers,
+        recentTips,
       },
     };
   }
