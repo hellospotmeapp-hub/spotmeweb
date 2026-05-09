@@ -82,6 +82,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   const [recipientHasAccount, setRecipientHasAccount] = useState<boolean | null>(null);
   const [destinationInfo, setDestinationInfo] = useState<{ recipientName: string } | null>(null);
   const [stripeNotConfigured, setStripeNotConfigured] = useState(false);
+  const [guestEmail, setGuestEmail] = useState('');
   const [stripeSetupError, setStripeSetupError] = useState<string | undefined>(undefined);
 
   // Email receipt state
@@ -204,8 +205,30 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     try { localStorage.removeItem(getRecentPaymentKey()); } catch {}
   };
 
+  const subscribeToBeehiiv = async (email: string) => {
+    try {
+      const pubId = process.env.NEXT_PUBLIC_BEEHIIV_PUB_ID;
+      const apiKey = process.env.NEXT_PUBLIC_BEEHIIV_API_KEY;
+      if (!pubId || !apiKey || !email) return;
+      await fetch(`https://api.beehiiv.com/v2/publications/${pubId}/subscriptions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ email, reactivate_existing: true, send_welcome_email: true }),
+      });
+    } catch {}
+  };
+
   const handleContribute = async () => {
     if (amount <= 0 || amount > 300) return;
+
+    // Guest email required
+    if (!isLoggedIn) {
+      const emailTrimmed = guestEmail.trim();
+      if (!emailTrimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+        setErrorMsg('Please enter a valid email address to continue.');
+        return;
+      }
+    }
     
     // Prevent double-click / double-submission
     if (paymentInProgressRef.current || processing) {
@@ -231,7 +254,8 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
       // Mark that we're attempting a payment (rapid double-click protection only)
       markPaymentAttempt();
 
-      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip);
+      const resolvedGuestEmail = !isLoggedIn ? guestEmail.trim() : undefined;
+      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip, resolvedGuestEmail);
 
       if (result.success) {
         if ((result.mode === 'stripe_connect' || result.mode === 'stripe') && (result.clientSecret || result.checkoutUrl)) {
@@ -242,6 +266,11 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
         }
         // Direct processing succeeded - clear the payment tracking
         clearPaymentAttempt();
+
+        // Subscribe guest email to Beehiiv newsletter
+        if (!isLoggedIn && guestEmail.trim()) {
+          subscribeToBeehiiv(guestEmail.trim());
+        }
         
         setPaymentMode(result.mode || 'direct');
         setSuccessAmount(amount);
@@ -317,6 +346,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     setTipAmount(1);
     setIsCustomTip(false);
     setCustomTip('');
+    setGuestEmail('');
     // FIX: Always reset the payment-in-progress ref so the user can retry
     paymentInProgressRef.current = false;
     // Clear any stale localStorage markers
@@ -642,6 +672,31 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 </View>
               </View>
 
+              {/* Guest email input */}
+              {!isLoggedIn && (
+                <View style={{ marginBottom: Spacing.lg }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.sm }}>
+                    <MaterialIcons name="email" size={16} color={Colors.primary} />
+                    <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: Colors.text }}>Your email</Text>
+                    <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>(required to pay)</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.noteInput, { height: 48, textAlignVertical: 'center' }, Platform.OS === 'web' && { outlineStyle: 'none' as any }]}
+                    value={guestEmail}
+                    onChangeText={setGuestEmail}
+                    placeholder="you@example.com"
+                    placeholderTextColor={Colors.textLight}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!processing}
+                  />
+                  <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, marginTop: 4 }}>
+                    We'll send your receipt here and add you to our newsletter.
+                  </Text>
+                </View>
+              )}
+
               {/* Error */}
               {errorMsg ? (
                 <View style={styles.errorBanner}>
@@ -652,10 +707,10 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
 
               {/* Submit */}
               <TouchableOpacity
-                style={[styles.submitButton, (amount <= 0 || processing) && styles.submitButtonDisabled]}
+                style={[styles.submitButton, (amount <= 0 || (!isLoggedIn && !guestEmail.trim()) || processing) && styles.submitButtonDisabled]}
                 onPress={handleContribute}
                 activeOpacity={0.8}
-                disabled={amount <= 0 || processing}
+                disabled={amount <= 0 || (!isLoggedIn && !guestEmail.trim()) || processing}
               >
                 {processing ? (
                   <ActivityIndicator size="small" color={Colors.white} />
