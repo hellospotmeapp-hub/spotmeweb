@@ -83,6 +83,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   const [destinationInfo, setDestinationInfo] = useState<{ recipientName: string } | null>(null);
   const [stripeNotConfigured, setStripeNotConfigured] = useState(false);
   const [guestEmail, setGuestEmail] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
   const [stripeSetupError, setStripeSetupError] = useState<string | undefined>(undefined);
 
   // Email receipt state
@@ -255,7 +256,8 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
       markPaymentAttempt();
 
       const resolvedGuestEmail = !isLoggedIn ? guestEmail.trim() : undefined;
-      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip, resolvedGuestEmail);
+      const resolvedGuestPhone = !isLoggedIn ? guestPhone.trim() : undefined;
+      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip, resolvedGuestEmail, resolvedGuestPhone);
 
       if (result.success) {
         if ((result.mode === 'stripe_connect' || result.mode === 'stripe') && (result.clientSecret || result.checkoutUrl)) {
@@ -347,6 +349,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     setIsCustomTip(false);
     setCustomTip('');
     setGuestEmail('');
+    setGuestPhone('');
     // FIX: Always reset the payment-in-progress ref so the user can retry
     paymentInProgressRef.current = false;
     // Clear any stale localStorage markers
@@ -694,6 +697,21 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, marginTop: 4 }}>
                     We'll send your receipt here and add you to our newsletter.
                   </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.md, marginBottom: Spacing.sm }}>
+                    <MaterialIcons name="phone" size={16} color={Colors.primary} />
+                    <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: Colors.text }}>Phone number</Text>
+                    <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>(optional)</Text>
+                  </View>
+                  <TextInput
+                    style={[styles.noteInput, { height: 48, textAlignVertical: 'center' }, Platform.OS === 'web' && { outlineStyle: 'none' as any }]}
+                    value={guestPhone}
+                    onChangeText={setGuestPhone}
+                    placeholder="(555) 000-0000"
+                    placeholderTextColor={Colors.textLight}
+                    keyboardType="phone-pad"
+                    autoCorrect={false}
+                    editable={!processing}
+                  />
                 </View>
               )}
 

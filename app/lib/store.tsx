@@ -513,7 +513,7 @@ interface AppState {
   syncOfflineActions: () => Promise<void>;
   // Actions
   contribute: (needId: string, amount: number, note?: string) => void;
-  contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string) => Promise<PaymentResult>;
+  contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string, guestPhone?: string) => Promise<PaymentResult>;
   spreadWithPayment: (allocations: any[], totalAmount: number, spreadMode: string, isAnonymous?: boolean) => Promise<PaymentResult>;
   createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => void;
   editNeed: (needId: string, updates: { title?: string; message?: string; photo?: string; goalAmount?: number }) => Promise<boolean>;
@@ -1006,7 +1006,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---- STRIPE CONNECT PAYMENT: Single Contribution ----
   const contributeWithPayment = useCallback(async (
-    needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string
+    needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string, guestPhone?: string
   ): Promise<PaymentResult> => {
     try {
       const need = needs.find(n => n.id === needId);
@@ -1032,6 +1032,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           contributorName: currentUser.id === 'guest' && guestEmail ? guestEmail.split('@')[0] : currentUser.name,
           contributorAvatar: currentUser.id === 'guest' ? '' : currentUser.avatar,
           guestEmail: currentUser.id === 'guest' ? (guestEmail || '') : '',
+          guestPhone: currentUser.id === 'guest' ? (guestPhone || '') : '',
           note: note || '',
           isAnonymous: isAnonymous || false,
           tipAmount: tipAmount || 0,

@@ -1907,6 +1907,16 @@ export async function handleProcessContribution(body: any): Promise<any> {
 
   // ---- UPDATE PROFILE ----
   if (action === 'update_profile') {
+    // Security: verify the requester owns this profile.
+    // The Supabase auth session uid must match the profileId being updated.
+    // This prevents any client from updating another user's name, city, or avatar.
+    const { data: { session } } = await supabase.auth.getSession();
+    const authUid = session?.user?.id;
+    if (authUid && authUid !== body.profileId) {
+      console.error(`[update_profile] BLOCKED — auth.uid (${authUid}) !== profileId (${body.profileId})`);
+      return { success: false, error: 'You can only update your own profile.' };
+    }
+
     const updates: Record<string, any> = {};
     if (body.updates?.name) updates.name = sanitize(body.updates.name);
     if (body.updates?.bio !== undefined) updates.bio = sanitize(body.updates.bio);
