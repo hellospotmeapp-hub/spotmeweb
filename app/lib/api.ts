@@ -378,15 +378,29 @@ export async function handleStripeCheckout(body: any): Promise<any> {
   // ---- VERIFY PAYMENT ----
   if (action === 'verify_payment') {
     const paymentId = body.paymentId;
+    const paymentIntentId = body.paymentIntentId;
     const sessionId = body.sessionId;
 
-    // Look up the payment record
+    // Look up the payment record — try internal ID first, then fall back to
+    // Stripe's payment_intent ID. The redirect URL from Stripe contains
+    // `payment_intent` (e.g. pi_3T...) but NOT the internal SpotMe payment ID,
+    // so guest checkouts and direct Stripe redirects need the fallback.
     let payment: any = null;
     if (paymentId) {
       const { data } = await supabase.from('payments')
         .select('*')
         .eq('id', paymentId)
         .single();
+      payment = data;
+    }
+
+    if (!payment && paymentIntentId) {
+      const { data } = await supabase.from('payments')
+        .select('*')
+        .eq('stripe_payment_intent_id', paymentIntentId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
       payment = data;
     }
 
