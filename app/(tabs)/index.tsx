@@ -241,6 +241,22 @@ const MOCK_NEEDS = [
           <MamaRechargeCard />
         </View>
 
+        {/* ── Community Spotter banner ── */}
+        <TouchableOpacity
+          style={styles.spotterBanner}
+          onPress={() => { try { router.push('/spotter-tiers'); } catch {} }}
+          activeOpacity={0.85}
+        >
+          <View style={styles.spotterBannerLeft}>
+            <Text style={styles.spotterBannerEmoji}>🧡</Text>
+            <View>
+              <Text style={styles.spotterBannerTitle}>Become a Community Spotter</Text>
+              <Text style={styles.spotterBannerSub}>Give automatically · $10/month · 100% to real people</Text>
+            </View>
+          </View>
+          <MaterialIcons name="arrow-forward-ios" size={16} color="rgba(255,255,255,0.8)" />
+        </TouchableOpacity>
+
         {almostThereNeeds.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -397,6 +413,16 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: Spacing.huge, gap: Spacing.md },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textSecondary },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textLight },
+  spotterBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginHorizontal: Spacing.lg, marginTop: Spacing.lg,
+    backgroundColor: '#E8694A', borderRadius: BorderRadius.xl,
+    paddingVertical: 14, paddingHorizontal: Spacing.lg,
+  },
+  spotterBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
+  spotterBannerEmoji: { fontSize: 26 },
+  spotterBannerTitle: { fontSize: FontSize.md, fontWeight: '800', color: '#fff' },
+  spotterBannerSub: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   webFooter: { alignItems: 'center', paddingVertical: Spacing.xxxl, paddingHorizontal: Spacing.xl, marginTop: Spacing.xxl, borderTopWidth: 1, borderTopColor: Colors.borderLight, gap: Spacing.xs },
   webFooterLogo: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.primary },
   webFooterTagline: { fontSize: FontSize.sm, color: Colors.textLight, fontStyle: 'italic' },
