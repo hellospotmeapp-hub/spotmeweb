@@ -868,3 +868,284 @@ BEGIN
     RAISE WARNING '  Installed: %/% — check errors above', fn_count, array_length(fn_list, 1);
   END IF;
 END $$;
+
+
+-- ============================================================
+-- COMMUNITY SPOTTER SUBSCRIPTIONS
+-- Run this block separately after the main setup above.
+-- ============================================================
+
+-- 1. spotters table — one row per active/cancelled subscription
+CREATE TABLE IF NOT EXISTS spotters (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id                UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  stripe_customer_id     TEXT,
+  stripe_subscription_id TEXT UNIQUE,
+  tier                   TEXT CHECK (tier IN ('micro', 'bold', 'champion')),
+  amount                 NUMERIC(10, 2),
+  status                 TEXT DEFAULT 'active' CHECK (status IN ('active', 'cancelled', 'past_due')),
+  current_period_end     TIMESTAMPTZ,
+  created_at             TIMESTAMPTZ DEFAULT NOW(),
+  cancelled_at           TIMESTAMPTZ
+);
+
+-- 2. spotter_distributions — tracks which needs each spotter's money funded
+CREATE TABLE IF NOT EXISTS spotter_distributions (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  spotter_id     UUID REFERENCES spotters(id) ON DELETE SET NULL,
+  user_id        UUID,
+  need_id        UUID REFERENCES needs(id) ON DELETE SET NULL,
+  amount         NUMERIC(10, 2),
+  invoice_id     TEXT,
+  distributed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS (spotters see only their own rows)
+ALTER TABLE spotters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE spotter_distributions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own spotter record" ON spotters;
+CREATE POLICY "Users can view own spotter record" ON spotters
+  FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Service role manages spotters" ON spotters;
+CREATE POLICY "Service role manages spotters" ON spotters
+  FOR ALL USING (auth.role() = 'service_role');
+
+DROP POLICY IF EXISTS "Users can view own distributions" ON spotter_distributions;
+CREATE POLICY "Users can view own distributions" ON spotter_distributions
+  FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Service role manages distributions" ON spotter_distributions;
+CREATE POLICY "Service role manages distributions" ON spotter_distributions
+  FOR ALL USING (auth.role() = 'service_role');
+
+-- 3. Create Stripe Checkout Session (mode=subscription)
+CREATE OR REPLACE FUNCTION spotme_create_subscription_session(
+  p_tier            TEXT,
+  p_tier_name       TEXT,
+  p_amount_cents    INTEGER,
+  p_user_id         TEXT,
+  p_customer_email  TEXT,
+  p_success_url     TEXT,
+  p_cancel_url      TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = extensions, public
+AS $$
+DECLARE
+  stripe_key   TEXT;
+  request_body TEXT;
+  response     extensions.http_response;
+  result       JSONB;
+BEGIN
+  stripe_key := spotme_get_stripe_key();
+
+  request_body :=
+    'mode=subscription'
+    || '&line_items[0][price_data][currency]=usd'
+    || '&line_items[0][price_data][product_data][name]=' || replace(p_tier_name, ' ', '+')
+    || '&line_items[0][price_data][product_data][description]=Community+Spotter+%E2%80%94+monthly+giving'
+    || '&line_items[0][price_data][recurring][interval]=month'
+    || '&line_items[0][price_data][unit_amount]=' || p_amount_cents
+    || '&line_items[0][quantity]=1'
+    || '&metadata[tier]=' || p_tier
+    || '&metadata[user_id]=' || p_user_id
+    || '&success_url=' || replace(replace(p_success_url, ':', '%3A'), '/', '%2F')
+    || '&cancel_url='  || replace(replace(p_cancel_url,  ':', '%3A'), '/', '%2F');
+
+  IF p_customer_email IS NOT NULL AND p_customer_email != '' THEN
+    request_body := request_body || '&customer_email=' || replace(p_customer_email, '@', '%40');
+  END IF;
+
+  SELECT * INTO response FROM extensions.http((
+    'POST',
+    'https://api.stripe.com/v1/checkout/sessions',
+    ARRAY[extensions.http_header('Authorization', 'Bearer ' || stripe_key)],
+    'application/x-www-form-urlencoded',
+    request_body
+  )::extensions.http_request);
+
+  BEGIN
+    result := response.content::jsonb;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'Failed to parse Stripe response: %', response.content;
+  END;
+
+  RETURN result;
+END;
+$$;
+
+-- 4. Retrieve Checkout Session (to confirm subscription after redirect)
+CREATE OR REPLACE FUNCTION spotme_retrieve_subscription_session(
+  p_session_id TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = extensions, public
+AS $$
+DECLARE
+  stripe_key TEXT;
+  response   extensions.http_response;
+  result     JSONB;
+BEGIN
+  stripe_key := spotme_get_stripe_key();
+
+  SELECT * INTO response FROM extensions.http((
+    'GET',
+    'https://api.stripe.com/v1/checkout/sessions/' || p_session_id || '?expand[]=subscription',
+    ARRAY[extensions.http_header('Authorization', 'Bearer ' || stripe_key)],
+    'application/x-www-form-urlencoded',
+    ''
+  )::extensions.http_request);
+
+  BEGIN
+    result := response.content::jsonb;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'Failed to parse Stripe response: %', response.content;
+  END;
+
+  RETURN result;
+END;
+$$;
+
+-- 5. Cancel a Stripe subscription (cancel at period end)
+CREATE OR REPLACE FUNCTION spotme_cancel_spotter_subscription(
+  p_subscription_id TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = extensions, public
+AS $$
+DECLARE
+  stripe_key TEXT;
+  response   extensions.http_response;
+  result     JSONB;
+BEGIN
+  stripe_key := spotme_get_stripe_key();
+
+  SELECT * INTO response FROM extensions.http((
+    'POST',
+    'https://api.stripe.com/v1/subscriptions/' || p_subscription_id,
+    ARRAY[extensions.http_header('Authorization', 'Bearer ' || stripe_key)],
+    'application/x-www-form-urlencoded',
+    'cancel_at_period_end=true'
+  )::extensions.http_request);
+
+  BEGIN
+    result := response.content::jsonb;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'Failed to parse Stripe response: %', response.content;
+  END;
+
+  RETURN result;
+END;
+$$;
+
+-- 6. Distribute spotter funds to oldest open needs (called on invoice.paid webhook)
+CREATE OR REPLACE FUNCTION spotme_distribute_spotter_funds(
+  p_subscription_id TEXT,
+  p_amount_cents     INTEGER,
+  p_invoice_id       TEXT
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_spotter           RECORD;
+  v_need              RECORD;
+  v_open_needs        RECORD[];
+  v_need_count        INTEGER := 0;
+  v_amount_each       NUMERIC;
+  v_amount_dollars    NUMERIC;
+  v_distributed_total NUMERIC := 0;
+  v_result            JSONB := '[]'::jsonb;
+BEGIN
+  -- Already distributed for this invoice? Skip.
+  IF EXISTS (SELECT 1 FROM spotter_distributions WHERE invoice_id = p_invoice_id) THEN
+    RETURN jsonb_build_object('skipped', true, 'reason', 'already_distributed');
+  END IF;
+
+  -- Look up the spotter
+  SELECT * INTO v_spotter FROM spotters
+  WHERE stripe_subscription_id = p_subscription_id LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('error', 'Spotter not found for subscription ' || p_subscription_id);
+  END IF;
+
+  v_amount_dollars := p_amount_cents::NUMERIC / 100;
+
+  -- Find up to 5 oldest open needs with remaining goal
+  SELECT COUNT(*) INTO v_need_count
+  FROM needs
+  WHERE status IN ('Collecting', 'Active', 'active', 'collecting')
+    AND raised_amount < goal_amount
+    AND goal_amount > 0;
+
+  IF v_need_count = 0 THEN
+    RETURN jsonb_build_object('distributed', 0, 'reason', 'no_open_needs');
+  END IF;
+
+  -- Cap at 5 needs, distribute evenly
+  v_need_count := LEAST(v_need_count, 5);
+  v_amount_each := ROUND(v_amount_dollars / v_need_count, 2);
+
+  FOR v_need IN
+    SELECT id, title, raised_amount, goal_amount
+    FROM needs
+    WHERE status IN ('Collecting', 'Active', 'active', 'collecting')
+      AND raised_amount < goal_amount
+      AND goal_amount > 0
+    ORDER BY created_at ASC
+    LIMIT 5
+  LOOP
+    DECLARE
+      v_remaining NUMERIC;
+      v_give      NUMERIC;
+    BEGIN
+      v_remaining := v_need.goal_amount - v_need.raised_amount;
+      v_give      := LEAST(v_amount_each, v_remaining);
+
+      -- Update the need
+      UPDATE needs SET
+        raised_amount     = LEAST(raised_amount + v_give, goal_amount),
+        contributor_count = contributor_count + 1,
+        status            = CASE WHEN (raised_amount + v_give) >= goal_amount
+                              THEN 'Goal Met' ELSE status END
+      WHERE id = v_need.id;
+
+      -- Record the distribution
+      INSERT INTO spotter_distributions
+        (spotter_id, user_id, need_id, amount, invoice_id)
+      VALUES
+        (v_spotter.id, v_spotter.user_id, v_need.id, v_give, p_invoice_id);
+
+      v_distributed_total := v_distributed_total + v_give;
+      v_result := v_result || jsonb_build_object(
+        'need_id', v_need.id,
+        'need_title', v_need.title,
+        'amount', v_give
+      );
+    END;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'distributed_total', v_distributed_total,
+    'needs_spotted', v_result
+  );
+END;
+$$;
+
+-- Grant execute to authenticated role
+GRANT EXECUTE ON FUNCTION spotme_create_subscription_session TO authenticated;
+GRANT EXECUTE ON FUNCTION spotme_retrieve_subscription_session TO authenticated;
+GRANT EXECUTE ON FUNCTION spotme_cancel_spotter_subscription TO authenticated;
+GRANT EXECUTE ON FUNCTION spotme_distribute_spotter_funds TO service_role;
