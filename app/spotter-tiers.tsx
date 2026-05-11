@@ -89,19 +89,16 @@ export default function SpotterTiersScreen() {
   const handleSubscribe = async (tier: typeof TIERS[0]) => {
     try {
       setLoadingTier(tier.id);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/auth');
-        return;
-      }
+      // Get user if logged in, but don't require it — Stripe collects email
+      const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
 
       const { data, error } = await safeInvoke('spotter-subscription', {
         body: {
           action: 'create_spotter_subscription',
           tier: tier.id,
           amount: tier.amount,
-          userId: user.id,
-          userEmail: user.email || '',
+          userId: user?.id || '',
+          userEmail: user?.email || '',
           tierName: tier.name,
         },
       });
