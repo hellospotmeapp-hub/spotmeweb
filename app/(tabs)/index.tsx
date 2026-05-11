@@ -251,7 +251,7 @@ const MOCK_NEEDS = [
             <Text style={styles.spotterBannerEmoji}>🧡</Text>
             <View>
               <Text style={styles.spotterBannerTitle}>Become a Community Spotter</Text>
-              <Text style={styles.spotterBannerSub}>Give automatically · $10/month · 100% to real people</Text>
+              <Text style={styles.spotterBannerSub}>Give automatically · $10/month · 100% to those in need</Text>
             </View>
           </View>
           <MaterialIcons name="arrow-forward-ios" size={16} color="rgba(255,255,255,0.8)" />

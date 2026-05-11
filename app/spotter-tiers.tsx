@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
+import { supabase, safeInvoke } from '@/app/lib/supabase';
 
 // ── Tier definitions ──────────────────────────────────────────
 const TIERS = [
@@ -95,7 +95,7 @@ export default function SpotterTiersScreen() {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('spotter-subscription', {
+      const { data, error } = await safeInvoke('spotter-subscription', {
         body: {
           action: 'create_spotter_subscription',
           tier: tier.id,
@@ -133,7 +133,7 @@ export default function SpotterTiersScreen() {
         {
           text: 'Cancel', style: 'destructive', onPress: async () => {
             try {
-              const { error } = await supabase.functions.invoke('spotter-subscription', {
+              const { error } = await safeInvoke('spotter-subscription', {
                 body: { action: 'cancel_spotter_subscription', spotterId: activeSub.id },
               });
               if (error) { Alert.alert('Error', error.message); return; }
