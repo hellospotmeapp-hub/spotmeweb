@@ -2943,6 +2943,133 @@ export async function handleTrackWalkthrough(body: any): Promise<any> {
 }
 
 // ============================================================
+// SPOTTER SUBSCRIPTION HANDLER
+// Manages Community Spotter monthly subscriptions via Stripe
+// Checkout Sessions (mode=subscription).
+// ============================================================
+export async function handleSpotterSubscription(body: any): Promise<any> {
+  const action = body.action;
+
+  // ---- CREATE SUBSCRIPTION CHECKOUT SESSION ----
+  if (action === 'create_spotter_subscription') {
+    const tier = body.tier as 'micro' | 'bold' | 'champion';
+    const amount = Number(body.amount) || 0;
+    const userId = body.userId || '';
+    const userEmail = body.userEmail || '';
+    const tierName = sanitize(body.tierName || tier);
+
+    if (!['micro', 'bold', 'champion'].includes(tier)) {
+      return { success: false, error: 'Invalid tier.' };
+    }
+    if (amount <= 0) {
+      return { success: false, error: 'Invalid amount.' };
+    }
+
+    const { data, error } = await tryRpc('spotme_create_subscription_session', {
+      p_tier: tier,
+      p_tier_name: tierName,
+      p_amount_cents: Math.round(amount * 100),
+      p_user_id: userId,
+      p_customer_email: userEmail,
+      p_success_url: 'https://spotmeone.com/spotter-success?session_id={CHECKOUT_SESSION_ID}',
+      p_cancel_url: 'https://spotmeone.com/spotter-tiers',
+    });
+
+    if (error || !data) {
+      console.error('[SpotMe Spotter] Create session error:', error?.message);
+      return { success: false, error: error?.message || 'Could not create subscription session.' };
+    }
+
+    const session = typeof data === 'string' ? JSON.parse(data) : data;
+    if (session?.error) {
+      return { success: false, error: session.error.message || 'Stripe error' };
+    }
+
+    return { success: true, url: session.url, sessionId: session.id };
+  }
+
+  // ---- CONFIRM SUBSCRIPTION (after Stripe redirect) ----
+  if (action === 'confirm_spotter_subscription') {
+    const sessionId = body.sessionId || '';
+    if (!sessionId) return { success: false, error: 'No session ID provided.' };
+
+    const { data, error } = await tryRpc('spotme_retrieve_subscription_session', {
+      p_session_id: sessionId,
+    });
+
+    if (error || !data) {
+      return { success: false, error: error?.message || 'Could not retrieve session.' };
+    }
+
+    const session = typeof data === 'string' ? JSON.parse(data) : data;
+    if (session?.error) return { success: false, error: session.error.message };
+    if (session?.payment_status !== 'paid' && session?.status !== 'complete') {
+      return { success: false, error: 'Payment not completed yet.' };
+    }
+
+    const subscriptionId = session?.subscription?.id || session?.subscription || '';
+    const tier = session?.metadata?.tier || '';
+    const userId = session?.metadata?.user_id || '';
+    const amountCents = session?.amount_total || 0;
+    const customerId = session?.customer || '';
+
+    // Upsert spotter record
+    if (userId && subscriptionId) {
+      await supabase.from('spotters').upsert({
+        user_id: userId,
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subscriptionId,
+        tier,
+        amount: amountCents / 100,
+        status: 'active',
+        current_period_end: session?.subscription?.current_period_end
+          ? new Date(session.subscription.current_period_end * 1000).toISOString()
+          : null,
+      }, { onConflict: 'stripe_subscription_id' });
+
+      // Grant spotter badge on profile
+      await supabase.from('profiles').update({ spotter_tier: tier }).eq('user_id', userId);
+    }
+
+    return { success: true, tier, subscriptionId };
+  }
+
+  // ---- CANCEL SUBSCRIPTION ----
+  if (action === 'cancel_spotter_subscription') {
+    const spotterId = body.spotterId || '';
+    if (!spotterId) return { success: false, error: 'No spotter ID.' };
+
+    const { data: spotter } = await supabase.from('spotters')
+      .select('stripe_subscription_id, user_id')
+      .eq('id', spotterId)
+      .single();
+
+    if (!spotter?.stripe_subscription_id) {
+      return { success: false, error: 'Subscription not found.' };
+    }
+
+    const { error } = await tryRpc('spotme_cancel_spotter_subscription', {
+      p_subscription_id: spotter.stripe_subscription_id,
+    });
+
+    if (error) return { success: false, error: error.message };
+
+    await supabase.from('spotters')
+      .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
+      .eq('id', spotterId);
+
+    await supabase.from('profiles')
+      .update({ spotter_tier: null })
+      .eq('user_id', spotter.user_id);
+
+    return { success: true };
+  }
+
+  return { success: false, error: `Unknown spotter action: ${action}` };
+}
+
+
+// ============================================================
 // MAIN ROUTER - Routes function calls to local handlers
 // ============================================================
 export async function handleFunctionCall(
@@ -2955,6 +3082,9 @@ export async function handleFunctionCall(
     switch (functionName) {
       case 'stripe-checkout':
         result = await handleStripeCheckout(body);
+        break;
+      case 'spotter-subscription':
+        result = await handleSpotterSubscription(body);
         break;
       case 'stripe-connect':
         result = await handleStripeConnect(body);
