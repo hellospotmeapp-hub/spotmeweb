@@ -127,11 +127,6 @@ const MOCK_NEEDS = [
     try {
       const need = safeNeeds.find((n: any) => n.id === needId);
       if (!need) return;
-      if (!isLoggedIn) {
-        setSignInPromptNeed({ userName: need.userName, userAvatar: need.userAvatar, title: need.title, remaining: need.goalAmount - need.raisedAmount });
-        setShowSignInPrompt(true);
-        return;
-      }
       setContributeModal({ visible: true, needId: need.id, title: need.title, remaining: need.goalAmount - need.raisedAmount });
     } catch {}
   };
