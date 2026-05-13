@@ -156,15 +156,10 @@ const MOCK_NEEDS = [
           <TouchableOpacity style={styles.iconButton} onPress={() => { try { router.push('/settings'); } catch {} }}>
             <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
-          {!isLoggedIn && !isLoading && authSettled ? (
-            <TouchableOpacity style={styles.signInButton} onPress={() => { try { router.push('/auth'); } catch {} }}>
-              <Text style={styles.signInText}>Sign In</Text>
-            </TouchableOpacity>
-          ) : isLoggedIn ? (
+          {isLoggedIn ? (
             <TouchableOpacity onPress={() => { try { router.push('/(tabs)/profile'); } catch {} }}>
               <GracefulImage uri={safeUser.avatar || DEFAULT_AVATAR} type="avatar" style={styles.topAvatar} />
             </TouchableOpacity>
-
           ) : null}
 
         </View>

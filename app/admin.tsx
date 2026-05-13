@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from 
 import { supabase } from '@/app/lib/supabase';
 import { useApp } from '@/app/lib/store';
 
-type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
+type Tab = 'overview' | 'approvals' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
 
 
 
@@ -558,6 +558,7 @@ export default function AdminDashboard() {
       {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
         <TabButton tab="overview" current={activeTab} label="Overview" icon="dashboard" onPress={() => setActiveTab('overview')} />
+        <TabButton tab="approvals" current={activeTab} label="Approvals" icon="how-to-reg" onPress={() => setActiveTab('approvals')} />
         <TabButton tab="users" current={activeTab} label="Users" icon="people" onPress={() => setActiveTab('users')} />
         <TabButton tab="needs" current={activeTab} label="Needs" icon="volunteer-activism" onPress={() => setActiveTab('needs')} />
         <TabButton tab="transactions" current={activeTab} label="Transactions" icon="receipt-long" onPress={() => setActiveTab('transactions')} />

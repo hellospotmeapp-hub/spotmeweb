@@ -526,7 +526,7 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string) => void;
   login: (name: string, email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (name: string, email: string, password: string, bio?: string, city?: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (name: string, email: string, password: string, bio?: string, city?: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => void;
   getFilteredNeeds: () => Need[];
@@ -1489,7 +1489,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       userName: currentUser.name,
       userAvatar: currentUser.avatar,
       userCity: currentUser.city,
-      status: 'Collecting',
+      status: 'Pending Approval',
+      verificationStatus: 'pending',
       raisedAmount: 0,
       contributorCount: 0,
       contributions: [],

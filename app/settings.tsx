@@ -400,9 +400,14 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.section}>
-        <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); } }} />
-
-          <SettingRow icon="delete-forever" label="Delete Account" danger onPress={() => {}} />
+          {isLoggedIn ? (
+            <>
+              <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); } }} />
+              <SettingRow icon="delete-forever" label="Delete Account" danger onPress={() => {}} />
+            </>
+          ) : (
+            <SettingRow icon="login" label="Sign In / Create Account" value="Post a need" onPress={() => router.push('/auth')} />
+          )}
         </View>
 
         <View style={styles.footer}>

@@ -499,9 +499,9 @@ export default function CreateScreen() {
           ]}>
             <MaterialIcons name="check-circle" size={72} color={Colors.success} />
           </Animated.View>
-          <Text style={styles.successTitle}>Need Posted!</Text>
+          <Text style={styles.successTitle}>Submitted for Review!</Text>
           <Text style={styles.successMessage}>
-            Your need is now live. The community can start spotting you right away.
+            Your need has been submitted and is pending approval. You'll be notified once it goes live.
           </Text>
 
           <TouchableOpacity
