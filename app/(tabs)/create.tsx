@@ -20,7 +20,7 @@ const MAX_GOAL = 300;
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { createNeed, isLoggedIn, currentUser, updateProfile } = useApp();
+  const { createNeed, isLoggedIn, currentUser, updateProfile, payoutStatus } = useApp();
   
   const [step, setStep] = useState(1);
   const [title, setTitle] = useState('');
@@ -379,6 +379,18 @@ export default function CreateScreen() {
   const handleSubmit = () => {
     if (!isLoggedIn) {
       router.push('/auth');
+      return;
+    }
+
+    if (!payoutStatus?.hasAccount || !payoutStatus?.payoutsEnabled) {
+      Alert.alert(
+        'Payout Account Required',
+        'You need to connect a Stripe payout account before posting a need. This ensures you can receive funds automatically once your goal is met.',
+        [
+          { text: 'Set Up Now', onPress: () => router.push('/settings') },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
       return;
     }
 
