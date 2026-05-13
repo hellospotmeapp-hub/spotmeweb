@@ -209,6 +209,11 @@ const MOCK_NEEDS = [
           <View style={styles.statItem}><Text style={styles.statNumber}>{totalSpots}</Text><Text style={styles.statLabel}>Spots Given</Text></View>
         </View>
 
+        {/* Featured Needs — show before Smart Split */}
+        {(activeNeeds.length > 0 ? activeNeeds : MOCK_NEEDS.filter((n: any) => n.status === 'Collecting')).slice(0, 2).map((need: any) => (
+          <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+        ))}
+
         <TouchableOpacity style={styles.spreadCard} onPress={() => { try { router.push('/spread'); } catch {} }} activeOpacity={0.85}>
           <View style={styles.spreadGradient}>
             <View style={[styles.spreadCircle, styles.spreadCircle1]} />
