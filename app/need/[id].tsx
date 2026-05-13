@@ -314,6 +314,9 @@ export default function NeedDetailScreen() {
             <View style={styles.userInfoBlock}>
               <View style={styles.userNameRow}>
                 <Text style={styles.userName}>{need.userName}</Text>
+                {need.userVerified && (
+                  <MaterialIcons name="verified" size={16} color={Colors.primary} />
+                )}
                 <MaterialIcons name="chevron-right" size={16} color={Colors.textLight} />
               </View>
               <View style={styles.metaRow}>
