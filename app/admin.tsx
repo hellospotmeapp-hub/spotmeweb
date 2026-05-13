@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from 
 import { supabase } from '@/app/lib/supabase';
 import { useApp } from '@/app/lib/store';
 
-type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
+type Tab = 'overview' | 'approvals' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
 
 
 
@@ -160,6 +160,11 @@ export default function AdminDashboard() {
   const [adminCheckDone, setAdminCheckDone] = useState(false);
   const [registering, setRegistering] = useState(false);
 
+  // Pending approvals state
+  const [pendingNeeds, setPendingNeeds] = useState<any[]>([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
   // Webhook state
   const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
   const [webhookSummary, setWebhookSummary] = useState<WebhookSummary | null>(null);
@@ -271,6 +276,32 @@ export default function AdminDashboard() {
     }
   }, [currentUser.id]);
 
+  const fetchPendingApprovals = useCallback(async () => {
+    setApprovalsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('needs')
+        .select('id, title, message, category, goal_amount, photo, created_at, user_id, profiles:user_id(name, avatar, city, phone)')
+        .eq('verification_status', 'pending')
+        .order('created_at', { ascending: true });
+      setPendingNeeds(data || []);
+    } catch {}
+    setApprovalsLoading(false);
+  }, []);
+
+  const handleApproveNeed = async (needId: string, approve: boolean) => {
+    setApprovingId(needId);
+    try {
+      await supabase.from('needs').update({
+        verification_status: approve ? 'approved' : 'rejected',
+        status: approve ? 'Collecting' : 'Expired',
+        verified_at: approve ? new Date().toISOString() : null,
+      }).eq('id', needId);
+      setPendingNeeds(prev => prev.filter(n => n.id !== needId));
+    } catch {}
+    setApprovingId(null);
+  };
+
   const fetchWebhookLogs = useCallback(async () => {
     setWebhookLoading(true);
     try {
@@ -335,6 +366,10 @@ export default function AdminDashboard() {
     const interval = setInterval(() => fetchStats(true), 30000);
     return () => clearInterval(interval);
   }, [isAdminUser]);
+
+  useEffect(() => {
+    if (activeTab === 'approvals' && isAdminUser) fetchPendingApprovals();
+  }, [activeTab, isAdminUser]);
 
   useEffect(() => {
     if (activeTab === 'webhooks' && isAdminUser) fetchWebhookLogs();
@@ -558,6 +593,7 @@ export default function AdminDashboard() {
       {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
         <TabButton tab="overview" current={activeTab} label="Overview" icon="dashboard" onPress={() => setActiveTab('overview')} />
+        <TabButton tab="approvals" current={activeTab} label="Approvals" icon="verified-user" onPress={() => setActiveTab('approvals')} badge={pendingNeeds.length} />
         <TabButton tab="users" current={activeTab} label="Users" icon="people" onPress={() => setActiveTab('users')} />
         <TabButton tab="needs" current={activeTab} label="Needs" icon="volunteer-activism" onPress={() => setActiveTab('needs')} />
         <TabButton tab="transactions" current={activeTab} label="Transactions" icon="receipt-long" onPress={() => setActiveTab('transactions')} />
@@ -576,6 +612,61 @@ export default function AdminDashboard() {
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
+        {/* APPROVALS TAB */}
+          {activeTab === 'approvals' && (
+            <View>
+              <Text style={s.sectionTitle}>Pending Approvals</Text>
+              {approvalsLoading ? (
+                <ActivityIndicator color={Colors.primary} style={{ marginTop: 32 }} />
+              ) : pendingNeeds.length === 0 ? (
+                <View style={s.emptyState}>
+                  <MaterialIcons name="check-circle" size={48} color={Colors.success} />
+                  <Text style={s.emptyStateText}>All caught up! No needs pending review.</Text>
+                </View>
+              ) : (
+                pendingNeeds.map(need => (
+                  <View key={need.id} style={s.approvalCard}>
+                    {need.photo ? (
+                      <Image source={{ uri: need.photo }} style={s.approvalPhoto} />
+                    ) : null}
+                    <View style={s.approvalInfo}>
+                      <Text style={s.approvalTitle}>{need.title}</Text>
+                      <Text style={s.approvalUser}>{need.profiles?.name || 'Unknown'} · {need.profiles?.city || ''}</Text>
+                      {need.profiles?.phone && (
+                        <Text style={s.approvalMeta}>📞 {need.profiles.phone}</Text>
+                      )}
+                      <Text style={s.approvalMeta}>{need.category} · ${need.goal_amount}</Text>
+                      <Text style={s.approvalMessage} numberOfLines={3}>{need.message}</Text>
+                      <Text style={s.approvalDate}>Submitted {formatDate(need.created_at)}</Text>
+                    </View>
+                    <View style={s.approvalActions}>
+                      <TouchableOpacity
+                        style={[s.approveBtn, approvingId === need.id && { opacity: 0.5 }]}
+                        onPress={() => handleApproveNeed(need.id, true)}
+                        disabled={approvingId === need.id}
+                      >
+                        {approvingId === need.id ? (
+                          <ActivityIndicator size="small" color={Colors.white} />
+                        ) : (
+                          <MaterialIcons name="check" size={20} color={Colors.white} />
+                        )}
+                        <Text style={s.approveBtnText}>Approve</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[s.rejectBtn, approvingId === need.id && { opacity: 0.5 }]}
+                        onPress={() => handleApproveNeed(need.id, false)}
+                        disabled={approvingId === need.id}
+                      >
+                        <MaterialIcons name="close" size={20} color={Colors.error} />
+                        <Text style={s.rejectBtnText}>Reject</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && stats && (
           <>
@@ -1464,7 +1555,87 @@ const s = StyleSheet.create({
   content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm },
 
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
-  statCard: { width: '48%', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, ...Shadow.sm, minWidth: 150 },
+  approvalCard: {
+      backgroundColor: Colors.surface,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: Colors.borderLight,
+    },
+    approvalPhoto: {
+      width: '100%',
+      height: 140,
+      borderRadius: 8,
+      marginBottom: 10,
+      backgroundColor: Colors.borderLight,
+    },
+    approvalInfo: {
+      gap: 4,
+    },
+    approvalTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: Colors.text,
+    },
+    approvalUser: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: Colors.primary,
+    },
+    approvalMeta: {
+      fontSize: 12,
+      color: Colors.textSecondary,
+    },
+    approvalMessage: {
+      fontSize: 13,
+      color: Colors.textLight,
+      marginTop: 4,
+      lineHeight: 18,
+    },
+    approvalDate: {
+      fontSize: 11,
+      color: Colors.textLight,
+      marginTop: 2,
+    },
+    approvalActions: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 12,
+    },
+    approveBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: Colors.success,
+      borderRadius: 8,
+      paddingVertical: 10,
+    },
+    approveBtnText: {
+      color: Colors.white,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+    rejectBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: Colors.white,
+      borderRadius: 8,
+      paddingVertical: 10,
+      borderWidth: 1.5,
+      borderColor: Colors.error,
+    },
+    rejectBtnText: {
+      color: Colors.error,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+    statCard: { width: '48%', backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.md, ...Shadow.sm, minWidth: 150 },
   statIconBg: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   statInfo: { flex: 1 },
   statValue: { fontSize: FontSize.lg, fontWeight: '900', color: Colors.text },
