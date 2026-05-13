@@ -19,10 +19,16 @@ const MAX_GOAL = 300;
 
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowWelcome(true), 300);
+    return () => clearTimeout(timer);
+  }, []);
   const router = useRouter();
-  const { createNeed, isLoggedIn, currentUser, updateProfile } = useApp();
+  const { createNeed, isLoggedIn, currentUser, updateProfile, payoutStatus } = useApp();
   
   const [step, setStep] = useState(1);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [category, setCategory] = useState('');
@@ -382,6 +388,18 @@ export default function CreateScreen() {
       return;
     }
 
+    if (!payoutStatus?.hasAccount || !payoutStatus?.payoutsEnabled) {
+      Alert.alert(
+        'Payout Account Required',
+        'You need to connect a Stripe payout account before posting a need. This ensures you can receive funds automatically once your goal is met.',
+        [
+          { text: 'Set Up Now', onPress: () => router.push('/settings') },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
     const finalPhoto = photoUrl || NEED_PHOTOS[Math.floor(Math.random() * NEED_PHOTOS.length)];
 
     createNeed({
@@ -486,6 +504,42 @@ export default function CreateScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
         <ConfettiAnimation active={showConfetti} duration={3500} />
+
+          {/* Welcome / How It Works Modal */}
+          <Modal visible={showWelcome} transparent animationType="fade" onRequestClose={() => setShowWelcome(false)}>
+            <View style={styles.welcomeOverlay}>
+              <View style={styles.welcomeCard}>
+                <View style={styles.welcomeHeader}>
+                  <MaterialIcons name="volunteer-activism" size={32} color={Colors.white} />
+                  <Text style={styles.welcomeTitle}>Before You Post</Text>
+                  <Text style={styles.welcomeSubtitle}>Here's what to expect — it's quick!</Text>
+                </View>
+                <View style={styles.welcomeBody}>
+                  {[
+                    { icon: 'account-balance-wallet', color: '#7B9ED9', text: 'Connect your Stripe account so funds reach you automatically — no waiting on us.' },
+                    { icon: 'verified-user', color: Colors.primary, text: 'Every need is reviewed by our team before it goes live. Usually within 24 hours.' },
+                    { icon: 'favorite', color: '#E85D5D', text: 'Real, honest stories connect with people. Be specific about what you need and why.' },
+                    { icon: 'bolt', color: '#F5C563', text: 'Once your goal is met, your payout is sent directly to your account. We never touch it.' },
+                  ].map((item, i) => (
+                    <View key={i} style={styles.welcomeItem}>
+                      <View style={[styles.welcomeIconBox, { backgroundColor: item.color + '18' }]}>
+                        <MaterialIcons name={item.icon as any} size={20} color={item.color} />
+                      </View>
+                      <Text style={styles.welcomeItemText}>{item.text}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.welcomePromise}>
+                  <MaterialIcons name="shield" size={14} color={Colors.primary} />
+                  <Text style={styles.welcomePromiseText}>SpotMe verifies every need to protect our community</Text>
+                </View>
+                <TouchableOpacity style={styles.welcomeBtn} onPress={() => setShowWelcome(false)} activeOpacity={0.85}>
+                  <Text style={styles.welcomeBtnText}>Got it, let's go</Text>
+                  <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         <Animated.View style={[
           styles.successContainer,
           {
@@ -2041,4 +2095,93 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     color: Colors.textLight,
   },
+  welcomeOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+    },
+    welcomeCard: {
+      backgroundColor: Colors.white,
+      borderRadius: 20,
+      width: '100%',
+      maxWidth: 400,
+      overflow: 'hidden',
+    },
+    welcomeHeader: {
+      backgroundColor: Colors.primary,
+      paddingVertical: 24,
+      paddingHorizontal: 24,
+      alignItems: 'center',
+      gap: 6,
+    },
+    welcomeTitle: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: Colors.white,
+      letterSpacing: -0.3,
+    },
+    welcomeSubtitle: {
+      fontSize: 14,
+      color: 'rgba(255,255,255,0.85)',
+      fontWeight: '500',
+    },
+    welcomeBody: {
+      padding: 20,
+      gap: 14,
+    },
+    welcomeItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+    },
+    welcomeIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    welcomeItemText: {
+      flex: 1,
+      fontSize: 14,
+      color: Colors.text,
+      lineHeight: 20,
+      paddingTop: 7,
+    },
+    welcomePromise: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginHorizontal: 20,
+      marginBottom: 16,
+      backgroundColor: Colors.primaryLight,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    welcomePromiseText: {
+      fontSize: 12,
+      color: Colors.primary,
+      fontWeight: '600',
+      flex: 1,
+    },
+    welcomeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: Colors.primary,
+      marginHorizontal: 20,
+      marginBottom: 20,
+      paddingVertical: 14,
+      borderRadius: 12,
+    },
+    welcomeBtnText: {
+      color: Colors.white,
+      fontWeight: '800',
+      fontSize: 16,
+    },
 });
