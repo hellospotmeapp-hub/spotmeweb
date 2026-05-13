@@ -139,6 +139,13 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
         
         <Text style={styles.message} numberOfLines={2}>{need.message}</Text>
 
+        {need.verificationStatus === 'approved' && (
+          <View style={styles.verifiedNeedBadge}>
+            <MaterialIcons name="verified-user" size={13} color={Colors.primary} />
+            <Text style={styles.verifiedNeedText}>SpotMe Verified</Text>
+          </View>
+        )}
+
         {/* Progress Section */}
         <View style={styles.progressSection}>
           <ProgressBar progress={progress} height={10} showGlow={progress >= 0.75 && !expired} />
@@ -478,6 +485,21 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     fontWeight: '700',
     color: Colors.success,
+  },
+  verifiedNeedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  verifiedNeedText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   // Compact styles
   compactCard: {
