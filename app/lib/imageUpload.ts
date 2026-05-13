@@ -709,20 +709,11 @@ export async function uploadAvatar(
         await delay(BASE_DELAY_MS * Math.pow(2, attempt - 1));
       }
 
-      // Use the current session's access token so Storage RLS allows the upload.
-      // Fall back to the anon key if no session is active.
-      let authToken = supabaseKey;
-      try {
-        const { supabase: _db } = await import('./supabase');
-        const { data: _sess } = await _db.auth.getSession();
-        if (_sess?.session?.access_token) authToken = _sess.session.access_token;
-      } catch {}
-
       try {
         const uploadResp = await fetch(uploadUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${authToken}`,
+            'Authorization': `Bearer ${supabaseKey}`,
             'apikey': supabaseKey,
             'Content-Type': mimeType || 'image/jpeg',
             'x-upsert': 'true',

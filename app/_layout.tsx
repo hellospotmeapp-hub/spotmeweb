@@ -108,8 +108,6 @@ export default function RootLayout() {
             <Stack.Screen name="refunds" options={MODAL_SCREEN_OPTIONS} />
             <Stack.Screen name="analytics" options={MODAL_SCREEN_OPTIONS} />
             <Stack.Screen name="test-payments" options={MODAL_SCREEN_OPTIONS} />
-            <Stack.Screen name="spotter-tiers" options={MODAL_SCREEN_OPTIONS} />
-            <Stack.Screen name="spotter-success" options={MODAL_SCREEN_OPTIONS} />
           </Stack>
         </View>
       </AppProvider>

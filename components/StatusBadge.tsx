@@ -4,8 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
 
 interface StatusBadgeProps {
-  status: string;
-  onDark?: boolean;
+  status: string; // Accept any string to handle dynamic status values
 }
 
 
@@ -17,15 +16,13 @@ const STATUS_CONFIG: Record<string, { color: string; icon: string; bg: string }>
   'Expired': { color: '#A9A29B', icon: 'timer-off', bg: '#F0EDE9' },
 };
 
-export default function StatusBadge({ status, onDark }: StatusBadgeProps) {
+export default function StatusBadge({ status }: StatusBadgeProps) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG['Collecting'];
-  const bg = onDark ? 'rgba(255,255,255,0.22)' : config.bg;
-  const color = onDark ? Colors.white : config.color;
 
   return (
-    <View style={[styles.badge, { backgroundColor: bg }]}>
-      <MaterialIcons name={config.icon as any} size={14} color={color} />
-      <Text style={[styles.text, { color }]}>{status}</Text>
+    <View style={[styles.badge, { backgroundColor: config.bg }]}>
+      <MaterialIcons name={config.icon as any} size={14} color={config.color} />
+      <Text style={[styles.text, { color: config.color }]}>{status}</Text>
     </View>
   );
 }

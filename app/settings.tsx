@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme
 import { FAQ_ITEMS } from '@/app/lib/data';
 import { useApp } from '@/app/lib/store';
 import { supabase } from '@/app/lib/supabase';
-import { pickImage, uploadAvatar, ImagePickResult } from '@/app/lib/imageUpload';
+import { pickAndUploadAvatar } from '@/app/lib/imageUpload';
 
 
 interface SettingRowProps {
@@ -91,40 +91,25 @@ export default function SettingsScreen() {
 
   // Avatar upload state
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [pendingAvatar, setPendingAvatar] = useState<ImagePickResult | null>(null);
-  const [avatarSaveError, setAvatarSaveError] = useState('');
-  const [avatarSaved, setAvatarSaved] = useState(false);
 
   const topPadding = Platform.OS === 'web' ? 16 : insets.top;
 
-  // Step 1: just pick the photo, show a preview + Save button
-  const handlePickAvatar = async () => {
+  const handleChangeAvatar = async () => {
     if (avatarUploading) return;
-    setAvatarSaveError('');
-    setAvatarSaved(false);
-    const picked = await pickImage();
-    if (!picked) return;
-    setPendingAvatar(picked);
-  };
-
-  // Step 2: user taps Save — actually upload to Supabase Storage
-  const handleSaveAvatar = async () => {
-    if (!pendingAvatar || avatarUploading) return;
     setAvatarUploading(true);
-    setAvatarSaveError('');
     try {
-      const result = await uploadAvatar(currentUser.id, pendingAvatar.base64, pendingAvatar.mimeType);
+      const result = await pickAndUploadAvatar(currentUser.id);
+      if (result.error === 'cancelled') {
+        setAvatarUploading(false);
+        return;
+      }
       if (result.success && result.avatarUrl) {
         updateProfile({ avatar: result.avatarUrl });
-        setPendingAvatar(null);
-        setAvatarSaved(true);
-        setTimeout(() => setAvatarSaved(false), 3000);
-      } else {
-        setAvatarSaveError(result.error || 'Upload failed. Please try again.');
+      } else if (result.localUri) {
+        updateProfile({ avatar: result.localUri });
       }
-    } catch (err: any) {
-      console.error('Avatar save error:', err);
-      setAvatarSaveError('Upload failed. Please try again.');
+    } catch (err) {
+      console.error('Avatar change error:', err);
     } finally {
       setAvatarUploading(false);
     }
@@ -247,11 +232,9 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.section}>
           {/* Change Profile Photo Row */}
-          <TouchableOpacity style={styles.settingRow} onPress={handlePickAvatar} activeOpacity={0.7} disabled={avatarUploading}>
+          <TouchableOpacity style={styles.settingRow} onPress={handleChangeAvatar} activeOpacity={0.7} disabled={avatarUploading}>
             <View style={styles.avatarThumbContainer}>
-              {pendingAvatar ? (
-                <Image source={{ uri: pendingAvatar.uri }} style={styles.avatarThumb} />
-              ) : currentUser.avatar ? (
+              {currentUser.avatar ? (
                 <Image source={{ uri: currentUser.avatar }} style={styles.avatarThumb} />
               ) : (
                 <View style={[styles.avatarThumb, { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }]}>
@@ -265,55 +248,16 @@ export default function SettingsScreen() {
             <View style={styles.settingContent}>
               <Text style={styles.settingLabel}>Change Profile Photo</Text>
               <Text style={styles.settingValue}>
-                {avatarUploading
-                  ? 'Saving...'
-                  : avatarSaved
-                  ? 'Photo saved!'
-                  : pendingAvatar
-                  ? 'Photo selected — tap Save to confirm'
-                  : 'Tap to select a new photo'}
+                {avatarUploading ? 'Uploading...' : 'Tap to select a new photo'}
               </Text>
-              {avatarSaveError ? (
-                <Text style={{ color: Colors.error, fontSize: 12, marginTop: 2 }}>{avatarSaveError}</Text>
-              ) : null}
             </View>
             {avatarUploading ? (
               <ActivityIndicator size="small" color={Colors.primary} />
-            ) : avatarSaved ? (
-              <MaterialIcons name="check-circle" size={22} color={Colors.success} />
             ) : (
               <MaterialIcons name="chevron-right" size={22} color={Colors.textLight} />
             )}
           </TouchableOpacity>
-
-          {/* Save / Discard buttons shown when a photo is pending */}
-          {pendingAvatar && !avatarUploading && (
-            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 12 }}>
-              <TouchableOpacity
-                onPress={() => { setPendingAvatar(null); setAvatarSaveError(''); }}
-                style={{ flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: Colors.textSecondary, fontWeight: '500' }}>Discard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSaveAvatar}
-                style={{ flex: 2, paddingVertical: 10, borderRadius: 8, backgroundColor: Colors.primary, alignItems: 'center' }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ color: Colors.white, fontWeight: '600' }}>Save Photo</Text>
-              </TouchableOpacity>
-            </View>
-          )}
           <SettingRow icon="person" label="Edit Profile" onPress={() => router.push('/(tabs)/profile')} />
-          <SettingRow
-            icon="verified-user"
-            label={currentUser.verified ? 'SpotMe Verified' : 'Get Verified'}
-            value={currentUser.verified ? 'Checkmark active on your posts' : 'Phone verify + manual review'}
-            badge={currentUser.verified ? 'Verified' : 'Get Checkmark'}
-            badgeColor={currentUser.verified ? Colors.success : Colors.primary}
-            onPress={() => router.push('/(tabs)/profile')}
-          />
           <SettingRow icon="credit-card" label="Payment Methods" value={paymentMethods.length > 0 ? `${paymentMethods.length} card(s)` : 'Add a card'} onPress={() => setShowPaymentMethods(true)} />
           <SettingRow
             icon="account-balance-wallet"
@@ -400,9 +344,14 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.section}>
-        <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); } }} />
-
-          <SettingRow icon="delete-forever" label="Delete Account" danger onPress={() => {}} />
+          {isLoggedIn ? (
+            <>
+              <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); } }} />
+              <SettingRow icon="delete-forever" label="Delete Account" danger onPress={() => {}} />
+            </>
+          ) : (
+            <SettingRow icon="login" label="Sign In / Create Account" value="Post a need" onPress={() => router.push('/auth')} />
+          )}
         </View>
 
         <View style={styles.footer}>
@@ -524,16 +473,6 @@ export default function SettingsScreen() {
                   Your Stripe Connect account is set up. 100% of contributions to your needs are sent directly to you — no platform fees.
                 </Text>
               </View>
-            ) : hasPayoutAccount ? (
-              <View style={[styles.payoutStatusInactive, { borderColor: Colors.accent, borderWidth: 1 }]}>
-                <View style={styles.payoutStatusIcon}>
-                  <MaterialIcons name="warning" size={32} color={Colors.accent} />
-                </View>
-                <Text style={styles.payoutStatusTitle}>Setup Incomplete</Text>
-                <Text style={styles.payoutStatusText}>
-                  Your Stripe account was created but you haven't entered your bank details yet. Tap the button below to finish — it only takes 2 minutes.
-                </Text>
-              </View>
             ) : (
               <View style={styles.payoutStatusInactive}>
                 <View style={styles.payoutStatusIcon}>
@@ -619,20 +558,20 @@ export default function SettingsScreen() {
                 <Text style={styles.payoutSummaryTitle}>Your Payout Summary</Text>
                 <View style={styles.payoutSummaryGrid}>
                   <View style={styles.payoutSummaryStat}>
-                    <Text style={styles.payoutSummaryNumber}>${(payoutSummary.totalRaised ?? payoutSummary.totalReceived ?? 0).toFixed(2)}</Text>
+                    <Text style={styles.payoutSummaryNumber}>${payoutSummary.totalRaised.toFixed(2)}</Text>
                     <Text style={styles.payoutSummaryLabel}>Total Raised</Text>
                   </View>
                   <View style={styles.payoutSummaryStat}>
-                    <Text style={styles.payoutSummaryNumber}>${(payoutSummary.pendingPayout ?? 0).toFixed(2)}</Text>
+                    <Text style={styles.payoutSummaryNumber}>${payoutSummary.pendingPayout.toFixed(2)}</Text>
                     <Text style={styles.payoutSummaryLabel}>Pending</Text>
                   </View>
                   <View style={styles.payoutSummaryStat}>
-                    <Text style={styles.payoutSummaryNumber}>${(payoutSummary.paidOut ?? 0).toFixed(2)}</Text>
+                    <Text style={styles.payoutSummaryNumber}>${payoutSummary.paidOut.toFixed(2)}</Text>
                     <Text style={styles.payoutSummaryLabel}>Paid Out</Text>
                   </View>
-                  {(payoutSummary.directPaymentsCount ?? 0) > 0 && (
+                  {payoutSummary.directPaymentsCount > 0 && (
                     <View style={styles.payoutSummaryStat}>
-                      <Text style={[styles.payoutSummaryNumber, { color: Colors.success }]}>${(payoutSummary.directPaymentsReceived ?? 0).toFixed(2)}</Text>
+                      <Text style={[styles.payoutSummaryNumber, { color: Colors.success }]}>${payoutSummary.directPaymentsReceived.toFixed(2)}</Text>
                       <Text style={styles.payoutSummaryLabel}>Direct Deposits</Text>
                     </View>
                   )}
@@ -662,7 +601,7 @@ export default function SettingsScreen() {
                   <MaterialIcons name="account-balance" size={20} color={Colors.white} />
                 )}
                 <Text style={styles.setupPayoutBtnText}>
-                  {payoutLoading ? 'Setting up...' : hasPayoutAccount ? 'Complete Stripe Setup' : 'Set Up Stripe Connect Payouts'}
+                  {payoutLoading ? 'Setting up...' : 'Set Up Stripe Connect Payouts'}
                 </Text>
               </TouchableOpacity>
             ) : (

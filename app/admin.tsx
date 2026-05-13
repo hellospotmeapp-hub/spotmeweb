@@ -7,7 +7,7 @@ import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from 
 import { supabase } from '@/app/lib/supabase';
 import { useApp } from '@/app/lib/store';
 
-type Tab = 'overview' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
+type Tab = 'overview' | 'approvals' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips';
 
 
 
@@ -150,11 +150,6 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [error, setError] = useState('');
 
-  // Read stored login email — used to authenticate every admin API call
-  const getAdminEmail = (): string => {
-    try { return (typeof localStorage !== 'undefined' ? localStorage.getItem('spotme_email') : null) || ''; } catch { return ''; }
-  };
-
   // Admin access control
   const [isAdminUser, setIsAdminUser] = useState<boolean | null>(null);
   const [adminCheckDone, setAdminCheckDone] = useState(false);
@@ -184,10 +179,10 @@ export default function AdminDashboard() {
   const [tipAnalytics, setTipAnalytics] = useState<any>(null);
   const [tipAnalyticsLoading, setTipAnalyticsLoading] = useState(false);
 
-  // Verifications state
-  const [verificationRequests, setVerificationRequests] = useState<any[]>([]);
-  const [verificationsLoading, setVerificationsLoading] = useState(false);
-  const [verificationAction, setVerificationAction] = useState<Record<string, 'loading' | 'done'>>({});
+  // Pending approvals state
+  const [pendingNeeds, setPendingNeeds] = useState<any[]>([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
 
   // Check admin access on mount
@@ -196,39 +191,16 @@ export default function AdminDashboard() {
   }, [currentUser.id]);
 
   const checkAdminAccess = async () => {
-    const ADMIN_EMAIL = 'hellospotme.app@gmail.com';
     if (!isLoggedIn || currentUser.id === 'guest') {
       setIsAdminUser(false);
       setAdminCheckDone(true);
       return;
     }
     try {
-      // Read the stored login email directly from localStorage — most reliable source
-      let storedEmail: string | null = null;
-      try {
-        storedEmail = typeof localStorage !== 'undefined'
-          ? localStorage.getItem('spotme_email')
-          : null;
-      } catch {}
-
-      if (storedEmail?.toLowerCase() === ADMIN_EMAIL) {
-        setIsAdminUser(true);
-        setAdminCheckDone(true);
-        return;
-      }
-
-      // Fallback: check supabase auth session
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const sessionEmail = sessionData?.session?.user?.email?.toLowerCase();
-        if (sessionEmail === ADMIN_EMAIL) {
-          setIsAdminUser(true);
-          setAdminCheckDone(true);
-          return;
-        }
-      } catch {}
-
-      setIsAdminUser(false);
+      const { data } = await supabase.functions.invoke('stripe-checkout', {
+        body: { action: 'admin_check', userId: currentUser.id },
+      });
+      setIsAdminUser(data?.isAdmin || false);
     } catch {
       setIsAdminUser(false);
     }
@@ -255,7 +227,7 @@ export default function AdminDashboard() {
     setError('');
     try {
       const { data, error: err } = await supabase.functions.invoke('stripe-checkout', {
-        body: { action: 'admin_stats', userId: currentUser.id, email: getAdminEmail() },
+        body: { action: 'admin_stats', userId: currentUser.id },
       });
       if (err) throw new Error(err.message);
       if (data?.success) {
@@ -279,7 +251,6 @@ export default function AdminDashboard() {
         body: {
           action: 'fetch_webhook_logs',
           userId: currentUser.id,
-          email: getAdminEmail(),
           limit: 50,
           eventType: webhookTypeFilter,
           processed,
@@ -301,7 +272,6 @@ export default function AdminDashboard() {
         body: {
           action: 'fetch_error_logs',
           userId: currentUser.id,
-          email: getAdminEmail(),
           limit: 50,
           severity: errorSeverityFilter !== 'all' ? errorSeverityFilter : undefined,
         },
@@ -336,6 +306,36 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, [isAdminUser]);
 
+  const fetchPendingApprovals = useCallback(async () => {
+    setApprovalsLoading(true);
+    try {
+      const { data } = await supabase
+        .from('needs')
+        .select('id, title, message, category, goal_amount, photo, created_at, user_id, profiles:user_id(name, avatar, city, phone)')
+        .eq('verification_status', 'pending')
+        .order('created_at', { ascending: true });
+      setPendingNeeds(data || []);
+    } catch {}
+    setApprovalsLoading(false);
+  }, []);
+
+  const handleApproveNeed = async (needId: string, approve: boolean) => {
+    setApprovingId(needId);
+    try {
+      await supabase.from('needs').update({
+        verification_status: approve ? 'approved' : 'rejected',
+        status: approve ? 'Collecting' : 'Expired',
+        verified_at: approve ? new Date().toISOString() : null,
+      }).eq('id', needId);
+      setPendingNeeds(prev => prev.filter(n => n.id !== needId));
+    } catch {}
+    setApprovingId(null);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'approvals' && isAdminUser) fetchPendingApprovals();
+  }, [activeTab, isAdminUser]);
+
   useEffect(() => {
     if (activeTab === 'webhooks' && isAdminUser) fetchWebhookLogs();
   }, [activeTab, webhookFilter, webhookTypeFilter, isAdminUser]);
@@ -352,7 +352,7 @@ export default function AdminDashboard() {
     setTipAnalyticsLoading(true);
     try {
       const { data } = await supabase.functions.invoke('stripe-checkout', {
-        body: { action: 'tip_analytics', userId: currentUser.id, email: getAdminEmail() },
+        body: { action: 'tip_analytics', userId: currentUser.id },
       });
       if (data?.success) {
         setTipAnalytics(data.tipAnalytics);
@@ -365,36 +365,6 @@ export default function AdminDashboard() {
     if (activeTab === 'tips' && isAdminUser) fetchTipAnalytics();
   }, [activeTab, isAdminUser]);
 
-  const fetchVerificationRequests = useCallback(async () => {
-    setVerificationsLoading(true);
-    try {
-      const { data } = await supabase.from('verification_requests')
-        .select('id, user_id, name, city, phone, status, notes, created_at, profiles(name, avatar, city)')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      setVerificationRequests(data || []);
-    } catch {}
-    setVerificationsLoading(false);
-  }, []);
-
-  const handleVerificationAction = async (reqId: string, userId: string, action: 'approve' | 'reject', notes = '') => {
-    setVerificationAction(prev => ({ ...prev, [reqId]: 'loading' }));
-    try {
-      await supabase.from('verification_requests').update({ status: action === 'approve' ? 'approved' : 'rejected', notes, reviewed_at: new Date().toISOString() }).eq('id', reqId);
-      if (action === 'approve') {
-        await supabase.from('profiles').update({ verified: true }).eq('id', userId);
-      }
-      setVerificationAction(prev => ({ ...prev, [reqId]: 'done' }));
-      setVerificationRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: action === 'approve' ? 'approved' : 'rejected' } : r));
-    } catch {
-      setVerificationAction(prev => { const n = { ...prev }; delete n[reqId]; return n; });
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'verifications' && isAdminUser) fetchVerificationRequests();
-  }, [activeTab, isAdminUser]);
-
   const onRefresh = () => {
     setRefreshing(true);
     fetchStats(true);
@@ -402,7 +372,6 @@ export default function AdminDashboard() {
     if (activeTab === 'security') fetchErrorLogs();
     if (activeTab === 'onboarding') fetchWalkthroughStats();
     if (activeTab === 'tips') fetchTipAnalytics();
-    if (activeTab === 'verifications') fetchVerificationRequests();
   };
 
 
@@ -477,19 +446,37 @@ export default function AdminDashboard() {
     );
   }
 
-  // Not an admin
+  // Not an admin - show registration option (first admin only)
   if (!isAdminUser) {
     return (
       <View style={[s.container, s.center, { paddingTop: topPadding }]}>
         <View style={s.accessDeniedCard}>
-          <MaterialIcons name="lock" size={56} color={Colors.primary} />
-          <Text style={s.accessDeniedTitle}>Admin Access Only</Text>
+          <MaterialIcons name="shield" size={56} color={Colors.primary} />
+          <Text style={s.accessDeniedTitle}>Admin Access</Text>
           <Text style={s.accessDeniedText}>
-            This dashboard is restricted to the SpotMe administrator account.
+            This dashboard is restricted to authorized administrators only.
           </Text>
           <View style={s.accessDeniedDivider} />
+          <Text style={s.accessDeniedSubtext}>
+            If no admin has been registered yet, you can claim admin access for your account. This is a one-time setup.
+          </Text>
+          <TouchableOpacity
+            style={[s.registerAdminBtn, registering && { opacity: 0.6 }]}
+            onPress={registerAsAdmin}
+            disabled={registering}
+            activeOpacity={0.8}
+          >
+            {registering ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <MaterialIcons name="admin-panel-settings" size={20} color={Colors.white} />
+            )}
+            <Text style={s.registerAdminBtnText}>
+              {registering ? 'Registering...' : 'Register as Admin'}
+            </Text>
+          </TouchableOpacity>
           <Text style={s.accessDeniedNote}>
-            Logged in as: {currentUser.name}
+            Logged in as: {currentUser.name} ({currentUser.id.substring(0, 8)}...)
           </Text>
         </View>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
@@ -558,6 +545,7 @@ export default function AdminDashboard() {
       {/* Tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
         <TabButton tab="overview" current={activeTab} label="Overview" icon="dashboard" onPress={() => setActiveTab('overview')} />
+        <TabButton tab="approvals" current={activeTab} label="Approvals" icon="verified-user" onPress={() => setActiveTab('approvals')} badge={pendingNeeds.length} />
         <TabButton tab="users" current={activeTab} label="Users" icon="people" onPress={() => setActiveTab('users')} />
         <TabButton tab="needs" current={activeTab} label="Needs" icon="volunteer-activism" onPress={() => setActiveTab('needs')} />
         <TabButton tab="transactions" current={activeTab} label="Transactions" icon="receipt-long" onPress={() => setActiveTab('transactions')} />
@@ -566,7 +554,6 @@ export default function AdminDashboard() {
         <TabButton tab="activity" current={activeTab} label="Activity" icon="timeline" onPress={() => setActiveTab('activity')} />
         <TabButton tab="onboarding" current={activeTab} label="Onboarding" icon="play-circle-outline" onPress={() => setActiveTab('onboarding')} />
         <TabButton tab="tips" current={activeTab} label="Tips" icon="volunteer-activism" onPress={() => setActiveTab('tips')} />
-        <TabButton tab="verifications" current={activeTab} label="Verify" icon="verified-user" onPress={() => setActiveTab('verifications')} badge={verificationRequests.filter(r => r.status === 'pending').length || undefined} />
 
       </ScrollView>
 
@@ -669,6 +656,130 @@ export default function AdminDashboard() {
                 <Text style={s.userDate}>{formatDate(user.joinedDate)}</Text>
               </View>
             ))}
+          </>
+        )}
+
+        {/* APPROVALS TAB */}
+        {activeTab === 'approvals' && (
+          <>
+            <View style={s.tabHeader}>
+              <Text style={s.tabHeaderTitle}>Pending Approval</Text>
+              <View style={s.tabHeaderBadges}>
+                <View style={[s.miniStatusBadge, { backgroundColor: Colors.accent + '20' }]}>
+                  <Text style={[s.miniStatusText, { color: Colors.accent }]}>{pendingNeeds.length} pending</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={[s.sectionCard, { backgroundColor: Colors.accent + '10', borderColor: Colors.accent + '30', borderWidth: 1 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                <MaterialIcons name="info-outline" size={16} color={Colors.accent} />
+                <Text style={{ fontSize: FontSize.sm, color: Colors.accent, fontWeight: '600', flex: 1 }}>
+                  Verify that each user has a real profile photo, valid phone, working email, and a city before approving.
+                </Text>
+              </View>
+            </View>
+
+            {approvalsLoading ? (
+              <View style={s.emptyState}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={s.emptyText}>Loading pending needs...</Text>
+              </View>
+            ) : pendingNeeds.length === 0 ? (
+              <View style={s.emptyState}>
+                <MaterialIcons name="verified-user" size={48} color={Colors.success} />
+                <Text style={s.emptyText}>All caught up! No needs awaiting approval.</Text>
+              </View>
+            ) : (
+              pendingNeeds.map(need => {
+                const profile = Array.isArray(need.profiles) ? need.profiles[0] : need.profiles;
+                const isProcessing = approvingId === need.id;
+                return (
+                  <View key={need.id} style={[s.needCard, { borderLeftWidth: 4, borderLeftColor: Colors.accent }]}>
+                    {/* User info row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.md }}>
+                      {profile?.avatar ? (
+                        <Image source={{ uri: profile.avatar }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                      ) : (
+                        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.error + '20', alignItems: 'center', justifyContent: 'center' }}>
+                          <MaterialIcons name="person-off" size={22} color={Colors.error} />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: Colors.text }}>{profile?.name || 'Unknown'}</Text>
+                        <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: 2, flexWrap: 'wrap' }}>
+                          {profile?.city ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <MaterialIcons name="location-on" size={12} color={Colors.success} />
+                              <Text style={{ fontSize: FontSize.xs, color: Colors.success, fontWeight: '600' }}>{profile.city}</Text>
+                            </View>
+                          ) : (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <MaterialIcons name="location-off" size={12} color={Colors.error} />
+                              <Text style={{ fontSize: FontSize.xs, color: Colors.error, fontWeight: '600' }}>No city</Text>
+                            </View>
+                          )}
+                          {profile?.phone ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <MaterialIcons name="phone" size={12} color={Colors.success} />
+                              <Text style={{ fontSize: FontSize.xs, color: Colors.success, fontWeight: '600' }}>{profile.phone}</Text>
+                            </View>
+                          ) : (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <MaterialIcons name="phone-disabled" size={12} color={Colors.error} />
+                              <Text style={{ fontSize: FontSize.xs, color: Colors.error, fontWeight: '600' }}>No phone</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <View style={[s.needCatBadge, { backgroundColor: (CategoryColors[need.category] || Colors.textLight) + '15' }]}>
+                        <Text style={[s.needCatText, { color: CategoryColors[need.category] || Colors.textLight }]}>{need.category}</Text>
+                      </View>
+                    </View>
+
+                    {/* Need content */}
+                    <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: Colors.text, marginBottom: Spacing.xs }}>{need.title}</Text>
+                    <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20, marginBottom: Spacing.md }} numberOfLines={3}>{need.message}</Text>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.md, gap: Spacing.sm }}>
+                      <MaterialIcons name="attach-money" size={16} color={Colors.success} />
+                      <Text style={{ fontSize: FontSize.sm, color: Colors.text, fontWeight: '700' }}>Goal: ${need.goal_amount}</Text>
+                      <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, marginLeft: 'auto' }}>
+                        {new Date(need.created_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+
+                    {/* Action buttons */}
+                    <View style={{ flexDirection: 'row', gap: Spacing.md }}>
+                      <TouchableOpacity
+                        style={[{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, paddingVertical: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.error + '15', borderWidth: 1, borderColor: Colors.error + '30' }, isProcessing && { opacity: 0.5 }]}
+                        onPress={() => handleApproveNeed(need.id, false)}
+                        disabled={isProcessing}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialIcons name="cancel" size={18} color={Colors.error} />
+                        <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: Colors.error }}>Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, paddingVertical: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.success, ...Shadow.sm }, isProcessing && { opacity: 0.5 }]}
+                        onPress={() => handleApproveNeed(need.id, true)}
+                        disabled={isProcessing}
+                        activeOpacity={0.7}
+                      >
+                        {isProcessing ? (
+                          <ActivityIndicator size="small" color={Colors.white} />
+                        ) : (
+                          <>
+                            <MaterialIcons name="check-circle" size={18} color={Colors.white} />
+                            <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: Colors.white }}>Approve</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
           </>
         )}
 
@@ -1277,120 +1388,6 @@ export default function AdminDashboard() {
                     ))}
                   </View>
                 )}
-              </>
-            )}
-          </>
-        )}
-
-        {/* VERIFICATIONS TAB */}
-        {activeTab === 'verifications' && (
-          <>
-            <View style={s.tabHeader}>
-              <Text style={s.tabHeaderTitle}>Verification Requests</Text>
-              <TouchableOpacity onPress={fetchVerificationRequests} style={{ opacity: verificationsLoading ? 0.5 : 1 }}>
-                <MaterialIcons name="refresh" size={20} color={Colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* How it works */}
-            <View style={[s.sectionCard, { backgroundColor: '#EDF7EE', borderColor: '#5CB85C30', borderWidth: 1 }]}>
-              <View style={s.sectionHeader}>
-                <MaterialIcons name="info-outline" size={18} color="#5CB85C" />
-                <Text style={[s.sectionTitle, { color: '#2D6B30' }]}>Verification Process</Text>
-              </View>
-              <Text style={[s.securityDesc, { color: '#3A7A3D' }]}>
-                1. User verifies their phone number via SMS{'\n'}
-                2. They submit a request with their real name + city{'\n'}
-                3. You review and approve — they get a ✓ checkmark on all their posts
-              </Text>
-            </View>
-
-            {verificationsLoading ? (
-              <View style={s.whLoadingWrap}><ActivityIndicator size="small" color={Colors.primary} /><Text style={s.whLoadingText}>Loading requests...</Text></View>
-            ) : verificationRequests.length === 0 ? (
-              <View style={s.emptyState}>
-                <MaterialIcons name="verified-user" size={48} color={Colors.borderLight} />
-                <Text style={s.emptyText}>No verification requests yet</Text>
-                <Text style={[s.emptySubtext, { textAlign: 'center', marginTop: 4 }]}>Users can request verification from their profile page</Text>
-              </View>
-            ) : (
-              <>
-                {/* Pending first */}
-                {['pending', 'approved', 'rejected'].map(statusGroup => {
-                  const grouped = verificationRequests.filter(r => r.status === statusGroup);
-                  if (grouped.length === 0) return null;
-                  const groupColor = statusGroup === 'approved' ? Colors.success : statusGroup === 'rejected' ? Colors.error : Colors.accent;
-                  return (
-                    <View key={statusGroup} style={s.sectionCard}>
-                      <View style={s.sectionHeader}>
-                        <MaterialIcons
-                          name={statusGroup === 'approved' ? 'check-circle' : statusGroup === 'rejected' ? 'cancel' : 'hourglass-empty'}
-                          size={18} color={groupColor}
-                        />
-                        <Text style={[s.sectionTitle, { color: groupColor, textTransform: 'capitalize' }]}>{statusGroup} ({grouped.length})</Text>
-                      </View>
-                      {grouped.map(req => {
-                        const isPending = req.status === 'pending';
-                        const isActing = verificationAction[req.id] === 'loading';
-                        return (
-                          <View key={req.id} style={{ borderTopWidth: 1, borderTopColor: Colors.borderLight, paddingTop: 12, marginTop: 8 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                              {req.profiles?.avatar ? (
-                                <Image source={{ uri: req.profiles.avatar }} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                              ) : (
-                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-                                  <MaterialIcons name="person" size={20} color={Colors.textLight} />
-                                </View>
-                              )}
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: FontSize.md, fontWeight: '700', color: Colors.text }}>{req.name || req.profiles?.name || 'Unknown'}</Text>
-                                <Text style={{ fontSize: FontSize.xs, color: Colors.textSecondary }}>{req.city || req.profiles?.city || '—'}</Text>
-                              </View>
-                              <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>{formatDate(req.created_at)}</Text>
-                            </View>
-                            {req.phone && (
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                                <MaterialIcons name="phone" size={14} color={Colors.success} />
-                                <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary }}>Phone verified: {req.phone}</Text>
-                              </View>
-                            )}
-                            {req.notes ? (
-                              <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, fontStyle: 'italic', marginBottom: 8 }}>Note: {req.notes}</Text>
-                            ) : null}
-                            {isPending && (
-                              <View style={{ flexDirection: 'row', gap: 10 }}>
-                                <TouchableOpacity
-                                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.success + '15', borderRadius: BorderRadius.lg, paddingVertical: 10, borderWidth: 1, borderColor: Colors.success + '40', opacity: isActing ? 0.5 : 1 }}
-                                  onPress={() => handleVerificationAction(req.id, req.user_id, 'approve')}
-                                  disabled={isActing}
-                                  activeOpacity={0.8}
-                                >
-                                  {isActing ? <ActivityIndicator size="small" color={Colors.success} /> : <MaterialIcons name="check-circle" size={16} color={Colors.success} />}
-                                  <Text style={{ color: Colors.success, fontWeight: '700', fontSize: FontSize.sm }}>Approve</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.error + '15', borderRadius: BorderRadius.lg, paddingVertical: 10, borderWidth: 1, borderColor: Colors.error + '40', opacity: isActing ? 0.5 : 1 }}
-                                  onPress={() => handleVerificationAction(req.id, req.user_id, 'reject')}
-                                  disabled={isActing}
-                                  activeOpacity={0.8}
-                                >
-                                  <MaterialIcons name="cancel" size={16} color={Colors.error} />
-                                  <Text style={{ color: Colors.error, fontWeight: '700', fontSize: FontSize.sm }}>Reject</Text>
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                            {verificationAction[req.id] === 'done' && (
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <MaterialIcons name="check-circle" size={16} color={Colors.success} />
-                                <Text style={{ fontSize: FontSize.sm, color: Colors.success, fontWeight: '600' }}>Done</Text>
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  );
-                })}
               </>
             )}
           </>

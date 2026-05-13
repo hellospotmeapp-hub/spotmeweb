@@ -95,7 +95,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.userInfo}>
+        <TouchableOpacity style={styles.userInfo} onPress={() => router.push(`/user/${need.userId}`)} activeOpacity={0.7}>
           <GracefulImage
             uri={need.userAvatar}
             type="avatar"
@@ -104,31 +104,46 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
           <View>
             <View style={styles.nameRow}>
               <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
-              {need.userVerified && (
-                <MaterialIcons name="verified" size={15} color="rgba(255,255,255,0.95)" style={{ marginLeft: 3 }} />
-              )}
               {need.userCity ? (
                 <View style={styles.cityRow}>
-                  <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.75)" />
+                  <MaterialIcons name="place" size={12} color={Colors.textLight} />
                   <Text style={styles.cityText}>{need.userCity}</Text>
                 </View>
               ) : null}
             </View>
             <Text style={styles.timeText}>{getTimeAgo(need.createdAt)}</Text>
           </View>
-        </View>
+        </TouchableOpacity>
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.shareBtn}
             onPress={() => router.push(`/share/${need.id}`)}
             activeOpacity={0.7}
           >
-            <MaterialIcons name="share" size={16} color="rgba(255,255,255,0.85)" />
+            <MaterialIcons name="share" size={16} color={Colors.textLight} />
           </TouchableOpacity>
-          <StatusBadge status={displayStatus} onDark />
+          <StatusBadge status={displayStatus} />
         </View>
       </View>
 
+      {/* Photo */}
+      {need.photo ? (
+        <View>
+          <GracefulImage
+            uri={need.photo}
+            type="photo"
+            style={styles.photo}
+            category={need.category}
+            containerStyle={expired ? { opacity: 0.7 } : undefined}
+          />
+          {expired && (
+            <View style={styles.expiredOverlay}>
+              <MaterialIcons name="timer-off" size={16} color={Colors.white} />
+              <Text style={styles.expiredOverlayText}>Expired</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
 
       {/* Content */}
       <View style={styles.content}>
@@ -268,8 +283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-    backgroundColor: Colors.primary,
+    paddingBottom: Spacing.sm,
   },
   userInfo: {
     flexDirection: 'row',
@@ -277,14 +291,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     flex: 1,
   },
-
   avatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: Colors.borderLight,
   },
   nameRow: {
     flexDirection: 'row',
@@ -295,7 +306,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: FontSize.md,
     fontWeight: '700',
-    color: Colors.white,
+    color: Colors.text,
   },
   cityRow: {
     flexDirection: 'row',
@@ -304,11 +315,11 @@ const styles = StyleSheet.create({
   },
   cityText: {
     fontSize: FontSize.xs,
-    color: 'rgba(255,255,255,0.75)',
+    color: Colors.textLight,
   },
   timeText: {
     fontSize: FontSize.xs,
-    color: 'rgba(255,255,255,0.75)',
+    color: Colors.textLight,
     marginTop: 1,
   },
   headerRight: {
@@ -317,10 +328,10 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   shareBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },

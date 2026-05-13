@@ -33,7 +33,6 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState(currentUser.name);
   const [editBio, setEditBio] = useState(currentUser.bio);
   const [editCity, setEditCity] = useState(currentUser.city);
-  const [profileError, setProfileError] = useState('');
   const [showThankYouModal, setShowThankYouModal] = useState(false);
   const [thankYouNeedId, setThankYouNeedId] = useState('');
   const [thankYouMsg, setThankYouMsg] = useState('');
@@ -176,19 +175,7 @@ export default function ProfileScreen() {
 
 
 
-  const handleSaveProfile = () => {
-    if (!editCity.trim()) {
-      setProfileError('City is required — please add your city before saving.');
-      return;
-    }
-    if (!editName.trim()) {
-      setProfileError('Name is required — please enter your name before saving.');
-      return;
-    }
-    setProfileError('');
-    updateProfile({ name: editName.trim(), bio: editBio.trim(), city: editCity.trim() });
-    setEditing(false);
-  };
+  const handleSaveProfile = () => { updateProfile({ name: editName.trim() || currentUser.name, bio: editBio, city: editCity }); setEditing(false); };
 
   // Payout eligibility check for a need
   const canRequestPayoutForNeed = (need: Need): boolean => {
@@ -261,18 +248,7 @@ export default function ProfileScreen() {
             <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/settings')}>
               <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => {
-              if (editing) {
-                // Cancel — discard changes
-                setEditName(currentUser.name);
-                setEditBio(currentUser.bio);
-                setEditCity(currentUser.city);
-                setProfileError('');
-                setEditing(false);
-              } else {
-                setEditing(true);
-              }
-            }}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => { setEditing(!editing); if (!editing) { setEditName(currentUser.name); setEditBio(currentUser.bio); setEditCity(currentUser.city); } }}>
               <MaterialIcons name={editing ? 'close' : 'edit'} size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -316,25 +292,8 @@ export default function ProfileScreen() {
               <TextInput style={styles.editInput} value={editName} onChangeText={setEditName} placeholder="Your name..." placeholderTextColor={Colors.textLight} maxLength={40} autoFocus />
               <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>Bio</Text>
               <TextInput style={styles.editInput} value={editBio} onChangeText={setEditBio} placeholder="Your bio..." placeholderTextColor={Colors.textLight} multiline maxLength={120} />
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: -4 }}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5 }}>City</Text>
-                <Text style={{ fontSize: 12, color: Colors.error, fontWeight: '700' }}>*</Text>
-              </View>
-              <TextInput style={styles.editInput} value={editCity} onChangeText={v => { setEditCity(v); if (profileError) setProfileError(''); }} placeholder="e.g. Atlanta, GA" placeholderTextColor={Colors.textLight} maxLength={40} />
-              {!!profileError && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF0EE', borderRadius: 8, padding: 10, marginTop: 4 }}>
-                  <MaterialIcons name="error-outline" size={16} color={Colors.error} />
-                  <Text style={{ fontSize: 13, color: Colors.error, flex: 1 }}>{profileError}</Text>
-                </View>
-              )}
-              <TouchableOpacity
-                style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', marginTop: 12, marginBottom: 4, flexDirection: 'row', gap: 6 }}
-                onPress={handleSaveProfile}
-                activeOpacity={0.8}
-              >
-                <MaterialIcons name="check" size={18} color="#fff" />
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Save Profile</Text>
-              </TouchableOpacity>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: -4 }}>City</Text>
+              <TextInput style={styles.editInput} value={editCity} onChangeText={setEditCity} placeholder="Your city..." placeholderTextColor={Colors.textLight} maxLength={40} />
               <TouchableOpacity style={styles.changePhotoBtn} onPress={() => setShowAvatarPicker(true)} disabled={avatarUploading} activeOpacity={0.7}>
                 {avatarUploading ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
@@ -355,30 +314,6 @@ export default function ProfileScreen() {
             </>
           )}
           <Text style={styles.joinedText}>Member since {new Date(currentUser.joinedDate).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
-
-          {/* Verification Banner */}
-          {currentUser.verified ? (
-            <View style={styles.verifiedBanner}>
-              <MaterialIcons name="verified" size={18} color="#5CB85C" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.verifiedBannerTitle}>SpotMe Verified</Text>
-                <Text style={styles.verifiedBannerText}>Phone verified + manually reviewed. Your checkmark shows on every post.</Text>
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.getVerifiedBanner}
-              onPress={() => router.push('/settings')}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="verified-user" size={18} color={Colors.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.getVerifiedTitle}>Get SpotMe Verified</Text>
-                <Text style={styles.getVerifiedText}>Add a checkmark to build trust. Verify your phone + get reviewed.</Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={18} color={Colors.primary} />
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Pinned Updates Preview (always visible) */}
@@ -710,23 +645,7 @@ const styles = StyleSheet.create({
   profileBio: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: Spacing.sm, paddingHorizontal: Spacing.xl },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: Spacing.sm },
   locationText: { fontSize: FontSize.sm, color: Colors.textLight },
-  joinedText: { fontSize: FontSize.xs, color: Colors.textLight, marginBottom: Spacing.md },
-  verifiedBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    backgroundColor: '#EDF7EE', borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    borderWidth: 1, borderColor: '#5CB85C40', marginTop: Spacing.sm, width: '100%',
-  },
-  verifiedBannerTitle: { fontSize: FontSize.sm, fontWeight: '700', color: '#2D6B30' },
-  verifiedBannerText: { fontSize: FontSize.xs, color: '#3A7A3D', lineHeight: 15 },
-  getVerifiedBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    backgroundColor: Colors.primaryLight, borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    borderWidth: 1, borderColor: Colors.primary + '40', marginTop: Spacing.sm, width: '100%',
-  },
-  getVerifiedTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary },
-  getVerifiedText: { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 15 },
+  joinedText: { fontSize: FontSize.xs, color: Colors.textLight },
   editSection: { width: '100%', gap: Spacing.md, marginTop: Spacing.md },
   editInput: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, padding: Spacing.lg, fontSize: FontSize.md, color: Colors.text, borderWidth: 1, borderColor: Colors.border },
   changePhotoBtn: {

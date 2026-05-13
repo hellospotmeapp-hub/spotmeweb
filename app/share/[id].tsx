@@ -283,6 +283,10 @@ export default function ShareLandingPage() {
   };
 
   const handleSpotMe = () => {
+    if (!isLoggedIn) {
+      setShowSignInPrompt(true);
+      return;
+    }
     setShowContribute(true);
   };
 

@@ -59,8 +59,9 @@ const MOCK_NEEDS = [
   useEffect(() => {
     // Reduced from 500ms to 50ms - auth state settles almost instantly
     const timer = setTimeout(() => setAuthSettled(true), 50);
-    return () => { clearTimeout(timer); };
+    const waitlistTimer = setTimeout(() => setShowWaitlist(true), 4000);return () => { clearTimeout(timer); clearTimeout(waitlistTimer); };
   }, []);
+const [showWaitlist, setShowWaitlist] = useState(false);
   // Extract values safely - BEFORE any conditional returns
   const needs = Array.isArray(appContext.needs) ? appContext.needs : [];
   const contribute = appContext.contribute;
@@ -127,6 +128,11 @@ const MOCK_NEEDS = [
     try {
       const need = safeNeeds.find((n: any) => n.id === needId);
       if (!need) return;
+      if (!isLoggedIn) {
+        setSignInPromptNeed({ userName: need.userName, userAvatar: need.userAvatar, title: need.title, remaining: need.goalAmount - need.raisedAmount });
+        setShowSignInPrompt(true);
+        return;
+      }
       setContributeModal({ visible: true, needId: need.id, title: need.title, remaining: need.goalAmount - need.raisedAmount });
     } catch {}
   };
@@ -156,17 +162,11 @@ const MOCK_NEEDS = [
           <TouchableOpacity style={styles.iconButton} onPress={() => { try { router.push('/settings'); } catch {} }}>
             <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
-          {!isLoggedIn && !isLoading && authSettled ? (
-            <TouchableOpacity style={styles.signInButton} onPress={() => { try { router.push('/auth'); } catch {} }}>
-              <Text style={styles.signInText}>Sign In</Text>
-            </TouchableOpacity>
-          ) : isLoggedIn ? (
+          {isLoggedIn ? (
             <TouchableOpacity onPress={() => { try { router.push('/(tabs)/profile'); } catch {} }}>
               <GracefulImage uri={safeUser.avatar || DEFAULT_AVATAR} type="avatar" style={styles.topAvatar} />
             </TouchableOpacity>
-
           ) : null}
-
         </View>
       </View>
 
@@ -235,22 +235,6 @@ const MOCK_NEEDS = [
         <View style={{ marginHorizontal: Spacing.lg, marginTop: Spacing.lg }}>
           <MamaRechargeCard />
         </View>
-
-        {/* ── Community Spotter banner ── */}
-        <TouchableOpacity
-          style={styles.spotterBanner}
-          onPress={() => { try { router.push('/spotter-tiers'); } catch {} }}
-          activeOpacity={0.85}
-        >
-          <View style={styles.spotterBannerLeft}>
-            <Text style={styles.spotterBannerEmoji}>🧡</Text>
-            <View>
-              <Text style={styles.spotterBannerTitle}>Become a Community Spotter</Text>
-              <Text style={styles.spotterBannerSub}>Give automatically · $10/month · 100% to those in need</Text>
-            </View>
-          </View>
-          <MaterialIcons name="arrow-forward-ios" size={16} color="rgba(255,255,255,0.8)" />
-        </TouchableOpacity>
 
         {almostThereNeeds.length > 0 && (
           <View style={styles.section}>
@@ -329,6 +313,19 @@ const MOCK_NEEDS = [
           </View>
         )}
         <View style={{ height: 40 }} />
+ {showWaitlist && Platform.OS === 'web' && (
+  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+    <div style={{ backgroundColor: 'white', borderRadius: 20, padding: 24, width: '100%', maxWidth: 340 }}>
+      <button onClick={() => setShowWaitlist(false)} style={{ float: 'right', background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#888' }}>✕</button>
+      <div style={{ textAlign: 'center', paddingTop: 8 }}>
+        <div style={{ fontSize: 22, fontWeight: 800, color: '#E8694A', marginBottom: 8 }}>SpotMe Waitlist 🧡</div>
+        <div style={{ fontSize: 14, color: '#666', marginBottom: 20, lineHeight: 1.5 }}>Be the first to know when SpotMe goes live. No tragedy required. Just community.</div>
+        <input id="waitlist-email" type="email" placeholder="Enter your email" style={{ width: '100%', padding: '12px', borderRadius: 10, border: '1.5px solid #E8694A', fontSize: 15, marginBottom: 12, boxSizing: 'border-box' }} />
+        <button onClick={() => window.open('https://spotmewaitlist.beehiiv.com', '_blank')} style={{ width: '100%', backgroundColor: '#E8694A', color: 'white', border: 'none', borderRadius: 10, padding: '14px', fontSize: 16, fontWeight: 700, cursor: 'pointer' }}>Join Waitlist</button>
+      </div>
+    </div>
+  </div>
+)}
 </ScrollView> 
 
       <ContributeModal visible={contributeModal.visible} onClose={() => setContributeModal(prev => ({ ...prev, visible: false }))} onContribute={handleContribute} needTitle={contributeModal.title} needId={contributeModal.needId} remaining={contributeModal.remaining} contributorName={safeUser.name || 'Guest'} />
@@ -408,16 +405,6 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: Spacing.huge, gap: Spacing.md },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textSecondary },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textLight },
-  spotterBanner: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginHorizontal: Spacing.lg, marginTop: Spacing.lg,
-    backgroundColor: '#E8694A', borderRadius: BorderRadius.xl,
-    paddingVertical: 14, paddingHorizontal: Spacing.lg,
-  },
-  spotterBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
-  spotterBannerEmoji: { fontSize: 26 },
-  spotterBannerTitle: { fontSize: FontSize.md, fontWeight: '800', color: '#fff' },
-  spotterBannerSub: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
   webFooter: { alignItems: 'center', paddingVertical: Spacing.xxxl, paddingHorizontal: Spacing.xl, marginTop: Spacing.xxl, borderTopWidth: 1, borderTopColor: Colors.borderLight, gap: Spacing.xs },
   webFooterLogo: { fontSize: FontSize.xl, fontWeight: '900', color: Colors.primary },
   webFooterTagline: { fontSize: FontSize.sm, color: Colors.textLight, fontStyle: 'italic' },

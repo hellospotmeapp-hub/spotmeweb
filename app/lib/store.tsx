@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { Platform } from 'react-native';
 import { supabase, safeInvoke } from './supabase';
-import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate, MOCK_NOTIFICATIONS, MOCK_THANK_YOU_UPDATES, CURRENT_USER } from './data';
+import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate, MOCK_NEEDS, MOCK_NOTIFICATIONS, MOCK_THANK_YOU_UPDATES, CURRENT_USER } from './data';
 import { offlineManager, QueuedAction } from './offlineManager';
 
 
@@ -513,7 +513,7 @@ interface AppState {
   syncOfflineActions: () => Promise<void>;
   // Actions
   contribute: (needId: string, amount: number, note?: string) => void;
-  contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string, guestPhone?: string) => Promise<PaymentResult>;
+  contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number) => Promise<PaymentResult>;
   spreadWithPayment: (allocations: any[], totalAmount: number, spreadMode: string, isAnonymous?: boolean) => Promise<PaymentResult>;
   createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => void;
   editNeed: (needId: string, updates: { title?: string; message?: string; photo?: string; goalAmount?: number }) => Promise<boolean>;
@@ -526,7 +526,7 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string) => void;
   login: (name: string, email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (name: string, email: string, password: string, bio?: string, city?: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (name: string, email: string, password: string, bio?: string, city?: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => void;
   getFilteredNeeds: () => Need[];
@@ -679,7 +679,7 @@ function getInitialSavedNeeds(): string[] {
 const AppContext = createContext<AppState | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [needs, setNeeds] = useState<Need[]>([]);
+  const [needs, setNeeds] = useState<Need[]>(() => applyExpirations(MOCK_NEEDS));
   const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
   const [thankYouUpdates, setThankYouUpdates] = useState<ThankYouUpdate[]>(MOCK_THANK_YOU_UPDATES);
 
@@ -889,7 +889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'fetch_needs' },
       }, 8000);
-      if (!error && data?.success && Array.isArray(data.needs)) {
+      if (!error && data?.success && data.needs?.length > 0) {
         // Filter out deleted needs BEFORE merging with pending
         const filteredServerNeeds = filterDeletedNeeds(data.needs);
         // Merge server data with any unconfirmed pending needs from localStorage
@@ -926,7 +926,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'fetch_needs' },
       }, 8000);
-      if (!error && data?.success && Array.isArray(data.needs)) {
+      if (!error && data?.success && data.needs?.length > 0) {
         // Filter out deleted needs BEFORE merging with pending
         const filteredServerNeeds = filterDeletedNeeds(data.needs);
         // Merge server data with any unconfirmed pending needs from localStorage
@@ -1006,7 +1006,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ---- STRIPE CONNECT PAYMENT: Single Contribution ----
   const contributeWithPayment = useCallback(async (
-    needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string, guestPhone?: string
+    needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number
   ): Promise<PaymentResult> => {
     try {
       const need = needs.find(n => n.id === needId);
@@ -1029,10 +1029,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           needId,
           needTitle: need?.title || '',
           contributorId: currentUser.id !== 'guest' ? currentUser.id : null,
-          contributorName: currentUser.id === 'guest' && guestEmail ? guestEmail.split('@')[0] : currentUser.name,
-          contributorAvatar: currentUser.id === 'guest' ? '' : currentUser.avatar,
-          guestEmail: currentUser.id === 'guest' ? (guestEmail || '') : '',
-          guestPhone: currentUser.id === 'guest' ? (guestPhone || '') : '',
+          contributorName: currentUser.name,
+          contributorAvatar: currentUser.avatar,
           note: note || '',
           isAnonymous: isAnonymous || false,
           tipAmount: tipAmount || 0,
@@ -1258,18 +1256,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Please sign in first' };
       }
 
-      // Use the user's real email so Stripe can send them verification and payout notifications
-      let userEmail = `${currentUser.id}@spotmeone.com`;
-      try {
-        const storedEmail = await storage.get('spotme_email');
-        if (storedEmail && storedEmail.includes('@')) userEmail = storedEmail;
-      } catch {}
-
       const { data: accountData, error: accountErr } = await supabase.functions.invoke('stripe-connect', {
         body: {
           action: 'create_account',
-          userId: currentUser.id,
-          email: userEmail,
+          email: `${currentUser.id}@spotmeone.com`,
+
           name: currentUser.name,
         },
       });
@@ -1312,12 +1303,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       if (linkErr || !linkData?.success) {
-        return {
-          success: false,
-          error: linkData?.error || 'Could not generate your Stripe onboarding link. Please open your Stripe dashboard at dashboard.stripe.com to complete your setup.',
-          accountId: linkData?.accountId,
-          needsSqlSetup: linkData?.needsSqlSetup,
-        };
+        await completePayoutOnboardingInternal();
+        return { success: true };
       }
 
       return {
@@ -1364,13 +1351,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           onboardingComplete: true,
           payoutsEnabled: true,
         });
-        // Surface auto-transfer result to the user
-        if (data.autoTransferred > 0) {
-          const msg = `Payout setup complete! $${Number(data.autoTotalDollars).toFixed(2)} from your previous contributions has been automatically transferred to your bank account. Arrives in 2–3 business days.`;
-          if (typeof window !== 'undefined') {
-            window.alert(msg);
-          }
-        }
         return true;
       }
     } catch {}
@@ -1489,12 +1469,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       userName: currentUser.name,
       userAvatar: currentUser.avatar,
       userCity: currentUser.city,
-      status: 'Collecting',
+      status: 'Pending Approval',
+      verificationStatus: 'pending',
       raisedAmount: 0,
       contributorCount: 0,
       contributions: [],
       createdAt: now.toISOString(),
-      expiresAt, // Set expiration date
+      expiresAt,
     };
     setNeeds(prev => [localNeed, ...prev]);
 
@@ -1535,25 +1516,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+
       if (data?.success && data.need) {
         // Server confirmed — update local state with real server data and clear pending cache
         setNeeds(prev => prev.map(n => n.id === localNeed.id ? { ...data.need, expiresAt: data.need.expiresAt || expiresAt } : n));
         removePendingNeed(localNeed.id);
         console.log(`[SpotMe PendingNeeds] Need confirmed by server: ${localNeed.id} → ${data.need.id}`);
-      } else if (!data?.success) {
-        // FIX (Bug 2): Insert failed — remove the fake local need so the user
-        // isn't left looking at something that was never actually saved.
-        setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
-        removePendingNeed(localNeed.id);
-        console.error('[SpotMe] Need creation failed:', data?.error);
-        setNotifications(prev => [{
-          id: `not_${Date.now()}`,
-          type: 'welcome' as const,
-          title: 'Need Not Saved',
-          message: data?.error || 'Your need could not be saved. Please try again.',
-          timestamp: new Date().toISOString(),
-          read: false,
-        }, ...prev]);
       }
       offlineManager.markOnline();
 
@@ -1729,7 +1697,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return id;
   };
 
-  const signup = useCallback(async (name: string, email: string, password: string, bio?: string, city?: string): Promise<{ success: boolean; error?: string }> => {
+  const signup = useCallback(async (name: string, email: string, password: string, bio?: string, city?: string, phone?: string): Promise<{ success: boolean; error?: string }> => {
     logoutIntentionalRef.current = false; // Reset: user is actively signing up
     try {
 
@@ -1748,39 +1716,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } catch {}
       }
 
-      // Establish a real Supabase auth session immediately so the user gets
-      // their permanent UUID from the start. This means any needs or profile
-      // updates they make right after signup will pass RLS — no 3-second window
-      // where writes fail because they still have a local_ ID.
-      let immediateAuthId: string | null = null;
-      try {
-        const { data: authData } = await supabase.auth.signUp({ email, password });
-        if (authData?.user?.id) {
-          immediateAuthId = authData.user.id;
-          console.log('[signup] Auth session established immediately, UUID:', immediateAuthId.slice(0, 8));
-        }
-      } catch (authErr) {
-        console.warn('[signup] Immediate auth signUp failed (will retry via create_profile):', authErr);
-      }
-
-      const avatarIndex = Math.floor(Math.random() * 8);
-      const avatarUrls = [
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056573_451fb65f.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037041799_20c595bd.jpg',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037064960_2d7609c5.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037049254_f950ccb1.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037060145_0ca59f8e.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037062543_b10ff8a6.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037046421_52a3035d.jpg',
-      ];
-
       const localUser: User = {
-        id: immediateAuthId || generateLocalId(),
+        id: generateLocalId(),
         name: (name && name.trim()) ? name.trim() : 'SpotMe User',
-        avatar: avatarUrls[avatarIndex] || '',
+        avatar: '',
         bio: (bio && bio.trim()) ? bio.trim() : '',
         city: (city && city.trim()) ? city.trim() : '',
+        phone: (phone && phone.trim()) ? phone.trim() : '',
+        profileComplete: false,
         joinedDate: new Date().toISOString(),
         totalRaised: 0,
         totalGiven: 0,
@@ -1810,7 +1753,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTimeout(async () => {
         try {
           const { data } = await supabase.functions.invoke('process-contribution', {
-            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city, avatar: localUser.avatar, authUserId: localUser.id },
+            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city, avatar: localUser.avatar, phone: localUser.phone },
           });
           if (data?.success && data.profile) {
             const syncedUser: User = {
@@ -1824,8 +1767,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
             try { await storage.set('spotme_user', JSON.stringify(syncedUser)); } catch {}
             setCurrentUser(syncedUser);
-            // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
-            supabase.auth.signInWithPassword({ email, password }).catch(() => {});
           }
         } catch {}
       }, 3000);
@@ -1858,56 +1799,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const user = JSON.parse(storedUser);
           setCurrentUser(user);
           setIsLoggedIn(true);
-          // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
-          const pass = password || storedPass;
-          if (pass) {
-            supabase.auth.signInWithPassword({ email, password: pass }).catch(() => {});
-          }
-
-          // FIX: Always refresh profile from DB in the background so stale localStorage
-          // data (e.g. "SpotMe User" from the signup window) gets corrected immediately.
-          const passForRefresh = pass;
-          setTimeout(async () => {
-            try {
-              const { data: freshData } = await safeInvoke('process-contribution', {
-                body: { action: 'login', email, password: passForRefresh || '' },
-              }, 8000);
-              if (freshData?.success && freshData.profile) {
-                const freshUser: User = {
-                  id: freshData.profile.id || user.id,
-                  name: freshData.profile.name || user.name,
-                  avatar: freshData.profile.avatar || user.avatar,
-                  bio: freshData.profile.bio || user.bio,
-                  city: freshData.profile.city || user.city,
-                  joinedDate: freshData.profile.joinedDate || user.joinedDate,
-                  totalRaised: freshData.profile.totalRaised || 0,
-                  totalGiven: freshData.profile.totalGiven || 0,
-                  verified: freshData.profile.verified || false,
-                };
-                setCurrentUser(freshUser);
-                try { await storage.set('spotme_user', JSON.stringify(freshUser)); } catch {}
-
-                // If the name or avatar changed from what was in localStorage,
-                // sync the fresh values to all existing need cards in the DB.
-                if (freshUser.name !== user.name || freshUser.avatar !== user.avatar) {
-                  const syncUpdates: Record<string, any> = {};
-                  if (freshUser.name !== user.name) syncUpdates.name = freshUser.name;
-                  if (freshUser.avatar !== user.avatar) syncUpdates.avatar = freshUser.avatar;
-                  supabase.functions.invoke('process-contribution', {
-                    body: { action: 'update_profile', profileId: freshUser.id, updates: syncUpdates },
-                  }).catch(() => {});
-                }
-              }
-            } catch {}
-          }, 800);
-
           return { success: true };
         } catch {}
       }
 
       try {
         const { data, error: serverError } = await safeInvoke('process-contribution', {
-          body: { action: 'login', email, password },
+          body: { action: 'login', email },
         }, 8000);
 
         if (!serverError && data?.success && data.profile) {
@@ -1927,10 +1825,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             await storage.set('spotme_email', email);
             if (password) await storage.set('spotme_pass', password);
           } catch {}
-          // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
-          if (password) {
-            supabase.auth.signInWithPassword({ email, password }).catch(() => {});
-          }
           setCurrentUser(user);
           setIsLoggedIn(true);
           return { success: true };
@@ -1969,7 +1863,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setPushPromptContribution(null);
     pushPromptCheckedRef.current = false;
     clearAllPendingNeeds(); // Clear any pending needs from localStorage on logout
-    try { await supabase.auth.signOut(); } catch {}
     await storage.remove('spotme_user');
     await storage.remove('spotme_email');
     await storage.remove('spotme_pass');
@@ -1988,21 +1881,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (currentUser.id !== 'guest') {
       try {
-        // Re-establish Supabase auth session so the DB update passes RLS policies.
-        // Without this, profile writes silently fail and the name/city reverts on
-        // the next login when the stale DB value is fetched.
-        const storedEmail = await storage.get('spotme_email');
-        const storedPass = await storage.get('spotme_pass');
-        if (storedEmail && storedPass) {
-          await supabase.auth.signInWithPassword({ email: storedEmail, password: storedPass }).catch(() => {});
-        }
-        const { error: invokeErr } = await supabase.functions.invoke('process-contribution', {
+        await supabase.functions.invoke('process-contribution', {
           body: { action: 'update_profile', profileId: currentUser.id, updates },
         });
-        if (invokeErr) console.warn('[updateProfile] DB write failed:', invokeErr.message);
-      } catch (e: any) {
-        console.warn('[updateProfile] error:', e?.message);
-      }
+      } catch {}
     }
   }, [currentUser.id]);
 

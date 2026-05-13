@@ -82,8 +82,6 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   const [recipientHasAccount, setRecipientHasAccount] = useState<boolean | null>(null);
   const [destinationInfo, setDestinationInfo] = useState<{ recipientName: string } | null>(null);
   const [stripeNotConfigured, setStripeNotConfigured] = useState(false);
-  const [guestEmail, setGuestEmail] = useState('');
-  const [guestPhone, setGuestPhone] = useState('');
   const [stripeSetupError, setStripeSetupError] = useState<string | undefined>(undefined);
 
   // Email receipt state
@@ -169,12 +167,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
 
   const amount = getAmount();
   const tip = getTip();
-  // Gross up so recipient gets the full contribution amount after Stripe's fee
-  // Formula: grossCharge = (amount + tip + 0.30) / (1 - 0.029)
-  const stripeFee = amount > 0
-    ? Math.ceil(((amount + tip + 0.30) / (1 - 0.029) - amount - tip) * 100) / 100
-    : 0;
-  const totalCharge = Math.round((amount + tip + stripeFee) * 100) / 100;
+  const totalCharge = Math.round((amount + tip) * 100) / 100;
   // Ref to prevent double-submission (persists across re-renders)
   const paymentInProgressRef = React.useRef(false);
 
@@ -206,30 +199,8 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     try { localStorage.removeItem(getRecentPaymentKey()); } catch {}
   };
 
-  const subscribeToBeehiiv = async (email: string) => {
-    try {
-      const pubId = process.env.NEXT_PUBLIC_BEEHIIV_PUB_ID;
-      const apiKey = process.env.NEXT_PUBLIC_BEEHIIV_API_KEY;
-      if (!pubId || !apiKey || !email) return;
-      await fetch(`https://api.beehiiv.com/v2/publications/${pubId}/subscriptions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ email, reactivate_existing: true, send_welcome_email: true }),
-      });
-    } catch {}
-  };
-
   const handleContribute = async () => {
     if (amount <= 0 || amount > 300) return;
-
-    // Guest email required
-    if (!isLoggedIn) {
-      const emailTrimmed = guestEmail.trim();
-      if (!emailTrimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
-        setErrorMsg('Please enter a valid email address to continue.');
-        return;
-      }
-    }
     
     // Prevent double-click / double-submission
     if (paymentInProgressRef.current || processing) {
@@ -255,9 +226,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
       // Mark that we're attempting a payment (rapid double-click protection only)
       markPaymentAttempt();
 
-      const resolvedGuestEmail = !isLoggedIn ? guestEmail.trim() : undefined;
-      const resolvedGuestPhone = !isLoggedIn ? guestPhone.trim() : undefined;
-      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip, resolvedGuestEmail, resolvedGuestPhone);
+      const result = await contributeWithPayment(needId, amount, note.trim() || undefined, isAnonymous, tip);
 
       if (result.success) {
         if ((result.mode === 'stripe_connect' || result.mode === 'stripe') && (result.clientSecret || result.checkoutUrl)) {
@@ -268,11 +237,6 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
         }
         // Direct processing succeeded - clear the payment tracking
         clearPaymentAttempt();
-
-        // Subscribe guest email to Beehiiv newsletter
-        if (!isLoggedIn && guestEmail.trim()) {
-          subscribeToBeehiiv(guestEmail.trim());
-        }
         
         setPaymentMode(result.mode || 'direct');
         setSuccessAmount(amount);
@@ -348,8 +312,6 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     setTipAmount(1);
     setIsCustomTip(false);
     setCustomTip('');
-    setGuestEmail('');
-    setGuestPhone('');
     // FIX: Always reset the payment-in-progress ref so the user can retry
     paymentInProgressRef.current = false;
     // Clear any stale localStorage markers
@@ -448,19 +410,6 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <Text style={styles.secureBadgeText}>Secure payment via Stripe</Text>
                 </View>
               )}
-
-              {/* SpotMe Trust Banner */}
-              <View style={styles.trustBanner}>
-                <View style={styles.trustBannerLeft}>
-                  <MaterialIcons name="verified-user" size={20} color="#5CB85C" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.trustBannerTitle}>SpotMe Verified Process</Text>
-                  <Text style={styles.trustBannerText}>
-                    Every recipient goes through phone verification + manual review before receiving funds. Real people. Real needs.
-                  </Text>
-                </View>
-              </View>
 
               {/* Amount Selection */}
               <Text style={styles.sectionLabel}>Choose amount</Text>
@@ -626,28 +575,25 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                     <Text style={[styles.feeValue, { color: Colors.primary }]}>${tip.toFixed(2)}</Text>
                   </View>
                 )}
-                {stripeFee > 0 && (
-                  <View style={styles.feeRow}>
-                    <View style={styles.recipientRow}>
-                      <MaterialIcons name="lock" size={12} color={Colors.textLight} />
-                      <Text style={styles.feeLabel}>Processing fee (you cover this)</Text>
-                    </View>
-                    <Text style={styles.feeValue}>${stripeFee.toFixed(2)}</Text>
-                  </View>
-                )}
                 <View style={[styles.feeRow, styles.totalRow]}>
                   <Text style={styles.totalLabel}>You pay</Text>
                   <Text style={styles.totalValue}>${totalCharge.toFixed(2)}</Text>
                 </View>
                 <View style={styles.feeRow}>
                   <View style={styles.recipientRow}>
-                    <MaterialIcons name="check-circle" size={14} color={Colors.success} />
+                    <MaterialIcons name="person" size={14} color={Colors.success} />
                     <Text style={[styles.feeLabel, { color: Colors.success, fontWeight: '700' }]}>
                       {recipientHasAccount ? 'Sent directly to recipient' : 'Recipient receives'}
                     </Text>
                   </View>
                   <Text style={[styles.feeValue, { color: Colors.success, fontWeight: '700' }]}>
                     ${amount.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.processingNote}>
+                  <MaterialIcons name="info-outline" size={12} color={Colors.textLight} />
+                  <Text style={styles.processingNoteText}>
+                    Stripe processing (2.9% + $0.30) is handled separately
                   </Text>
                 </View>
               </View>
@@ -675,46 +621,6 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 </View>
               </View>
 
-              {/* Guest email input */}
-              {!isLoggedIn && (
-                <View style={{ marginBottom: Spacing.lg }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing.sm }}>
-                    <MaterialIcons name="email" size={16} color={Colors.primary} />
-                    <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: Colors.text }}>Your email</Text>
-                    <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>(required to pay)</Text>
-                  </View>
-                  <TextInput
-                    style={[styles.noteInput, { height: 48, textAlignVertical: 'center' }, Platform.OS === 'web' && { outlineStyle: 'none' as any }]}
-                    value={guestEmail}
-                    onChangeText={setGuestEmail}
-                    placeholder="you@example.com"
-                    placeholderTextColor={Colors.textLight}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!processing}
-                  />
-                  <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, marginTop: 4 }}>
-                    We'll send your receipt here and add you to our newsletter.
-                  </Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: Spacing.md, marginBottom: Spacing.sm }}>
-                    <MaterialIcons name="phone" size={16} color={Colors.primary} />
-                    <Text style={{ fontSize: FontSize.sm, fontWeight: '700', color: Colors.text }}>Phone number</Text>
-                    <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>(optional)</Text>
-                  </View>
-                  <TextInput
-                    style={[styles.noteInput, { height: 48, textAlignVertical: 'center' }, Platform.OS === 'web' && { outlineStyle: 'none' as any }]}
-                    value={guestPhone}
-                    onChangeText={setGuestPhone}
-                    placeholder="(555) 000-0000"
-                    placeholderTextColor={Colors.textLight}
-                    keyboardType="phone-pad"
-                    autoCorrect={false}
-                    editable={!processing}
-                  />
-                </View>
-              )}
-
               {/* Error */}
               {errorMsg ? (
                 <View style={styles.errorBanner}>
@@ -725,10 +631,10 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
 
               {/* Submit */}
               <TouchableOpacity
-                style={[styles.submitButton, (amount <= 0 || (!isLoggedIn && !guestEmail.trim()) || processing) && styles.submitButtonDisabled]}
+                style={[styles.submitButton, (amount <= 0 || processing) && styles.submitButtonDisabled]}
                 onPress={handleContribute}
                 activeOpacity={0.8}
-                disabled={amount <= 0 || (!isLoggedIn && !guestEmail.trim()) || processing}
+                disabled={amount <= 0 || processing}
               >
                 {processing ? (
                   <ActivityIndicator size="small" color={Colors.white} />
@@ -852,18 +758,6 @@ const styles = StyleSheet.create({
   submitButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, paddingVertical: Spacing.lg, borderRadius: BorderRadius.xl, ...Shadow.md },
   submitButtonDisabled: { opacity: 0.5 },
   submitButtonText: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.white },
-  trustBanner: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md,
-    backgroundColor: '#EDF7EE', borderRadius: BorderRadius.lg,
-    padding: Spacing.md, marginBottom: Spacing.lg,
-    borderWidth: 1, borderColor: '#5CB85C30',
-  },
-  trustBannerLeft: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#5CB85C18', alignItems: 'center', justifyContent: 'center',
-  },
-  trustBannerTitle: { fontSize: FontSize.sm, fontWeight: '700', color: '#2D6B30', marginBottom: 2 },
-  trustBannerText: { fontSize: FontSize.xs, color: '#3A7A3D', lineHeight: 16 },
   stripeFooter: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm, marginTop: Spacing.md, paddingBottom: Spacing.md },
   disclaimerText: { flex: 1, fontSize: FontSize.xs, color: Colors.textLight, lineHeight: 16 },
   successContainer: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },

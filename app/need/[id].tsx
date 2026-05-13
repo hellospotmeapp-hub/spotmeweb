@@ -204,6 +204,10 @@ export default function NeedDetailScreen() {
   };
 
   const handleSpotMe = () => {
+    if (!isLoggedIn) {
+      setShowSignInPrompt(true);
+      return;
+    }
     if (!canContribute) return;
     setShowContribute(true);
   };

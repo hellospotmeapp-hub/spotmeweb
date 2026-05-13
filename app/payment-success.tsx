@@ -9,7 +9,6 @@ import { supabase } from '@/app/lib/supabase';
 
 const CTA_COLOR = Colors.primary;
 const MY_SPOTS_KEY = 'spotme_my_spots';
-const SPOTTER_CTA_DISMISSED_KEY = 'spotme_spotter_cta_dismissed';
 
 // ---- Helper: Store spot details in localStorage ----
 function storeSpotInLocalStorage(spot: { needId: string; needTitle: string; amount: number; date: string; paymentId: string }) {
@@ -83,35 +82,6 @@ export default function PaymentSuccessScreen() {
   const [emailInput, setEmailInput] = useState('');
   const [emailInputError, setEmailInputError] = useState('');
   const spotStoredRef = useRef(false); // prevent double-storing spot
-
-  // ---- Spotter CTA state ----
-  const [showSpotterCTA, setShowSpotterCTA] = useState(false);
-
-  // Show Spotter CTA on success if user isn't already a spotter and hasn't dismissed it
-  useEffect(() => {
-    if (status !== 'success') return;
-    (async () => {
-      try {
-        // Don't show if already dismissed this session
-        if (Platform.OS === 'web') {
-          try {
-            if (sessionStorage.getItem(SPOTTER_CTA_DISMISSED_KEY) === 'true') return;
-          } catch {}
-        }
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) { setShowSpotterCTA(true); return; }
-        const { data } = await supabase
-          .from('spotters')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .maybeSingle();
-        if (!data) setShowSpotterCTA(true);
-      } catch {
-        setShowSpotterCTA(true);
-      }
-    })();
-  }, [status]);
 
   // ---- Check for stored email on mount ----
   useEffect(() => {
@@ -860,41 +830,6 @@ export default function PaymentSuccessScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* ===== COMMUNITY SPOTTER CTA ===== */}
-            {showSpotterCTA && (
-              <View style={styles.spotterCTACard}>
-                <TouchableOpacity
-                  style={styles.spotterCTADismiss}
-                  onPress={() => {
-                    setShowSpotterCTA(false);
-                    if (Platform.OS === 'web') {
-                      try { sessionStorage.setItem(SPOTTER_CTA_DISMISSED_KEY, 'true'); } catch {}
-                    }
-                  }}
-                >
-                  <MaterialIcons name="close" size={16} color={Colors.textLight} />
-                </TouchableOpacity>
-                <Text style={styles.spotterCTAEmoji}>🧡</Text>
-                <Text style={styles.spotterCTATitle}>Make it a monthly habit</Text>
-                <Text style={styles.spotterCTASub}>
-                  You just changed someone's day. For as little as $10/month, you can automatically spot needs throughout the community — every single month.
-                </Text>
-                <View style={styles.spotterCTAFeatures}>
-                  <Text style={styles.spotterCTAFeature}>👀 See every need you spot</Text>
-                  <Text style={styles.spotterCTAFeature}>📊 Monthly impact report</Text>
-                  <Text style={styles.spotterCTAFeature}>❤️ 100% goes to real people</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.spotterCTABtn}
-                  onPress={() => router.push('/spotter-tiers')}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.spotterCTABtnText}>Become a Community Spotter →</Text>
-                </TouchableOpacity>
-                <Text style={styles.spotterCTANote}>Starting at $10/month · Cancel anytime</Text>
-              </View>
-            )}
-
             {/* Security Note */}
             <View style={styles.securityNote}>
               <MaterialIcons name="verified-user" size={14} color={Colors.textLight} />
@@ -1403,68 +1338,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 2,
-  },
-  spotterCTACard: {
-    backgroundColor: '#FFF8F6',
-    borderWidth: 2,
-    borderColor: '#E8694A',
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginTop: Spacing.lg,
-    alignItems: 'center',
-    position: 'relative',
-  },
-  spotterCTADismiss: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    padding: 4,
-  },
-  spotterCTAEmoji: { fontSize: 32, marginBottom: 8 },
-  spotterCTATitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: Colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  spotterCTASub: {
-    fontSize: FontSize.sm,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 14,
-  },
-  spotterCTAFeatures: {
-    alignSelf: 'stretch',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
-    padding: Spacing.md,
-    marginBottom: 16,
-    gap: 6,
-  },
-  spotterCTAFeature: {
-    fontSize: FontSize.sm,
-    color: Colors.text,
-    fontWeight: '500',
-  },
-  spotterCTABtn: {
-    backgroundColor: '#E8694A',
-    borderRadius: BorderRadius.lg,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  spotterCTABtnText: {
-    color: '#fff',
-    fontSize: FontSize.md,
-    fontWeight: '700',
-  },
-  spotterCTANote: {
-    fontSize: 11,
-    color: Colors.textLight,
-    textAlign: 'center',
   },
 });
