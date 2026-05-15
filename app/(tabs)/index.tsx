@@ -236,7 +236,22 @@ const MOCK_NEEDS = [
         {/* Search Bar - Find people and their needs */}
         <HomeSearchBar needs={safeNeeds} />
 
-        <TouchableOpacity style={styles.walkthroughBanner} onPress={() => { try { router.push('/welcome'); } catch {} }} activeOpacity={0.8}>
+
+          {/* Soft Launch Announcement Banner */}
+          <TouchableOpacity
+            style={styles.announcementBanner}
+            onPress={() => { try { router.push('/(tabs)/create'); } catch {} }}
+            activeOpacity={0.88}
+          >
+            <View style={styles.announcementLeft}>
+              <Text style={styles.announcementEmoji}>🎉</Text>
+              <View>
+                <Text style={styles.announcementTitle}>Soft Launch Complete!</Text>
+                <Text style={styles.announcementSub}>Submit your need for our upcoming launch →</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.walkthroughBanner} onPress={() => { try { router.push('/welcome'); } catch {} }} activeOpacity={0.8}>
 
 
           <View style={styles.walkthroughIcon}><MaterialIcons name="play-circle-filled" size={20} color={Colors.primary} /></View>
