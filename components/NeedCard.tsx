@@ -51,7 +51,7 @@ function getTimeAgo(dateStr: string): string {
 function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardProps) {
 
   const router = useRouter();
-  const progress = need.raisedAmount / need.goalAmount;
+  const progress = showAsFunded ? 1 : need.raisedAmount / need.goalAmount;
   const expired = isExpiredByTime(need);
   const isComplete = need.status !== 'Collecting' || expired;
   const canContribute = need.status === 'Collecting' && !expired;
@@ -84,7 +84,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
           <Text style={styles.compactTitle} numberOfLines={1}>{need.title}</Text>
           <ProgressBar progress={progress} height={4} />
           <Text style={styles.compactAmount}>
-            ${need.raisedAmount} of ${need.goalAmount}
+            ${showAsFunded ? need.goalAmount : need.raisedAmount} of ${need.goalAmount}
           </Text>
         </View>
       </TouchableOpacity>
@@ -152,7 +152,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
           <ProgressBar progress={progress} height={10} showGlow={progress >= 0.75 && !expired} />
           <View style={styles.progressInfo}>
             <View style={styles.amountRow}>
-              <Text style={styles.raisedAmount}>${need.raisedAmount}</Text>
+              <Text style={styles.raisedAmount}>${showAsFunded ? need.goalAmount : need.raisedAmount}</Text>
               <Text style={styles.goalAmount}> of ${need.goalAmount}</Text>
             </View>
             <Text style={styles.contributorText}>
