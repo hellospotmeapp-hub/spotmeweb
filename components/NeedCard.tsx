@@ -27,6 +27,7 @@ interface NeedCardProps {
   need: Need;
   onContribute?: (needId: string, amount: number) => void;
   compact?: boolean;
+  showAsFunded?: boolean;
 }
 
 function getTimeAgo(dateStr: string): string {
@@ -47,7 +48,7 @@ function getTimeAgo(dateStr: string): string {
 }
 
 // Wrap in React.memo to prevent re-renders when parent state changes but need data hasn't
-function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
+function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardProps) {
 
   const router = useRouter();
   const progress = need.raisedAmount / need.goalAmount;
@@ -214,7 +215,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
         )}
 
         {/* Goal Met Banner */}
-        {!expired && need.status === 'Goal Met' && (
+        {!expired && (need.status === 'Goal Met' || showAsFunded) && (
           <View style={styles.goalMetBanner}>
             <MaterialIcons name="celebration" size={20} color={Colors.success} />
             <Text style={styles.goalMetText}>Goal Met!</Text>
