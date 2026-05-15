@@ -50,9 +50,7 @@ const MOCK_NEEDS = [
   const appContext = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [showLaunchModal, setShowLaunchModal] = useState(() => {
-    try { return !localStorage.getItem('spotme_launch_seen'); } catch { return true; }
-  });
+  const [showLaunchModal, setShowLaunchModal] = useState(true);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [signInPromptNeed, setSignInPromptNeed] = useState<any>(null);
   const [contributeModal, setContributeModal] = useState({ visible: false, needId: '', title: '', remaining: 0 });
@@ -144,7 +142,6 @@ const MOCK_NEEDS = [
                   style={styles.launchBtn}
                   activeOpacity={0.85}
                   onPress={() => {
-                    try { localStorage.setItem('spotme_launch_seen', '1'); } catch {}
                     setShowLaunchModal(false);
                   }}
                 >
@@ -153,7 +150,6 @@ const MOCK_NEEDS = [
                 <TouchableOpacity
                   style={styles.launchSkip}
                   onPress={() => {
-                    try { localStorage.setItem('spotme_launch_seen', '1'); } catch {}
                     setShowLaunchModal(false);
                   }}
                 >
