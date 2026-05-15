@@ -50,6 +50,9 @@ const MOCK_NEEDS = [
   const appContext = useApp();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [showLaunchModal, setShowLaunchModal] = useState(() => {
+    try { return !localStorage.getItem('spotme_launch_seen'); } catch { return true; }
+  });
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [signInPromptNeed, setSignInPromptNeed] = useState<any>(null);
   const [contributeModal, setContributeModal] = useState({ visible: false, needId: '', title: '', remaining: 0 });
@@ -112,6 +115,53 @@ const MOCK_NEEDS = [
   if (!appContext) {
     return (
       <View style={[styles.container, { paddingTop: Platform.OS === 'web' ? 0 : insets.top }]}>
+          {/* Soft Launch Complete Modal */}
+          <Modal visible={showLaunchModal} transparent animationType="fade" onRequestClose={() => {}}>
+            <View style={styles.launchOverlay}>
+              <View style={styles.launchCard}>
+                <View style={styles.launchHeader}>
+                  <Text style={styles.launchEmoji}>🎉</Text>
+                  <Text style={styles.launchTitle}>Soft Launch Complete!</Text>
+                  <Text style={styles.launchSubtitle}>Thank you to everyone who participated</Text>
+                </View>
+                <View style={styles.launchBody}>
+                  <Text style={styles.launchBodyText}>
+                    We successfully funded our first wave of community needs. We're now preparing for our full launch — and we want your need to be part of it.
+                  </Text>
+                  {[
+                    'Submit your need for review',
+                    'Our team verifies every need before launch',
+                    'Once approved, your need goes live to the community',
+                    'Connect Stripe to receive funds automatically',
+                  ].map((item, i) => (
+                    <View key={i} style={styles.launchItem}>
+                      <View style={styles.launchDot} />
+                      <Text style={styles.launchItemText}>{item}</Text>
+                    </View>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={styles.launchBtn}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    try { localStorage.setItem('spotme_launch_seen', '1'); } catch {}
+                    setShowLaunchModal(false);
+                  }}
+                >
+                  <Text style={styles.launchBtnText}>Submit My Need for Verification</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.launchSkip}
+                  onPress={() => {
+                    try { localStorage.setItem('spotme_launch_seen', '1'); } catch {}
+                    setShowLaunchModal(false);
+                  }}
+                >
+                  <Text style={styles.launchSkipText}>Just browsing</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
         <View style={styles.topBar}>
           <View><Text style={styles.logo}>SpotMe</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
         </View>
@@ -211,7 +261,7 @@ const MOCK_NEEDS = [
 
         {/* Featured Needs — show before Smart Split */}
         {(activeNeeds.length > 0 ? activeNeeds : MOCK_NEEDS.filter((n: any) => n.status === 'Collecting')).slice(0, 2).map((need: any) => (
-          <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+          <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} showAsFunded />
         ))}
 
         <TouchableOpacity style={styles.spreadCard} onPress={() => { try { router.push('/spread'); } catch {} }} activeOpacity={0.85}>
@@ -313,12 +363,12 @@ const MOCK_NEEDS = [
     </View>
   ) : (
     MOCK_NEEDS.filter(n => selectedCategory === 'All' || n.category === selectedCategory).map((need) => (
-      <NeedCard key={need.id} need={need} onContribute={() => {}} />
+      <NeedCard key={need.id} need={need} onContribute={() => {}} showAsFunded />
     ))
   )
 ) : (
   filteredNeeds.map((need: any) => (
-    <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+    <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} showAsFunded />
   ))
 )}
         {Platform.OS === 'web' && (
@@ -434,6 +484,94 @@ const styles = StyleSheet.create({
   walkthroughIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
   walkthroughTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
   walkthroughSubtitle: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 1 },
+  launchOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+    },
+    launchCard: {
+      backgroundColor: Colors.white,
+      borderRadius: 20,
+      width: '100%',
+      maxWidth: 420,
+      overflow: 'hidden',
+    },
+    launchHeader: {
+      backgroundColor: Colors.primary,
+      paddingVertical: 28,
+      paddingHorizontal: 24,
+      alignItems: 'center',
+      gap: 6,
+    },
+    launchEmoji: {
+      fontSize: 36,
+    },
+    launchTitle: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: Colors.white,
+      letterSpacing: -0.3,
+      textAlign: 'center',
+    },
+    launchSubtitle: {
+      fontSize: 14,
+      color: 'rgba(255,255,255,0.85)',
+      fontWeight: '500',
+      textAlign: 'center',
+    },
+    launchBody: {
+      padding: 20,
+      gap: 10,
+    },
+    launchBodyText: {
+      fontSize: 14,
+      color: Colors.text,
+      lineHeight: 21,
+      marginBottom: 6,
+    },
+    launchItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    launchDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: Colors.primary,
+      marginTop: 6,
+      flexShrink: 0,
+    },
+    launchItemText: {
+      flex: 1,
+      fontSize: 14,
+      color: Colors.textSecondary,
+      lineHeight: 20,
+    },
+    launchBtn: {
+      backgroundColor: Colors.primary,
+      marginHorizontal: 20,
+      marginBottom: 10,
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    launchBtnText: {
+      color: Colors.white,
+      fontWeight: '800',
+      fontSize: 15,
+    },
+    launchSkip: {
+      alignItems: 'center',
+      paddingVertical: 12,
+      marginBottom: 8,
+    },
+    launchSkipText: {
+      color: Colors.textLight,
+      fontSize: 14,
+    },
 });
 
 export default function HomeScreen() {
