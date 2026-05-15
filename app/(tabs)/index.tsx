@@ -588,6 +588,35 @@ const styles = StyleSheet.create({
       color: Colors.textLight,
       fontSize: 14,
     },
+  announcementBanner: {
+      marginHorizontal: 16,
+      marginBottom: 10,
+      backgroundColor: Colors.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+    },
+    announcementLeft: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 10,
+      flex: 1,
+    },
+    announcementEmoji: {
+      fontSize: 22,
+    },
+    announcementTitle: {
+      fontSize: 14,
+      fontWeight: '800' as const,
+      color: Colors.white,
+    },
+    announcementSub: {
+      fontSize: 12,
+      color: 'rgba(255,255,255,0.85)',
+      marginTop: 1,
+    },
 });
 
 export default function HomeScreen() {
