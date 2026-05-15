@@ -113,8 +113,8 @@ const MOCK_NEEDS = [
   if (!appContext) {
     return (
       <View style={[styles.container, { paddingTop: Platform.OS === 'web' ? 0 : insets.top }]}>
-          {/* Soft Launch Complete Modal */}
-          <Modal visible={showLaunchModal} transparent animationType="fade" onRequestClose={() => {}}>
+          {/* Soft Launch Complete Overlay */}
+          {showLaunchModal && (
             <View style={styles.launchOverlay}>
               <View style={styles.launchCard}>
                 <View style={styles.launchHeader}>
@@ -157,7 +157,7 @@ const MOCK_NEEDS = [
                 </TouchableOpacity>
               </View>
             </View>
-          </Modal>
+          )}
         <View style={styles.topBar}>
           <View><Text style={styles.logo}>SpotMe</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
         </View>
@@ -481,7 +481,12 @@ const styles = StyleSheet.create({
   walkthroughTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
   walkthroughSubtitle: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 1 },
   launchOverlay: {
-      flex: 1,
+      position: 'fixed' as any,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 9999,
       backgroundColor: 'rgba(0,0,0,0.6)',
       justifyContent: 'center',
       alignItems: 'center',
