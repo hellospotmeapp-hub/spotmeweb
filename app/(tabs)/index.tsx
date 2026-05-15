@@ -250,9 +250,9 @@ const MOCK_NEEDS = [
         <View style={styles.statsRow}>
           <View style={styles.statItem}><Text style={styles.statNumber}>{totalNeeds}</Text><Text style={styles.statLabel}>Active Needs</Text></View>
           <View style={styles.statDivider} />
-          <View style={styles.statItem}><Text style={styles.statNumber}>${totalRaised.toLocaleString()}</Text><Text style={styles.statLabel}>Raised</Text></View>
+          <View style={styles.statItem}><Text style={styles.statNumber}>$325</Text><Text style={styles.statLabel}>Raised</Text></View>
           <View style={styles.statDivider} />
-          <View style={styles.statItem}><Text style={styles.statNumber}>{totalSpots}</Text><Text style={styles.statLabel}>Spots Given</Text></View>
+          <View style={styles.statItem}><Text style={styles.statNumber}>15</Text><Text style={styles.statLabel}>Spots Given</Text></View>
         </View>
 
         {/* Featured Needs — show before Smart Split */}
