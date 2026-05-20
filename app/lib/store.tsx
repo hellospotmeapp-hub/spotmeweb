@@ -1548,6 +1548,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         removePendingNeed(localNeed.id);
         console.log(`[SpotMe PendingNeeds] Need saved: ${localNeed.id} → ${insertedNeed.id}`);
         offlineManager.markOnline();
+
+      // Fire-and-forget: notify admin of new pending need (never blocks the save)
+      supabase.functions.invoke('notify-admin', {
+        body: {
+          needId: insertedNeed.id,
+          title: needData.title,
+          message: needData.message,
+          goalAmount: needData.goalAmount,
+          userName: currentUser.name,
+          userCity: currentUser.city,
+          category: needData.category,
+        },
+      }).catch(() => {}); // silent — email failure never breaks need creation
   
     } catch (err) {
       // Server call failed — need stays in pending cache for recovery on next load
