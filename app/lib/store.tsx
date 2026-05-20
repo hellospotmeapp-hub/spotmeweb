@@ -1504,70 +1504,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
     savePendingNeed(localNeed);
 
     try {
-      const { data } = await supabase.functions.invoke('process-contribution', {
-        body: {
-          action: 'create_need',
-          title: needData.title,
-          message: needData.message,
-          category: needData.category,
-          goalAmount: needData.goalAmount,
-          photo: needData.photo,
-          userId: currentUser.id !== 'guest' ? currentUser.id : null,
-          userName: currentUser.name,
-          userAvatar: currentUser.avatar,
-          userCity: currentUser.city,
-          expiresAt, // Send expiration to server
-        },
-      });
+        const { data: insertedNeed, error: insertError } = await supabase
+          .from('needs')
+          .insert({
+            title: needData.title,
+            message: needData.message,
+            category: needData.category,
+            goal_amount: needData.goalAmount,
+            photo: needData.photo || '',
+            user_id: currentUser.id !== 'guest' ? currentUser.id : null,
+            user_name: currentUser.name,
+            user_avatar: currentUser.avatar,
+            user_city: currentUser.city,
+            expires_at: expiresAt,
+            status: 'Collecting',
+            verification_status: 'pending',
+            raised_amount: 0,
+            contributor_count: 0,
+          })
+          .select()
+          .single();
 
-      if (data?.limitReached) {
-        // Server rejected — remove from both local state and pending cache
-        setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
-        removePendingNeed(localNeed.id);
-        setNotifications(prev => [{
-          id: `not_${Date.now()}`,
-          type: 'welcome' as const,
-          title: 'Could Not Create Need',
-          message: data.error || 'The server could not create this need. Please try again.',
-          timestamp: new Date().toISOString(),
-          read: false,
-        }, ...prev]);
-        return;
-      }
+        if (insertError || !insertedNeed) {
+          setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
+          removePendingNeed(localNeed.id);
+          console.error('[SpotMe] Need creation failed:', insertError?.message);
+          setNotifications(prev => [{
+            id: `not_${Date.now()}`,
+            type: 'welcome' as const,
+            title: 'Need Not Saved',
+            message: insertError?.message || 'Your need could not be saved. Please try again.',
+            timestamp: new Date().toISOString(),
+            read: false,
+          }, ...prev]);
+          return;
+        }
 
-      if (data?.success && data.need) {
-        // Server confirmed — update local state with real server data and clear pending cache
-        setNeeds(prev => prev.map(n => n.id === localNeed.id ? { ...data.need, expiresAt: data.need.expiresAt || expiresAt } : n));
+        // Direct insert confirmed — update local state with server-assigned ID
+        setNeeds(prev => prev.map(n => n.id === localNeed.id
+          ? { ...localNeed, id: insertedNeed.id, expiresAt: insertedNeed.expires_at || expiresAt }
+          : n
+        ));
         removePendingNeed(localNeed.id);
-        console.log(`[SpotMe PendingNeeds] Need confirmed by server: ${localNeed.id} → ${data.need.id}`);
-      } else if (!data?.success) {
-        // FIX (Bug 2): Insert failed — remove the fake local need so the user
-        // isn't left looking at something that was never actually saved.
-        setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
-        removePendingNeed(localNeed.id);
-        console.error('[SpotMe] Need creation failed:', data?.error);
-        setNotifications(prev => [{
-          id: `not_${Date.now()}`,
-          type: 'welcome' as const,
-          title: 'Need Not Saved',
-          message: data?.error || 'Your need could not be saved. Please try again.',
-          timestamp: new Date().toISOString(),
-          read: false,
-        }, ...prev]);
-      }
-      offlineManager.markOnline();
-
-      if (currentUser.id !== 'guest') {
-        await supabase.functions.invoke('send-notification', {
-          body: {
-            action: 'broadcast',
-            title: 'New Need Posted',
-            message: `${currentUser.name} needs help: "${needData.title}"`,
-            notificationType: 'welcome',
-            needId: data?.need?.id,
-          },
-        });
-      }
+        console.log(`[SpotMe PendingNeeds] Need saved: ${localNeed.id} → ${insertedNeed.id}`);
+        offlineManager.markOnline();
+  
     } catch (err) {
       // Server call failed — need stays in pending cache for recovery on next load
       console.log(`[SpotMe PendingNeeds] Server call failed, need preserved in pending cache: ${localNeed.id}`);
@@ -1808,27 +1789,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch {}
 
       setTimeout(async () => {
-        try {
-          const { data } = await supabase.functions.invoke('process-contribution', {
-            body: { action: 'create_profile', name: localUser.name, email, password, bio: localUser.bio, city: localUser.city, avatar: localUser.avatar, authUserId: localUser.id },
-          });
-          if (data?.success && data.profile) {
-            const syncedUser: User = {
-              id: data.profile.id,
-              name: data.profile.name || localUser.name,
-              avatar: data.profile.avatar || localUser.avatar,
-              bio: data.profile.bio || localUser.bio,
-              city: data.profile.city || localUser.city,
-              joinedDate: data.profile.joinedDate || localUser.joinedDate,
-              totalRaised: 0, totalGiven: 0, verified: false,
-            };
-            try { await storage.set('spotme_user', JSON.stringify(syncedUser)); } catch {}
-            setCurrentUser(syncedUser);
-            // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
-            supabase.auth.signInWithPassword({ email, password }).catch(() => {});
-          }
-        } catch {}
-      }, 3000);
+          try {
+            const { data: profile, error: profileError } = await supabase
+              .from('profiles')
+              .upsert({
+                id: localUser.id,
+                name: localUser.name,
+                email,
+                avatar: localUser.avatar || '',
+                bio: localUser.bio || '',
+                city: localUser.city || '',
+                verified: false,
+                trust_score: 0,
+                total_raised: 0,
+                total_given: 0,
+              }, { onConflict: 'email' })
+              .select()
+              .single();
+            if (!profileError && profile) {
+              const syncedUser: User = {
+                id: profile.id,
+                name: profile.name || localUser.name,
+                avatar: profile.avatar || localUser.avatar,
+                bio: profile.bio || localUser.bio,
+                city: profile.city || localUser.city,
+                joinedDate: profile.created_at || localUser.joinedDate,
+                totalRaised: 0, totalGiven: 0, verified: false,
+              };
+              try { await storage.set('spotme_user', JSON.stringify(syncedUser)); } catch {}
+              setCurrentUser(syncedUser);
+              // Establish a real Supabase auth session so writes pass RLS
+              supabase.auth.signInWithPassword({ email, password }).catch(() => {});
+            }
+          } catch {}
+        }, 3000);
 
       return { success: true };
     } catch (err: any) {
@@ -2560,10 +2554,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return !error && data?.success;
       }
       if (action.type === 'create_need') {
-        const { data, error } = await safeInvoke('process-contribution', {
-          body: { action: 'create_need', ...action.payload },
-        }, 10000);
-        return !error && data?.success;
+        const { data: retryNeed, error: retryError } = await supabase
+          .from('needs')
+          .insert({
+            title: action.payload.title,
+            message: action.payload.message,
+            category: action.payload.category,
+            goal_amount: action.payload.goalAmount,
+            photo: action.payload.photo || '',
+            user_id: action.payload.userId,
+            user_name: action.payload.userName,
+            user_avatar: action.payload.userAvatar,
+            user_city: action.payload.userCity,
+            expires_at: action.payload.expiresAt,
+            status: 'Collecting',
+            verification_status: 'pending',
+            raised_amount: 0,
+            contributor_count: 0,
+          })
+          .select()
+          .single();
+        return !retryError && !!retryNeed;
       }
       return false;
     });
