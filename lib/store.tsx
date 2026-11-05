@@ -533,7 +533,8 @@ interface AppState {
   login: (name: string, email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string, bio?: string, city?: string) => Promise<{ success: boolean; error?: string; needsConfirmation?: boolean }>;
   logout: () => void;
-  updateProfile: (updates: Partial<User>) => Promise<void>;
+  updateProfile: (updates: Partial<User>) => Promise<boolean>;
+  refreshProfile: () => Promise<void>;
   getFilteredNeeds: () => Need[];
   unreadNotificationCount: number;
   refreshNeeds: () => Promise<void>;
@@ -1773,7 +1774,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [pushEnabled, currentUser.id]);
 
 
-  const updateProfile = useCallback(async (updates: Partial<User>) => {
+  const updateProfile = useCallback(async (updates: Partial<User>): Promise<boolean> => {
 
     setCurrentUser(prev => {
       const updated = { ...prev, ...updates };
@@ -1781,17 +1782,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return updated;
     });
 
-    if (currentUser.id !== 'guest') {
-      try {
-        const { data, error: invokeErr } = await supabase.functions.invoke('process-contribution', {
-          body: { action: 'update_profile', updates },
-        });
-        if (invokeErr || !data?.success) console.warn('[updateProfile] DB write failed:', invokeErr?.message || data?.error);
-      } catch (e: any) {
-        console.warn('[updateProfile] error:', e?.message);
+    if (currentUser.id === 'guest') return true;
+    try {
+      const { data, error: invokeErr } = await supabase.functions.invoke('process-contribution', {
+        body: { action: 'update_profile', updates },
+      });
+      if (invokeErr || !data?.success) {
+        console.warn('[updateProfile] DB write failed:', invokeErr?.message || data?.error);
+        return false;
       }
+      // Needs carry a copy of the poster's name/avatar/city, so pick up the synced values
+      if (updates.avatar !== undefined || updates.name !== undefined || updates.city !== undefined) fetchNeedsSilent();
+      return true;
+    } catch (e: any) {
+      console.warn('[updateProfile] error:', e?.message);
+      return false;
     }
   }, [currentUser.id]);
+
+  // Re-read the signed-in profile, e.g. after an admin adds the verified checkmark
+  const refreshProfile = useCallback(async () => {
+    if (isLoggedIn) await loadSessionUser();
+  }, [isLoggedIn]);
 
   const subscribeToPush = useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'web') return false;
@@ -2749,7 +2761,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       syncOfflineActions, contribute, contributeWithPayment, spreadWithPayment,
       createNeed, editNeed, deleteNeed, requestPayout, reportNeed, blockUser,
       markNotificationRead, markAllNotificationsRead, setSearchQuery, setSelectedCategory,
-      login, signup, logout, updateProfile, getFilteredNeeds, unreadNotificationCount,
+      login, signup, logout, updateProfile, refreshProfile, getFilteredNeeds, unreadNotificationCount,
       refreshNeeds, fetchActivity, subscribeToPush, unsubscribeFromPush, setupPayouts,
       checkPayoutStatus, completePayoutOnboarding, fetchFailedPayments, retryPayment,
       fetchPayoutDashboard, fetchReceipts, fetchTrustScore, verifyNeed, reportNeedTracked,

@@ -305,7 +305,11 @@ export default function ShareLandingPage() {
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* ===== HERO SECTION ===== */}
           <View style={styles.hero}>
-            <GracefulImage uri={need.photo} type="photo" style={styles.heroImage} category={need.category} />
+            {need.photo ? (
+              <GracefulImage uri={need.photo} type="photo" style={styles.heroImage} category={need.category} />
+            ) : (
+              <View style={[styles.heroImage, { backgroundColor: Colors.primary }]} />
+            )}
 
             {/* Gradient overlays */}
             <View style={styles.heroGradientTop} />

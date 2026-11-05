@@ -272,6 +272,14 @@ const NeedCard = memo(NeedCardInner, (prev, next) => {
     prev.need.raisedAmount === next.need.raisedAmount &&
     prev.need.status === next.need.status &&
     prev.need.contributorCount === next.need.contributorCount &&
+    prev.need.title === next.need.title &&
+    prev.need.message === next.need.message &&
+    prev.need.photo === next.need.photo &&
+    prev.need.goalAmount === next.need.goalAmount &&
+    prev.need.verificationStatus === next.need.verificationStatus &&
+    prev.need.userName === next.need.userName &&
+    prev.need.userAvatar === next.need.userAvatar &&
+    prev.need.userVerified === next.need.userVerified &&
     prev.compact === next.compact &&
     prev.onContribute === next.onContribute
   );

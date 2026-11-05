@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { View, Image, Animated, StyleSheet, ImageStyle, ViewStyle, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius } from '@/lib/theme';
-import { NEED_PHOTOS } from '@/lib/data';
 
 
 // ─── In-memory failed URL cache ────────────────────────────────────────────
@@ -55,24 +54,6 @@ export async function prefetchImages(urls: (string | null | undefined)[]): Promi
   return successCount;
 }
 
-// ─── Category → fallback photo mapping ─────────────────────────────────────
-const CATEGORY_PHOTO_MAP: Record<string, number> = {
-  'Bills': 0,
-  'Kids': 6,
-  'Groceries': 2,
-  'Health/Fitness': 4,
-  'Self-Care': 4,
-  'Transportation': 8,
-  'Other': 3,
-};
-
-function getFallbackPhoto(category?: string): string {
-  if (category && CATEGORY_PHOTO_MAP[category] !== undefined) {
-    return NEED_PHOTOS[CATEGORY_PHOTO_MAP[category]];
-  }
-  return NEED_PHOTOS[0];
-}
-
 // ─── Component ─────────────────────────────────────────────────────────────
 export type GracefulImageType = 'avatar' | 'photo';
 
@@ -89,7 +70,6 @@ function GracefulImageInner({
   uri,
   type,
   style,
-  category,
   containerStyle,
   iconFallback,
 }: GracefulImageProps) {
@@ -158,12 +138,9 @@ function GracefulImageInner({
     fadeAnim.setValue(1); // Instant show for fallback, no animation delay
   }, [fadeAnim, uri]);
 
-  // Determine the effective URI
-  const effectiveUri = hasError || !uri ? getFallbackPhoto(category) : uri;
-
   const shouldShowSkeleton = isLoading && !!uri && !hasError;
-  // No photo (or it failed): a neutral person icon, never someone else's face
-  const showAvatarIcon = type === 'avatar' && (!uri || hasError);
+  // No image (or it failed): a neutral icon, never a stock photo or someone else's face
+  const showPlaceholder = !uri || hasError;
 
   // Compute dimensions from style for the skeleton
   const flatStyle = StyleSheet.flatten(style) || {};
@@ -208,12 +185,12 @@ function GracefulImageInner({
         </Animated.View>
       )}
 
-      {showAvatarIcon ? (
-        <View style={[StyleSheet.absoluteFill, styles.avatarPlaceholder]}>
+      {showPlaceholder ? (
+        <View style={[StyleSheet.absoluteFill, styles.placeholder]}>
           <MaterialIcons
-            name="person"
-            size={Math.min(Number(width) || 40, Number(height) || 40) * 0.55}
-            color={Colors.textLight}
+            name={type === 'avatar' ? 'person' : 'image'}
+            size={Math.min(Number(width) || 40, Number(height) || 40) * (type === 'avatar' ? 0.55 : 0.3)}
+            color={type === 'avatar' ? Colors.textLight : Colors.border}
           />
         </View>
       ) : (
@@ -221,7 +198,7 @@ function GracefulImageInner({
         style={[StyleSheet.absoluteFill, { opacity: shouldShowSkeleton ? fadeAnim : 1 }]}
       >
         <Image
-          source={{ uri: effectiveUri }}
+          source={{ uri }}
           style={[style, { width: '100%', height: '100%' }]}
           onLoadEnd={handleLoadEnd}
           onError={handleError}
@@ -255,7 +232,7 @@ const GracefulImage = memo(GracefulImageInner, (prev, next) => {
 export default GracefulImage;
 
 const styles = StyleSheet.create({
-  avatarPlaceholder: { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
+  placeholder: { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   errorBadge: {
     position: 'absolute',
     bottom: 6,
