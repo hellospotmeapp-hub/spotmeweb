@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, View, StyleSheet } from 'react-native';
-import { AppProvider } from './lib/store';
-import { Colors } from './lib/theme';
-import { errorMonitor } from './lib/errorMonitor';
+import { AppProvider } from '@/lib/store';
+import { Colors } from '@/lib/theme';
+import { errorMonitor } from '@/lib/errorMonitor';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { useResponsive, READING_MAX_WIDTH } from '@/lib/responsive';
 import * as SplashScreen from 'expo-splash-screen';
 
 // Prevent the splash screen from auto-hiding on native
@@ -24,6 +25,7 @@ const MODAL_SCREEN_OPTIONS = {
 export default function RootLayout() {
   // Hydration guard: prevent React error #418 on web
   const [isHydrated, setIsHydrated] = useState(Platform.OS !== 'web');
+  const { isWide } = useResponsive();
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -78,15 +80,18 @@ export default function RootLayout() {
         <StatusBar style="dark" />
         <View style={styles.webContainer}>
           <Stack
-            screenOptions={{
+            screenOptions={({ route }) => ({
               headerShown: false,
-              contentStyle: { backgroundColor: Colors.background },
+              // Website: detail pages sit in a centered reading column; the tabs manage their own width
+              contentStyle: isWide && route.name !== '(tabs)'
+                ? { backgroundColor: Colors.background, width: '100%', maxWidth: READING_MAX_WIDTH, alignSelf: 'center' }
+                : { backgroundColor: Colors.background },
               // Faster native transitions with less overshoot
               animation: Platform.OS === 'web' ? 'none' : 'slide_from_right',
               animationDuration: Platform.OS === 'web' ? 0 : 200,
               // Freeze screens not in focus to reduce memory & CPU
               freezeOnBlur: true,
-            }}
+            })}
           >
             <Stack.Screen name="(tabs)" options={{ freezeOnBlur: false }} />
             <Stack.Screen name="auth" options={MODAL_SCREEN_OPTIONS} />

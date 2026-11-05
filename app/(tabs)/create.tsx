@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Animated, Image, ActivityIndicator, Alert, Dimensions, Easing } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Animated, Image, ActivityIndicator, Alert, Dimensions, Easing, Modal } from 'react-native';
+import { showAlert } from '@/lib/alert';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { CATEGORIES, NEED_PHOTOS } from '@/app/lib/data';
-import { pickNeedPhoto, uploadNeedPhoto, UploadProgressCallback } from '@/app/lib/imageUpload';
-import { hapticLight, hapticMedium, hapticSuccess, hapticSelection } from '@/app/lib/haptics';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { CATEGORIES, NEED_PHOTOS } from '@/lib/data';
+import { pickNeedPhoto, uploadNeedPhoto, UploadProgressCallback } from '@/lib/imageUpload';
+import { hapticLight, hapticMedium, hapticSuccess, hapticSelection } from '@/lib/haptics';
 import ConfettiAnimation from '@/components/ConfettiAnimation';
 import UploadProgressBar from '@/components/UploadProgressBar';
 import ImageEditor from '@/components/ImageEditor';
@@ -17,13 +19,30 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GOAL_PRESETS = [25, 50, 75, 100, 150, 200, 250, 300];
 const MAX_GOAL = 300;
 
+const INTRO_SEEN_KEY = 'spotme_post_intro_seen';
+
 export default function CreateScreen() {
   const insets = useSafeAreaInsets();
 
+  // Show the "Before You Post" intro once per device
   useEffect(() => {
-    const timer = setTimeout(() => setShowWelcome(true), 300);
+    let timer: any;
+    (async () => {
+      try {
+        const seen = Platform.OS === 'web' ? localStorage.getItem(INTRO_SEEN_KEY) : await AsyncStorage.getItem(INTRO_SEEN_KEY);
+        if (seen) return;
+      } catch {}
+      timer = setTimeout(() => setShowWelcome(true), 300);
+    })();
     return () => clearTimeout(timer);
   }, []);
+  const dismissWelcome = () => {
+    setShowWelcome(false);
+    try {
+      if (Platform.OS === 'web') localStorage.setItem(INTRO_SEEN_KEY, '1');
+      else AsyncStorage.setItem(INTRO_SEEN_KEY, '1').catch(() => {});
+    } catch {}
+  };
   const router = useRouter();
   const { createNeed, isLoggedIn, currentUser, updateProfile, payoutStatus } = useApp();
   
@@ -382,33 +401,25 @@ export default function CreateScreen() {
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isLoggedIn) {
       router.push('/auth');
       return;
     }
 
-    if (!payoutStatus?.hasAccount || !payoutStatus?.payoutsEnabled) {
-      Alert.alert(
-        'Payout Account Required',
-        'You need to connect a Stripe payout account before posting a need. This ensures you can receive funds automatically once your goal is met.',
-        [
-          { text: 'Set Up Now', onPress: () => router.push('/settings') },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-      return;
-    }
-
     const finalPhoto = photoUrl || NEED_PHOTOS[Math.floor(Math.random() * NEED_PHOTOS.length)];
 
-    createNeed({
+    const result = await createNeed({
       title: title.trim(),
       message: message.trim(),
       category,
       goalAmount: getGoal(),
       photo: finalPhoto,
     });
+    if (!result.success) {
+      showAlert('Need not posted', result.error || 'Please try again.');
+      return;
+    }
 
     hapticSuccess();
 
@@ -506,7 +517,7 @@ export default function CreateScreen() {
         <ConfettiAnimation active={showConfetti} duration={3500} />
 
           {/* Welcome / How It Works Modal */}
-          <Modal visible={showWelcome} transparent animationType="fade" onRequestClose={() => setShowWelcome(false)}>
+          <Modal visible={showWelcome && !submitted} transparent animationType="fade" onRequestClose={dismissWelcome}>
             <View style={styles.welcomeOverlay}>
               <View style={styles.welcomeCard}>
                 <View style={styles.welcomeHeader}>
@@ -516,10 +527,10 @@ export default function CreateScreen() {
                 </View>
                 <View style={styles.welcomeBody}>
                   {[
-                    { icon: 'account-balance-wallet', color: '#7B9ED9', text: 'Connect your Stripe account so funds reach you automatically — no waiting on us.' },
-                    { icon: 'verified-user', color: Colors.primary, text: 'Every need is reviewed by our team before it goes live. Usually within 24 hours.' },
+                    { icon: 'verified-user', color: Colors.primary, text: 'Our team verifies every need before it goes live on SpotMe. We may reach out to you by email.' },
+                    { icon: 'account-balance-wallet', color: '#7B9ED9', text: 'Connect a Stripe payout account in Settings so you can receive the money.' },
                     { icon: 'favorite', color: '#E85D5D', text: 'Real, honest stories connect with people. Be specific about what you need and why.' },
-                    { icon: 'bolt', color: '#F5C563', text: 'Once your goal is met, your payout is sent directly to your account. We never touch it.' },
+                    { icon: 'bolt', color: '#F5C563', text: 'Once your goal is met, you can withdraw the money to your bank account.' },
                   ].map((item, i) => (
                     <View key={i} style={styles.welcomeItem}>
                       <View style={[styles.welcomeIconBox, { backgroundColor: item.color + '18' }]}>
@@ -531,9 +542,9 @@ export default function CreateScreen() {
                 </View>
                 <View style={styles.welcomePromise}>
                   <MaterialIcons name="shield" size={14} color={Colors.primary} />
-                  <Text style={styles.welcomePromiseText}>SpotMe verifies every need to protect our community</Text>
+                  <Text style={styles.welcomePromiseText}>SpotMe reviews needs to protect our community</Text>
                 </View>
-                <TouchableOpacity style={styles.welcomeBtn} onPress={() => setShowWelcome(false)} activeOpacity={0.85}>
+                <TouchableOpacity style={styles.welcomeBtn} onPress={dismissWelcome} activeOpacity={0.85}>
                   <Text style={styles.welcomeBtnText}>Got it, let's go</Text>
                   <MaterialIcons name="arrow-forward" size={18} color={Colors.white} />
                 </TouchableOpacity>
@@ -553,10 +564,19 @@ export default function CreateScreen() {
           ]}>
             <MaterialIcons name="check-circle" size={72} color={Colors.success} />
           </Animated.View>
-          <Text style={styles.successTitle}>Need Posted!</Text>
+          <Text style={styles.successTitle}>Need Submitted!</Text>
           <Text style={styles.successMessage}>
-            Your need is now live. The community can start spotting you right away.
+            Thanks! Our team will verify your need and post it to SpotMe. We'll notify you when it's live.
           </Text>
+
+          {!(payoutStatus?.hasAccount && payoutStatus?.payoutsEnabled) && (
+            <TouchableOpacity style={styles.payoutNotice} onPress={() => router.push('/settings')} activeOpacity={0.8}>
+              <MaterialIcons name="account-balance" size={20} color={Colors.accent} />
+              <Text style={styles.payoutNoticeText}>
+                Next step: connect a payout account so you can receive donations. <Text style={styles.payoutNoticeLink}>Set up in Settings</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.successButton}
@@ -584,7 +604,7 @@ export default function CreateScreen() {
   if (!isLoggedIn) {
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.signInPromptScroll}
           showsVerticalScrollIndicator={false}
         >
@@ -628,8 +648,8 @@ export default function CreateScreen() {
                 <MaterialIcons name="account-balance-wallet" size={18} color={Colors.accent} />
               </View>
               <View style={styles.signInBenefitTextWrap}>
-                <Text style={styles.signInBenefitTitle}>Receive funds directly</Text>
-                <Text style={styles.signInBenefitDesc}>100% of contributions go to you — no platform fees</Text>
+                <Text style={styles.signInBenefitTitle}>Receive 100% of donations</Text>
+                <Text style={styles.signInBenefitDesc}>Withdraw once your goal is met — no platform fees</Text>
               </View>
             </View>
           </View>
@@ -720,7 +740,7 @@ export default function CreateScreen() {
   if (isLoggedIn && needsProfileCompletion()) {
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
-        <ScrollView contentContainerStyle={styles.signInPromptScroll} showsVerticalScrollIndicator={false}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.signInPromptScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.signInIconGlow}>
             <View style={styles.signInIconCircle}>
               <MaterialIcons name="person" size={40} color={Colors.primary} />
@@ -854,7 +874,7 @@ export default function CreateScreen() {
         </View>
       </View>
 
-      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
 
         <Animated.View style={{
           opacity: contentOpacity,
@@ -865,6 +885,15 @@ export default function CreateScreen() {
             <View style={styles.stepContent}>
               <Text style={styles.stepTitle}>What do you need help with?</Text>
               <Text style={styles.stepDescription}>Choose the category that best fits your need.</Text>
+
+              {!(payoutStatus?.hasAccount && payoutStatus?.payoutsEnabled) && (
+                <TouchableOpacity style={styles.payoutNotice} onPress={() => router.push('/settings')} activeOpacity={0.8}>
+                  <MaterialIcons name="account-balance" size={20} color={Colors.accent} />
+                  <Text style={styles.payoutNoticeText}>
+                    You can post now. To receive donations you'll also need to connect a payout account. <Text style={styles.payoutNoticeLink}>Set up in Settings</Text>
+                  </Text>
+                </TouchableOpacity>
+              )}
               
               <View style={styles.categoryGrid}>
                 {categories.map(cat => {
@@ -886,7 +915,7 @@ export default function CreateScreen() {
                       <Text style={[styles.categoryName, isSelected && { color, fontWeight: '800' }]}>
                         {cat.name}
                       </Text>
-                      {isSelected && (
+                      {!!isSelected && (
                         <View style={[styles.checkBadge, { backgroundColor: color }]}>
                           <MaterialIcons name="check" size={14} color={Colors.white} />
                         </View>
@@ -905,7 +934,7 @@ export default function CreateScreen() {
               <Text style={styles.stepDescription}>Be honest and specific. People connect with real stories.</Text>
               <View style={styles.photoLabelRow}>
                 <Text style={[styles.inputLabel, showValidation && title.trim().length < 3 && { color: Colors.error }]}>
-                  Title {showValidation && title.trim().length < 3 ? '(required)' : ''}
+                  Title {!!showValidation && title.trim().length < 3 ? '(required)' : ''}
                 </Text>
               </View>
               <TextInput
@@ -919,7 +948,7 @@ export default function CreateScreen() {
                 placeholderTextColor={Colors.textLight}
                 maxLength={60}
               />
-              {showValidation && title.trim().length < 3 ? (
+              {!!showValidation && title.trim().length < 3 ? (
                 <Text style={{ fontSize: FontSize.xs, color: Colors.error, marginTop: Spacing.xs, marginBottom: Spacing.xl }}>
                   Title must be at least 3 characters
                 </Text>
@@ -929,7 +958,7 @@ export default function CreateScreen() {
 
               <View style={styles.photoLabelRow}>
                 <Text style={[styles.inputLabel, showValidation && message.trim().length < 10 && { color: Colors.error }]}>
-                  Your message {showValidation && message.trim().length < 10 ? '(required)' : ''}
+                  Your message {!!showValidation && message.trim().length < 10 ? '(required)' : ''}
                 </Text>
               </View>
               <TextInput
@@ -946,7 +975,7 @@ export default function CreateScreen() {
                 maxLength={200}
                 textAlignVertical="top"
               />
-              {showValidation && message.trim().length < 10 ? (
+              {!!showValidation && message.trim().length < 10 ? (
                 <Text style={{ fontSize: FontSize.xs, color: Colors.error, marginTop: Spacing.xs, marginBottom: Spacing.xl }}>
                   Message must be at least 10 characters
                 </Text>
@@ -982,12 +1011,12 @@ export default function CreateScreen() {
                   </TouchableOpacity>
                 )}
 
-                {photoLocalUri && (
+                {!!photoLocalUri && (
                   <View style={styles.photoPreviewContainer}>
                     <Image source={{ uri: photoLocalUri }} style={styles.photoPreviewImage} />
                     
                     {/* Upload progress overlay */}
-                    {isUploadingPhoto && (
+                    {!!isUploadingPhoto && (
                       <View style={styles.photoOverlay}>
                         <View style={styles.progressOverlayContent}>
                           <UploadProgressBar
@@ -1002,7 +1031,7 @@ export default function CreateScreen() {
                     )}
                     
                     {/* Success badge */}
-                    {photoUrl && !isUploadingPhoto && (
+                    {!!photoUrl && !isUploadingPhoto && (
                       <View style={styles.photoSuccessBadge}>
                         <MaterialIcons name="check-circle" size={18} color={Colors.white} />
                         <Text style={styles.photoSuccessText}>Uploaded</Text>
@@ -1010,7 +1039,7 @@ export default function CreateScreen() {
                     )}
                     
                     {/* Error badge with retry */}
-                    {photoError && !isUploadingPhoto && (
+                    {!!photoError && !isUploadingPhoto && (
                       <View style={styles.photoErrorBadge}>
                         <MaterialIcons name="warning" size={16} color="#FFF" />
                         <Text style={styles.photoErrorText}>{photoError}</Text>
@@ -1031,7 +1060,7 @@ export default function CreateScreen() {
                       </TouchableOpacity>
 
                       {/* Retry on error */}
-                      {photoError && !isUploadingPhoto && (
+                      {!!photoError && !isUploadingPhoto && (
                         <TouchableOpacity
                           style={[styles.photoActionBtn, { backgroundColor: '#FFF8E7' }]}
                           onPress={handleRetryUpload}
@@ -1088,7 +1117,7 @@ export default function CreateScreen() {
                 <Text style={styles.goalNumber}>{getGoal()}</Text>
               </View>
 
-              {isAtMax && (
+              {!!isAtMax && (
                 <Animated.View
                   style={[
                     styles.maxBanner,
@@ -1156,7 +1185,7 @@ export default function CreateScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {isCustomGoal && (
+              {!!isCustomGoal && (
                 <View style={styles.customGoalInput}>
                   <Text style={styles.customDollar}>$</Text>
                   <TextInput
@@ -1224,7 +1253,7 @@ export default function CreateScreen() {
                   <Text style={styles.summaryLabel}>Goal</Text>
                   <View style={styles.summaryGoalWrap}>
                     <Text style={styles.summaryGoalText} numberOfLines={1}>${getGoal()}</Text>
-                    {isAtMax && (
+                    {!!isAtMax && (
                       <View style={styles.summaryMaxBadge}>
                         <Text style={styles.summaryMaxBadgeText}>MAX</Text>
                       </View>
@@ -1296,7 +1325,7 @@ export default function CreateScreen() {
       </View>
 
       {/* Image Editor Modal */}
-      {showImageEditor && rawPickedUri && (
+      {!!showImageEditor && !!rawPickedUri && (
         <ImageEditor
           visible={showImageEditor}
           imageUri={rawPickedUri}
@@ -2184,4 +2213,11 @@ const styles = StyleSheet.create({
       fontWeight: '800',
       fontSize: 16,
     },
+  payoutNotice: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg,
+    padding: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: Colors.accent + '14',
+    borderWidth: 1, borderColor: Colors.accent + '40',
+  },
+  payoutNoticeText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 19 },
+  payoutNoticeLink: { color: Colors.primary, fontWeight: '700' },
 });

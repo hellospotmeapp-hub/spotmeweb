@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Share, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 interface ShareLinkPreviewProps {
   needId: string;
@@ -135,11 +135,11 @@ export default function ShareLinkPreview({
       </TouchableOpacity>
 
       {/* Social Media Preview Card */}
-      {showPreview && (
+      {!!showPreview && (
         <View style={styles.socialPreview}>
           <Text style={styles.socialPreviewLabel}>Social Media Preview</Text>
           <View style={styles.ogCard}>
-            {needPhoto && (
+            {!!needPhoto && (
               <Image source={{ uri: needPhoto }} style={styles.ogImage} />
             )}
             <View style={styles.ogContent}>

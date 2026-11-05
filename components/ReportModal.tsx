@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 
 interface ReportModalProps {
   visible: boolean;
@@ -111,7 +111,7 @@ export default function ReportModal({ visible, onClose, onReport, onBlock, type 
                 <Text style={styles.submitText}>Submit Report</Text>
               </TouchableOpacity>
 
-              {onBlock && (
+              {!!onBlock && (
                 <TouchableOpacity style={styles.blockButton} onPress={onBlock} activeOpacity={0.7}>
                   <MaterialIcons name="block" size={18} color={Colors.error} />
                   <Text style={styles.blockText}>Block this user</Text>

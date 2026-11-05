@@ -1,16 +1,16 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { pickImage, uploadAvatar } from '@/app/lib/imageUpload';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { pickImage, uploadAvatar } from '@/lib/imageUpload';
 
 export default function AuthScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login, signup, updateProfile, resetPassword } = useApp();
+  const { login, signup, updateProfile, resetPassword, passwordRecovery } = useApp();
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -22,12 +22,21 @@ export default function AuthScreen() {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [notice, setNotice] = useState('');
 
   // Forgot password state
   const [forgotEmail, setForgotEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [forgotStep, setForgotStep] = useState<'email' | 'reset' | 'done'>('email');
+  const [forgotStep, setForgotStep] = useState<'email' | 'sent' | 'reset' | 'done'>('email');
   const [forgotError, setForgotError] = useState('');
+
+  // Arrived from the password reset email: ask for the new password
+  useEffect(() => {
+    if (passwordRecovery) {
+      setMode('forgot');
+      setForgotStep('reset');
+    }
+  }, [passwordRecovery]);
 
   // Avatar state
   const [avatarLocalUri, setAvatarLocalUri] = useState<string | null>(null);
@@ -44,10 +53,10 @@ export default function AuthScreen() {
       try { router.replace('/(tabs)'); } catch {
         try { window.location.href = '/'; } catch {}
       }
+    } else if (router.canGoBack()) {
+      router.back();
     } else {
-      try { router.back(); } catch {
-        try { router.replace('/(tabs)'); } catch {}
-      }
+      router.replace('/(tabs)');
     }
   }, [router]);
 
@@ -107,7 +116,7 @@ export default function AuthScreen() {
         return;
       }
 
-      let result: { success: boolean; error?: string } | undefined;
+      let result: { success: boolean; error?: string; needsConfirmation?: boolean } | undefined;
       
       try {
         if (mode === 'signup') {
@@ -137,6 +146,11 @@ export default function AuthScreen() {
         // Brief delay to show success before navigating
         setTimeout(() => goHome(), 200);
 
+      } else if (result?.needsConfirmation) {
+        setNotice(result.error || 'Check your email to confirm your account, then sign in.');
+        setMode('signin');
+        setStep(1);
+        setPassword('');
       } else {
         const errorMsg = result?.error || 'Something went wrong. Please check your connection and try again.';
         console.log('[SpotMe Auth] Error:', errorMsg);
@@ -153,30 +167,6 @@ export default function AuthScreen() {
 
 
 
-  const handleSocialLogin = async (provider: 'google' | 'apple') => {
-    setServerError('');
-    setIsSubmitting(true);
-    console.log('[SpotMe Auth] Social login:', provider);
-    try {
-      // For social login, create a profile with the provider name
-      const socialName = provider === 'google' ? 'Google User' : 'Apple User';
-      const socialEmail = `${provider}_${Date.now()}@spotmeone.com`;
-      const result = await signup(socialName, socialEmail, `${provider}_auth_${Date.now()}`);
-      if (result && result.success) {
-        goHome();
-
-      } else {
-        setServerError(result?.error || `${provider} login failed. Please try email signup instead.`);
-      }
-    } catch (err: any) {
-      const errorMsg = err?.message || 'Social login failed';
-      console.error('[SpotMe Auth] Social login error:', errorMsg, err);
-      setServerError(errorMsg);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleSkipProfile = async () => {
     setIsSubmitting(true);
     console.log('[SpotMe Auth] Skip profile, signing up directly');
@@ -191,6 +181,11 @@ export default function AuthScreen() {
         }
         goHome();
 
+      } else if (result?.needsConfirmation) {
+        setNotice(result.error || 'Check your email to confirm your account, then sign in.');
+        setMode('signin');
+        setStep(1);
+        setPassword('');
       } else {
         setServerError(result?.error || 'Something went wrong. Please try again.');
       }
@@ -208,22 +203,22 @@ export default function AuthScreen() {
     setIsSubmitting(true);
     try {
       if (forgotStep === 'email') {
-        // Validate email
         if (!forgotEmail.trim() || !forgotEmail.includes('@')) {
           setForgotError('Please enter a valid email address');
-          setIsSubmitting(false);
           return;
         }
-        // Move to reset step
-        setForgotStep('reset');
+        const result = await resetPassword(forgotEmail.trim().toLowerCase(), '');
+        if (result.success) {
+          setForgotStep('sent');
+        } else {
+          setForgotError(result.error || 'Could not send the reset email. Please try again.');
+        }
       } else if (forgotStep === 'reset') {
-        // Validate new password
         if (!newPassword.trim() || newPassword.length < 6) {
           setForgotError('Password must be at least 6 characters');
-          setIsSubmitting(false);
           return;
         }
-        const result = await resetPassword(forgotEmail.trim().toLowerCase(), newPassword);
+        const result = await resetPassword('', newPassword);
         if (result.success) {
           setForgotStep('done');
         } else {
@@ -251,7 +246,7 @@ export default function AuthScreen() {
         <MaterialIcons name="close" size={24} color={Colors.textSecondary} />
       </TouchableOpacity>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Logo */}
         <View style={styles.logoSection}>
           <Text style={styles.logo}>SpotMe</Text>
@@ -266,6 +261,13 @@ export default function AuthScreen() {
           </View>
         ) : null}
 
+        {notice ? (
+          <View style={[styles.errorBanner, { backgroundColor: Colors.primary + '12', borderColor: Colors.primary + '40' }]}>
+            <MaterialIcons name="mark-email-read" size={18} color={Colors.primary} />
+            <Text style={[styles.errorBannerText, { color: Colors.text }]}>{notice}</Text>
+          </View>
+        ) : null}
+
         {/* ===== FORGOT PASSWORD MODE ===== */}
         {mode === 'forgot' ? (
           <View style={styles.formSection}>
@@ -276,24 +278,22 @@ export default function AuthScreen() {
                 </View>
                 <Text style={styles.formTitle}>Password Reset!</Text>
                 <Text style={styles.formSubtitle}>
-                  Your password has been updated successfully. You can now sign in with your new password.
+                  Your password has been updated and you're signed in.
                 </Text>
-                <TouchableOpacity
-                  style={styles.primaryBtn}
-                  onPress={() => {
-                    setMode('signin');
-                    setForgotStep('email');
-                    setForgotEmail('');
-                    setNewPassword('');
-                    setForgotError('');
-                    setEmail(forgotEmail);
-                    setPassword('');
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <MaterialIcons name="login" size={20} color={Colors.white} />
-                  <Text style={styles.primaryBtnText}>Sign In Now</Text>
+                <TouchableOpacity style={styles.primaryBtn} onPress={goHome} activeOpacity={0.8}>
+                  <Text style={styles.primaryBtnText}>Continue</Text>
+                  <MaterialIcons name="arrow-forward" size={20} color={Colors.white} />
                 </TouchableOpacity>
+              </>
+            ) : forgotStep === 'sent' ? (
+              <>
+                <View style={styles.forgotSuccessIcon}>
+                  <MaterialIcons name="mark-email-read" size={64} color={Colors.primary} />
+                </View>
+                <Text style={styles.formTitle}>Check your email</Text>
+                <Text style={styles.formSubtitle}>
+                  If an account exists for {forgotEmail}, we sent a link to reset your password. Open it on this device to choose a new one.
+                </Text>
               </>
             ) : (
               <>
@@ -309,8 +309,8 @@ export default function AuthScreen() {
                 </Text>
                 <Text style={styles.formSubtitle}>
                   {forgotStep === 'email'
-                    ? 'Enter the email address associated with your account and we\'ll help you reset your password.'
-                    : `Enter a new password for ${forgotEmail}`}
+                    ? 'Enter the email address associated with your account and we\'ll email you a reset link.'
+                    : 'Choose a new password for your account.'}
                 </Text>
 
                 {forgotError ? (
@@ -336,10 +336,6 @@ export default function AuthScreen() {
                   </View>
                 ) : (
                   <>
-                    <View style={styles.forgotEmailBadge}>
-                      <MaterialIcons name="email" size={16} color={Colors.primary} />
-                      <Text style={styles.forgotEmailBadgeText}>{forgotEmail}</Text>
-                    </View>
                     <View style={styles.inputGroup}>
                       <Text style={styles.inputLabel}>New password</Text>
                       <View style={styles.passwordRow}>
@@ -386,22 +382,13 @@ export default function AuthScreen() {
                   ) : (
                     <>
                       <Text style={styles.primaryBtnText}>
-                        {forgotStep === 'email' ? 'Continue' : 'Reset Password'}
+                        {forgotStep === 'email' ? 'Send Reset Link' : 'Reset Password'}
                       </Text>
                       <MaterialIcons name="arrow-forward" size={20} color={Colors.white} />
                     </>
                   )}
                 </TouchableOpacity>
 
-                {forgotStep === 'reset' && (
-                  <TouchableOpacity
-                    style={styles.forgotBackBtn}
-                    onPress={() => { setForgotStep('email'); setForgotError(''); }}
-                  >
-                    <MaterialIcons name="arrow-back" size={16} color={Colors.textSecondary} />
-                    <Text style={styles.forgotBackText}>Change email</Text>
-                  </TouchableOpacity>
-                )}
               </>
             )}
 
@@ -450,13 +437,13 @@ export default function AuthScreen() {
               </View>
             </TouchableOpacity>
 
-            {avatarUploading && (
+            {!!avatarUploading && (
               <Text style={styles.avatarStatusText}>Uploading photo...</Text>
             )}
-            {avatarUploadedUrl && !avatarUploading && (
+            {!!avatarUploadedUrl && !avatarUploading && (
               <Text style={[styles.avatarStatusText, { color: Colors.success }]}>Photo uploaded!</Text>
             )}
-            {avatarError && !avatarUploading && (
+            {!!avatarError && !avatarUploading && (
               <Text style={[styles.avatarStatusText, { color: Colors.accent }]}>{avatarError}</Text>
             )}
             {!avatarLocalUri && !avatarUploading && !avatarError && (
@@ -513,34 +500,8 @@ export default function AuthScreen() {
             <Text style={styles.formSubtitle}>
               {mode === 'signin'
                 ? 'Sign in to continue helping your community'
-                : 'Join thousands of people helping each other'}
+                : 'Join your neighbors in helping each other'}
             </Text>
-
-            <TouchableOpacity
-              style={[styles.socialBtn, isSubmitting && { opacity: 0.6 }]}
-              activeOpacity={0.7}
-              onPress={() => handleSocialLogin('google')}
-              disabled={isSubmitting}
-            >
-              <MaterialIcons name="g-translate" size={20} color={Colors.text} />
-              <Text style={styles.socialBtnText}>Continue with Google</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.socialBtn, styles.appleSocialBtn, isSubmitting && { opacity: 0.6 }]}
-              activeOpacity={0.7}
-              onPress={() => handleSocialLogin('apple')}
-              disabled={isSubmitting}
-            >
-              <MaterialIcons name="apple" size={22} color={Colors.white} />
-              <Text style={[styles.socialBtnText, { color: Colors.white }]}>Continue with Apple</Text>
-            </TouchableOpacity>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.dividerLine} />
-            </View>
 
             {mode === 'signup' && (
               <View style={styles.inputGroup}>
@@ -553,7 +514,7 @@ export default function AuthScreen() {
                   placeholderTextColor={Colors.textLight}
                   autoCapitalize="words"
                 />
-                {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+                {!!errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
               </View>
             )}
 
@@ -568,7 +529,7 @@ export default function AuthScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
-              {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+              {!!errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
             </View>
 
             <View style={styles.inputGroup}>
@@ -593,7 +554,7 @@ export default function AuthScreen() {
                   />
                 </TouchableOpacity>
               </View>
-              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+              {!!errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
             </View>
 
             <TouchableOpacity
@@ -637,7 +598,7 @@ export default function AuthScreen() {
             <Text style={styles.toggleText}>
               {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}
             </Text>
-            <TouchableOpacity onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setStep(1); setErrors({}); setServerError(''); }}>
+            <TouchableOpacity onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setStep(1); setErrors({}); setServerError(''); setNotice(''); }}>
               <Text style={styles.toggleLink}>
                 {mode === 'signin' ? 'Sign Up' : 'Sign In'}
               </Text>
@@ -649,7 +610,7 @@ export default function AuthScreen() {
         <View style={styles.securityBadge}>
           <MaterialIcons name="lock" size={14} color={Colors.textLight} />
           <Text style={styles.securityText}>
-            Secured with end-to-end encryption
+            Secured by Supabase Auth over encrypted connections
           </Text>
         </View>
 

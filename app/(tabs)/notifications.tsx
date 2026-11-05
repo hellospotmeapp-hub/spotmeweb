@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
 import PushNotificationPrompt from '@/components/PushNotificationPrompt';
 
 
@@ -117,7 +117,7 @@ export default function NotificationsScreen() {
         )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Auto-Retry Alert Banner */}
         {autoRetryPayments.length > 0 && (
           <View style={styles.autoRetryBanner}>
@@ -202,7 +202,7 @@ export default function NotificationsScreen() {
                             <Text style={styles.retryCountText}>{fp.retryCount} retries</Text>
                           </View>
                         )}
-                        {hasRetries && (
+                        {!!hasRetries && (
                           <MaterialIcons name={isExpanded ? 'expand-less' : 'expand-more'} size={16} color={Colors.textLight} />
                         )}
                       </View>
@@ -225,7 +225,7 @@ export default function NotificationsScreen() {
                   </TouchableOpacity>
 
                   {/* Retry History Timeline */}
-                  {isExpanded && hasRetries && (
+                  {!!isExpanded && hasRetries && (
                     <View style={styles.retryTimeline}>
                       <Text style={styles.retryTimelineTitle}>Retry History</Text>
                       {fp.retries!.map((retry, idx) => (
@@ -245,18 +245,18 @@ export default function NotificationsScreen() {
                                 </Text>
                               </View>
                             </View>
-                            {retry.scheduledAt && (
+                            {!!retry.scheduledAt && (
                               <Text style={styles.retryTimelineDetail}>
                                 Scheduled: {new Date(retry.scheduledAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                               </Text>
                             )}
-                            {retry.attemptedAt && (
+                            {!!retry.attemptedAt && (
                               <Text style={styles.retryTimelineDetail}>
                                 Attempted: {new Date(retry.attemptedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                               </Text>
                             )}
-                            {retry.result && <Text style={styles.retryTimelineResult}>{retry.result}</Text>}
-                            {retry.error && <Text style={styles.retryTimelineError}>{retry.error}</Text>}
+                            {!!retry.result && <Text style={styles.retryTimelineResult}>{retry.result}</Text>}
+                            {!!retry.error && <Text style={styles.retryTimelineError}>{retry.error}</Text>}
                           </View>
                         </View>
                       ))}
@@ -272,10 +272,15 @@ export default function NotificationsScreen() {
         {notifications.length === 0 && failedPayments.length === 0 ? (
           <View style={styles.emptyState}>
             <MaterialIcons name="notifications-none" size={64} color={Colors.borderLight} />
-            <Text style={styles.emptyTitle}>No notifications yet</Text>
+            <Text style={styles.emptyTitle}>{isLoggedIn ? 'No notifications yet' : 'Sign in to see notifications'}</Text>
             <Text style={styles.emptySubtitle}>
               When someone spots your need or you reach a milestone, you'll see it here.
             </Text>
+            {!isLoggedIn && (
+              <TouchableOpacity style={styles.signInCta} onPress={() => router.push('/auth')} activeOpacity={0.8}>
+                <Text style={styles.signInCtaText}>Sign In</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           notifications.map(notif => {
@@ -326,20 +331,20 @@ export default function NotificationsScreen() {
                   <Text style={styles.notifMessage} numberOfLines={2}>
                     {notif.message}
                   </Text>
-                  {isPaymentFailed && (
+                  {!!isPaymentFailed && (
                     <View style={styles.failedTag}>
                       <MaterialIcons name="replay" size={12} color={Colors.primary} />
                       <Text style={styles.failedTagText}>Tap to view failed payments</Text>
                     </View>
                   )}
-                  {isPayoutReady && (
+                  {!!isPayoutReady && (
                     <View style={[styles.failedTag, { backgroundColor: Colors.secondaryLight }]}>
                       <MaterialIcons name="account-balance-wallet" size={12} color={Colors.secondaryDark} />
                       <Text style={[styles.failedTagText, { color: Colors.secondaryDark }]}>View Payout Dashboard</Text>
                     </View>
                   )}
                   {/* Auto-retry indicator on payment_failed notifications */}
-                  {isPaymentFailed && notif.message?.includes('auto') && (
+                  {!!isPaymentFailed && notif.message?.includes('auto') && (
                     <View style={[styles.failedTag, { backgroundColor: '#E8F0FF' }]}>
                       <MaterialIcons name="autorenew" size={12} color="#7B9ED9" />
                       <Text style={[styles.failedTagText, { color: '#7B9ED9' }]}>Auto-retry in progress</Text>
@@ -527,4 +532,6 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: Spacing.huge * 2, paddingHorizontal: Spacing.xxxl, gap: Spacing.md },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textSecondary },
   emptySubtitle: { fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', lineHeight: 20 },
+  signInCta: { marginTop: Spacing.lg, backgroundColor: Colors.primary, paddingHorizontal: Spacing.xxl, paddingVertical: Spacing.md, borderRadius: BorderRadius.full },
+  signInCtaText: { color: Colors.white, fontWeight: '700', fontSize: FontSize.md },
 });

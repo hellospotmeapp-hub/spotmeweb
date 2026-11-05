@@ -4,7 +4,7 @@ import {
   Animated, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -139,14 +139,14 @@ export default function VideoPlayer({
         </TouchableOpacity>
 
         {/* Loading Spinner */}
-        {isLoading && (
+        {!!isLoading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#FFF" />
           </View>
         )}
 
         {/* Controls Overlay */}
-        {showControls && (
+        {!!showControls && (
           <Animated.View style={[styles.controlsOverlay, { opacity: fadeAnim }]}>
             {/* Center Play/Pause */}
             <TouchableOpacity style={styles.centerPlayBtn} onPress={togglePlay}>

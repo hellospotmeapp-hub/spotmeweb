@@ -2,8 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Image, Platform, ActivityIndicator, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { Need } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { Need } from '@/lib/data';
 import ExpirationTimer from './ExpirationTimer';
 
 interface BulkNeedManagerProps {
@@ -233,7 +233,7 @@ export default function BulkNeedManager({ visible, onClose, needs, onDeleteNeed,
           )}
 
           {/* Filters */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
+          <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
             {filters.map(f => (
               <TouchableOpacity
                 key={f.key}
@@ -296,7 +296,7 @@ export default function BulkNeedManager({ visible, onClose, needs, onDeleteNeed,
           )}
 
           {/* Need List */}
-          <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
             {filteredNeeds.length === 0 ? (
               <View style={styles.emptyState}>
                 <MaterialIcons name="inbox" size={48} color={Colors.borderLight} />
@@ -320,7 +320,7 @@ export default function BulkNeedManager({ visible, onClose, needs, onDeleteNeed,
                   >
                     {/* Checkbox */}
                     <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
-                      {isSelected && <MaterialIcons name="check" size={14} color={Colors.white} />}
+                      {!!isSelected && <MaterialIcons name="check" size={14} color={Colors.white} />}
                     </View>
 
                     {/* Photo */}
@@ -397,7 +397,7 @@ export default function BulkNeedManager({ visible, onClose, needs, onDeleteNeed,
           </ScrollView>
 
           {/* Confirm Delete Modal */}
-          {showConfirmDelete && (
+          {!!showConfirmDelete && (
             <View style={styles.confirmOverlay}>
               <View style={styles.confirmCard}>
                 <View style={styles.confirmIconWrap}>

@@ -2,12 +2,14 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 
-// Platform Stripe publishable key — used with stripeAccount for connected account payments
-const STRIPE_PK = 'pk_live_51T3T8o2Xr21chucT33UexOe8CdpMp6pbH5UomhHXnpd1lmCxW7B7O59C5XAWCFMvH32gs8R5mIxxOG5ZS9Fig27E00Hr3PGP2Q';
+// Platform Stripe publishable key. Must be the same mode (test/live) as the
+// STRIPE_SECRET_KEY secret on the Supabase `api` function — set it in .env.
+const STRIPE_PK = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 const DEFAULT_STRIPE_ACCOUNT = '';
 
 // ============================================================
@@ -315,7 +317,7 @@ export default function PaymentCheckoutScreen() {
     if (Platform.OS === 'web') {
       window.history.back();
     } else {
-      router.back();
+      goBack(router);
     }
   }, [router]);
 
@@ -479,6 +481,9 @@ export default function PaymentCheckoutScreen() {
 
       if (!(window as any).Stripe) {
         throw new Error('Stripe.js failed to initialize. Please refresh the page.');
+      }
+      if (!STRIPE_PK) {
+        throw new Error('Payments are not configured yet. Please try again later.');
       }
 
       const stripeAccountId = params.stripeAccount || DEFAULT_STRIPE_ACCOUNT;
@@ -933,9 +938,9 @@ export default function PaymentCheckoutScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Session Expired Banner */}
-        {sessionExpired && !amountMismatch && (
+        {!!sessionExpired && !amountMismatch && (
           <View style={styles.sessionExpiredBanner}>
             <MaterialIcons name="timer-off" size={24} color={Colors.accent} />
             <View style={{ flex: 1 }}>
@@ -959,7 +964,7 @@ export default function PaymentCheckoutScreen() {
         {/* SMART PAYMENT RECOVERY: Amount Mismatch Banner               */}
         {/* Shown when the Stripe PI amount doesn't match the URL params */}
         {/* ============================================================ */}
-        {amountMismatch && mismatchInfo && (
+        {!!amountMismatch && mismatchInfo && (
           <View style={styles.mismatchBanner}>
             <View style={styles.mismatchIconRow}>
               <View style={styles.mismatchIconCircle}>
@@ -1021,7 +1026,7 @@ export default function PaymentCheckoutScreen() {
         )}
 
         {/* Recovery success toast */}
-        {recoverySuccess && !amountMismatch && (
+        {!!recoverySuccess && !amountMismatch && (
           <View style={styles.recoverySuccessBanner}>
             <MaterialIcons name="check-circle" size={20} color={Colors.success} />
             <Text style={styles.recoverySuccessText}>
@@ -1069,7 +1074,7 @@ export default function PaymentCheckoutScreen() {
             <Text style={styles.recipientValue}>${recipientGets.toFixed(2)}</Text>
           </View>
 
-          {isDestinationCharge && (
+          {!!isDestinationCharge && (
             <View style={styles.connectBadge}>
               <MaterialIcons name="swap-horiz" size={16} color={Colors.secondary} />
               <Text style={styles.connectBadgeText}>Funds go directly to the recipient via Stripe Connect</Text>
@@ -1101,7 +1106,7 @@ export default function PaymentCheckoutScreen() {
         ]}>
           <Text style={styles.paymentFormTitle}>Payment Details</Text>
 
-          {loading && !error && (
+          {!!loading && !error && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={Colors.primary} />
               <Text style={styles.loadingText}>Loading secure payment form...</Text>
@@ -1133,7 +1138,7 @@ export default function PaymentCheckoutScreen() {
               </View>
               
               {/* Check Payment Status button */}
-              {paymentEverSubmittedRef.current && (
+              {!!paymentEverSubmittedRef.current && (
                 <TouchableOpacity
                   style={styles.checkStatusButton}
                   onPress={handleCheckStatus}
@@ -1198,7 +1203,7 @@ export default function PaymentCheckoutScreen() {
         )}
 
         {/* Session expired: prominent "Go Back" button replaces Pay */}
-        {sessionExpired && !amountMismatch && (
+        {!!sessionExpired && !amountMismatch && (
           <TouchableOpacity
             style={[styles.payButton, { backgroundColor: Colors.accent }]}
             onPress={handleGoBack}
@@ -1210,7 +1215,7 @@ export default function PaymentCheckoutScreen() {
         )}
 
         {/* Processing safety notice */}
-        {processing && (
+        {!!processing && (
           <View style={styles.processingNotice}>
             <ActivityIndicator size="small" color={Colors.primary} />
             <Text style={styles.processingNoticeText}>
@@ -1223,7 +1228,7 @@ export default function PaymentCheckoutScreen() {
         )}
 
         {/* Warning if payment was submitted */}
-        {paymentEverSubmittedRef.current && !processing && !paymentSucceeded && (
+        {!!paymentEverSubmittedRef.current && !processing && !paymentSucceeded && (
           <View style={styles.warningBanner}>
             <MaterialIcons name="info" size={18} color={Colors.accent} />
             <Text style={styles.warningText}>

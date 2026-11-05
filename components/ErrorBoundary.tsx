@@ -67,7 +67,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               <MaterialIcons name="refresh" size={20} color="#FFFFFF" />
               <Text style={styles.retryText}>Try Again</Text>
             </TouchableOpacity>
-            {__DEV__ && this.state.error && (
+            {!!__DEV__ && this.state.error && (
               <View style={styles.debugInfo}>
                 <Text style={styles.debugTitle}>Debug Info:</Text>
                 <Text style={styles.debugText} numberOfLines={5}>

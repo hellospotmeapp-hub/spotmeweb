@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
-import { Need } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
+import { Need } from '@/lib/data';
 import ProgressBar from '@/components/ProgressBar';
 import CategoryBadge from '@/components/CategoryBadge';
 import StatusBadge from '@/components/StatusBadge';
@@ -141,7 +142,7 @@ export default function NeedDetailScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { goBack(router); } }}>
             <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
           </TouchableOpacity>
         </View>
@@ -157,7 +158,7 @@ export default function NeedDetailScreen() {
     return (
       <View style={[styles.container, { paddingTop: topPadding }]}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { goBack(router); } }}>
             <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
           </TouchableOpacity>
         </View>
@@ -165,7 +166,7 @@ export default function NeedDetailScreen() {
           <MaterialIcons name="error-outline" size={64} color={Colors.borderLight} />
           <Text style={styles.notFoundTitle}>Need not found</Text>
           <Text style={{ fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', marginTop: 4 }}>This need may have been removed or the link is invalid.</Text>
-          <TouchableOpacity onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+          <TouchableOpacity onPress={() => { try { router.replace('/(tabs)'); } catch { goBack(router); } }}>
             <Text style={styles.notFoundLink}>Browse all needs</Text>
           </TouchableOpacity>
         </View>
@@ -182,7 +183,7 @@ export default function NeedDetailScreen() {
   const isExpired = need.status === 'Expired' || (need.status === 'Collecting' && isExpiredByTime(need.createdAt, need.expiresAt));
   const isComplete = need.status !== 'Collecting' || isExpired;
   const isFunded = need.status === 'Goal Met' || need.status === 'Payout Requested' || need.status === 'Paid';
-  const canContribute = need.status === 'Collecting' && !isExpired;
+  const canContribute = need.status === 'Collecting' && !isExpired && need.verificationStatus !== 'pending';
   
   // Payout eligibility: owner + (goal met OR expired with funds)
   const canRequestPayout = isOwner && !payoutSuccess && (
@@ -200,7 +201,7 @@ export default function NeedDetailScreen() {
 
   const handleBlock = () => {
     blockUser(need.userId);
-    router.back();
+    goBack(router);
   };
 
   const handleSpotMe = () => {
@@ -265,7 +266,7 @@ export default function NeedDetailScreen() {
     <View style={[styles.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { goBack(router); } }}>
 
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
 
@@ -274,7 +275,7 @@ export default function NeedDetailScreen() {
           <TouchableOpacity style={styles.headerBtn} onPress={() => setShowShare(true)}>
             <MaterialIcons name="share" size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-          {isOwner && need.status === 'Collecting' && !isExpired && (
+          {!!isOwner && need.status === 'Collecting' && !isExpired && (
             <TouchableOpacity style={styles.headerBtn} onPress={() => setShowEditNeed(true)}>
               <MaterialIcons name="edit" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -287,7 +288,7 @@ export default function NeedDetailScreen() {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {need.photo ? (
           <GracefulImage
             uri={need.photo}
@@ -314,7 +315,7 @@ export default function NeedDetailScreen() {
             <View style={styles.userInfoBlock}>
               <View style={styles.userNameRow}>
                 <Text style={styles.userName}>{need.userName}</Text>
-                {need.userVerified && (
+                {!!need.userVerified && (
                   <MaterialIcons name="verified" size={16} color={Colors.primary} />
                 )}
                 <MaterialIcons name="chevron-right" size={16} color={Colors.textLight} />
@@ -354,7 +355,7 @@ export default function NeedDetailScreen() {
                 <Text style={styles.contributorCount}>{need.contributorCount}</Text>
                 <Text style={styles.contributorLabel}>supporters</Text>
               </View>
-              {canContribute && (
+              {!!canContribute && (
                 <View style={styles.progressRight}>
                   <Text style={styles.remainingAmount}>${remaining}</Text>
                   <Text style={styles.remainingLabel}>to go</Text>
@@ -364,7 +365,7 @@ export default function NeedDetailScreen() {
           </View>
 
           {/* Expired Need Banner */}
-          {isExpired && (
+          {!!isExpired && (
             <View style={styles.expiredBanner}>
               <MaterialIcons name="timer-off" size={28} color={Colors.textLight} />
               <View style={{ flex: 1 }}>
@@ -379,7 +380,7 @@ export default function NeedDetailScreen() {
           )}
 
           {/* Payout Request Button for owner */}
-          {canRequestPayout && (
+          {!!canRequestPayout && (
             <View style={styles.payoutSection}>
               <TouchableOpacity 
                 style={[styles.payoutBtn, payoutLoading && { opacity: 0.6 }]} 
@@ -431,7 +432,7 @@ export default function NeedDetailScreen() {
           )}
 
           {/* Payout Success Banner (after requesting) */}
-          {payoutSuccess && (
+          {!!payoutSuccess && (
             <View style={styles.payoutSuccessBanner}>
               <MaterialIcons name="check-circle" size={28} color={Colors.success} />
               <View style={{ flex: 1 }}>
@@ -452,7 +453,7 @@ export default function NeedDetailScreen() {
                 <Text style={styles.payoutRequestedSub}>
                   Your payout of ${need.raisedAmount} is being processed. Funds typically arrive in 2-3 business days.
                 </Text>
-                {isOwner && (
+                {!!isOwner && (
                   <TouchableOpacity 
                     style={styles.viewPayoutDashLink}
                     onPress={() => router.push('/payouts')}
@@ -480,7 +481,7 @@ export default function NeedDetailScreen() {
           )}
 
           {/* Thank You Video */}
-          {thankYouVideo && (
+          {!!thankYouVideo && (
             <View style={styles.thankYouVideoCard}>
               <View style={styles.thankYouVideoHeader}>
                 <MaterialIcons name="videocam" size={18} color={Colors.accent} />
@@ -504,7 +505,7 @@ export default function NeedDetailScreen() {
           )}
 
           {/* Record Thank You for owners of funded needs */}
-          {isOwner && isFunded && !thankYouVideo && (
+          {!!isOwner && isFunded && !thankYouVideo && (
             <TouchableOpacity style={styles.recordThankYouBtn} onPress={() => setShowRecordThankYou(true)} activeOpacity={0.8}>
               <View style={styles.recordThankYouIcon}>
                 <MaterialIcons name="videocam" size={24} color="#FFF" />
@@ -541,7 +542,7 @@ export default function NeedDetailScreen() {
           </TouchableOpacity>
 
           {/* Contribute Section */}
-          {canContribute && !isOwner && (
+          {!!canContribute && !isOwner && (
             <View style={styles.contributeSection}>
               <Text style={styles.contributeSectionTitle}>Spot this need</Text>
               <View style={styles.contributeGrid}>
@@ -560,7 +561,7 @@ export default function NeedDetailScreen() {
           )}
 
           {/* Expired - Can't contribute message */}
-          {isExpired && !isOwner && (
+          {!!isExpired && !isOwner && (
             <View style={styles.cantContributeCard}>
               <MaterialIcons name="info-outline" size={18} color={Colors.textLight} />
               <Text style={styles.cantContributeText}>
@@ -584,7 +585,7 @@ export default function NeedDetailScreen() {
                     <Text style={styles.contributorName}>{contrib.userName}</Text>
                     <Text style={styles.contributorAmount}>spotted ${contrib.amount}</Text>
                   </View>
-                  {contrib.note && <Text style={styles.contributorNote}>"{contrib.note}"</Text>}
+                  {!!contrib.note && <Text style={styles.contributorNote}>"{contrib.note}"</Text>}
                   <Text style={styles.contributorTime}>{getTimeAgo(contrib.timestamp)}</Text>
                 </View>
               </View>
@@ -704,7 +705,7 @@ export default function NeedDetailScreen() {
         userName={currentUser.name}
         userAvatar={currentUser.avatar}
       />
-      {showEditNeed && (
+      {!!showEditNeed && (
         <EditNeedModal
           visible={showEditNeed}
           onClose={() => setShowEditNeed(false)}
@@ -715,7 +716,7 @@ export default function NeedDetailScreen() {
           onDelete={async () => {
             const result = await deleteNeed(need.id);
             if (result.success) {
-              try { router.replace('/(tabs)'); } catch { router.back(); }
+              try { router.replace('/(tabs)'); } catch { goBack(router); }
 
             }
             return result;

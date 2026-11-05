@@ -57,8 +57,8 @@ export default function Root({ children }: PropsWithChildren) {
         {/* Preconnect to image CDN and API for faster loading */}
         <link rel="preconnect" href="https://d64gsuwffb70l.cloudfront.net" />
         <link rel="dns-prefetch" href="https://d64gsuwffb70l.cloudfront.net" />
-        <link rel="preconnect" href="https://wadkuixhehslrteepluf.databasepad.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://wadkuixhehslrteepluf.databasepad.com" />
+        <link rel="preconnect" href="https://wjhxrpwobnyntokegrtx.supabase.co" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://wjhxrpwobnyntokegrtx.supabase.co" />
 
 
         {/* Disable text size adjustment on mobile */}
@@ -93,22 +93,7 @@ export default function Root({ children }: PropsWithChildren) {
             flex-direction: column;
           }
 
-          /* Mobile-first: full width on phones */
-          /* Desktop: centered phone-width container */
-          @media (min-width: 481px) {
-            #root {
-              max-width: 480px;
-              margin: 0 auto;
-              box-shadow: 0 0 40px rgba(0,0,0,0.08);
-              border-left: 1px solid #E8E4DF;
-              border-right: 1px solid #E8E4DF;
-              position: relative;
-            }
-
-            body {
-              background-color: #F0EDE9;
-            }
-          }
+          /* Full-width, responsive layout (navigation and content widths are handled in the app) */
 
           /* Smooth scrolling */
           * {
@@ -258,7 +243,7 @@ export default function Root({ children }: PropsWithChildren) {
             try {
               var path = window.location.pathname;
               var origin = window.location.origin;
-              var dbUrl = 'https://wadkuixhehslrteepluf.databasepad.com';
+              var dbUrl = 'https://wjhxrpwobnyntokegrtx.supabase.co';
               
               // Detect share pages: /share/[id]
               var shareMatch = path.match(/^\\/share\\/([^/]+)/);
@@ -288,8 +273,8 @@ export default function Root({ children }: PropsWithChildren) {
                   }
                 }
                 
-                // Dynamic OG image URL — served from edge function with storage caching
-                var ogImageUrl = dbUrl + '/functions/v1/generate-og-image?needId=' + needId;
+                // Site image until the need's own photo loads
+                var ogImageUrl = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771036966816_3239ff44.png';
                 
                 // Set URL-specific OG tags immediately
                 setOG('og:url', shareUrl);
@@ -299,7 +284,6 @@ export default function Root({ children }: PropsWithChildren) {
                 setOG('og:image', ogImageUrl);
                 setOG('og:image:width', '1200');
                 setOG('og:image:height', '630');
-                setOG('og:image:type', 'image/svg+xml');
                 setMeta('twitter:url', shareUrl);
                 setMeta('twitter:title', 'Someone needs your help on SpotMe');
                 setMeta('twitter:description', 'Can you spot them? Every dollar goes directly to the person in need.');
@@ -308,18 +292,18 @@ export default function Root({ children }: PropsWithChildren) {
                 document.title = 'Help Someone on SpotMe';
                 
                 // Attempt to fetch real need data for proper OG tags
-                var dbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjRhNDhjOGQ1LWM2NGEtNGM5Ni04YWJiLWNhOGIxNzBhYzBmYyJ9.eyJwcm9qZWN0SWQiOiJ3YWRrdWl4aGVoc2xydGVlcGx1ZiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzcxMDM2ODc1LCJleHAiOjIwODYzOTY4NzUsImlzcyI6ImZhbW91cy5kYXRhYmFzZXBhZCIsImF1ZCI6ImZhbW91cy5jbGllbnRzIn0.8D4-YKtj3LLq5nDrGKY2mDnG7CqfeliSBh4XLgJq88c';
+                var dbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHhycHdvYm55bnRva2VncnR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NzU2MzUsImV4cCI6MjA4NzA1MTYzNX0.g48dLZoH6ZNbmSv9emGuvYvLgFIQm33xjCbtwvEZB_0';
                 
                 // Only attempt fetch for non-local IDs
                 if (!/^(n\\d+|mr\\d+|n_|local_)/.test(needId)) {
-                  fetch(dbUrl + '/functions/v1/process-contribution', {
+                  fetch(dbUrl + '/functions/v1/api', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
                       'Authorization': 'Bearer ' + dbKey,
                       'apikey': dbKey
                     },
-                    body: JSON.stringify({ action: 'fetch_need_by_id', needId: needId })
+                    body: JSON.stringify({ fn: 'process-contribution', body: { action: 'fetch_need_by_id', needId: needId } })
                   })
                   .then(function(r) { return r.json(); })
                   .then(function(data) {
@@ -334,6 +318,7 @@ export default function Root({ children }: PropsWithChildren) {
                       setOG('og:title', title);
                       setOG('og:description', desc);
                       setOG('og:image:alt', n.userName + ' needs help: ' + n.title);
+                      if (n.photo) { setOG('og:image', n.photo); setMeta('twitter:image', n.photo); }
                       setMeta('twitter:title', title);
                       setMeta('twitter:description', desc);
                       setMeta('description', n.message ? n.message.substring(0, 160) + '...' : desc);
@@ -348,7 +333,7 @@ export default function Root({ children }: PropsWithChildren) {
               if (needMatch) {
                 var nId = needMatch[1];
                 var needUrl = origin + '/need/' + nId;
-                var needOgImage = dbUrl + '/functions/v1/generate-og-image?needId=' + nId;
+                var needOgImage = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771036966816_3239ff44.png';
                 function setOGN(prop, content) {
                   var el = document.querySelector('meta[property="' + prop + '"]');
                   if (el) el.setAttribute('content', content);

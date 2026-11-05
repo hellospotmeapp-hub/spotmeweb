@@ -5,10 +5,11 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 import VideoPlayer from '@/components/VideoPlayer';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -213,11 +214,11 @@ export default function ThankYouVideoPage() {
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
         <Animated.View style={{ opacity: fadeAnim }}>
           {/* Top Bar */}
           <View style={[styles.topBar, { paddingTop: topPadding + 8 }]}>
-            <TouchableOpacity style={styles.topBtn} onPress={() => router.back()}>
+            <TouchableOpacity style={styles.topBtn} onPress={() => goBack(router)}>
               <MaterialIcons name="arrow-back" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
             <Text style={styles.topLogo}>SpotMe</Text>
@@ -368,7 +369,7 @@ export default function ThankYouVideoPage() {
             </View>
 
             {/* View Need CTA */}
-            {need && need.status === 'Collecting' && (
+            {!!need && need.status === 'Collecting' && (
               <TouchableOpacity
                 style={styles.viewNeedCTA}
                 onPress={() => router.push(`/share/${video.need_id}`)}

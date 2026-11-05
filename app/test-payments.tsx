@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
-import { useApp } from '@/app/lib/store';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
+import { useApp } from '@/lib/store';
 
 // ============================================================
 // TEST CARD NUMBERS
@@ -57,7 +58,7 @@ function TestSection({ title, icon, children, collapsed, onToggle }: {
           <MaterialIcons name={icon as any} size={20} color={Colors.primary} />
         </View>
         <Text style={styles.sectionTitle}>{title}</Text>
-        {onToggle && (
+        {!!onToggle && (
           <MaterialIcons name={collapsed ? 'expand-more' : 'expand-less'} size={24} color={Colors.textLight} />
         )}
       </TouchableOpacity>
@@ -92,7 +93,7 @@ function StepDisplay({ step }: { step: TestStep }) {
         <Text style={[styles.stepLabel, step.status === 'error' && { color: Colors.error }]}>
           {step.label}
         </Text>
-        {step.detail && (
+        {!!step.detail && (
           <Text style={[styles.stepDetail, step.status === 'error' && { color: Colors.error }]} numberOfLines={3}>
             {step.detail}
           </Text>
@@ -120,8 +121,8 @@ function JsonViewer({ data, label }: { data: any; label?: string }) {
         <Text style={styles.jsonLabel}>{label || 'Response Data'}</Text>
         <MaterialIcons name={expanded ? 'expand-less' : 'expand-more'} size={18} color={Colors.textLight} />
       </TouchableOpacity>
-      {expanded && (
-        <ScrollView horizontal style={styles.jsonScroll}>
+      {!!expanded && (
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal style={styles.jsonScroll}>
           <Text style={styles.jsonText} selectable>{json}</Text>
         </ScrollView>
       )}
@@ -633,14 +634,39 @@ export default function TestPaymentsScreen() {
     }
   }, [paymentResult, testAmount]);
 
+  // Debug tool: admins only
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!isLoggedIn) { setIsAdmin(false); return; }
+    supabase.functions.invoke('stripe-checkout', { body: { action: 'admin_check' } })
+      .then(({ data }) => setIsAdmin(!!data?.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, [isLoggedIn]);
+
   // ============================================================
   // RENDER
   // ============================================================
+  if (!isAdmin) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding, alignItems: 'center', justifyContent: 'center', gap: Spacing.md }]}>
+        {isAdmin === null ? <ActivityIndicator color={Colors.primary} /> : (
+          <>
+            <MaterialIcons name="lock" size={48} color={Colors.textLight} />
+            <Text style={styles.headerTitle}>Admins only</Text>
+            <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
+              <Text style={{ color: Colors.primary, fontWeight: '700' }}>Back to Home</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -652,7 +678,7 @@ export default function TestPaymentsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.content} showsVerticalScrollIndicator={false}>
 
         {/* ============ STRIPE CONFIG STATUS ============ */}
         <TestSection title="Stripe Configuration" icon="settings" collapsed={collapsed.config} onToggle={() => toggleSection('config')}>
@@ -791,14 +817,14 @@ export default function TestPaymentsScreen() {
               {paymentSteps.map(step => (
                 <View key={step.id}>
                   <StepDisplay step={step} />
-                  {step.data && <JsonViewer data={step.data} label={`${step.label} Response`} />}
+                  {!!step.data && <JsonViewer data={step.data} label={`${step.label} Response`} />}
                 </View>
               ))}
             </View>
           )}
 
           {/* Open Checkout Button */}
-          {paymentResult?.clientSecret && (
+          {!!paymentResult?.clientSecret && (
             <TouchableOpacity style={styles.checkoutBtn} onPress={openCheckoutWithTestCard} activeOpacity={0.8}>
               <MaterialIcons name="launch" size={20} color={Colors.white} />
               <Text style={styles.checkoutBtnText}>Open Stripe Checkout Form</Text>
@@ -806,7 +832,7 @@ export default function TestPaymentsScreen() {
           )}
 
           {/* Receipt */}
-          {receiptData && (
+          {!!receiptData && (
             <View style={styles.receiptCard}>
               <View style={styles.receiptHeader}>
                 <MaterialIcons name="receipt" size={20} color={Colors.primary} />
@@ -867,7 +893,7 @@ export default function TestPaymentsScreen() {
               {connectSteps.map(step => (
                 <View key={step.id}>
                   <StepDisplay step={step} />
-                  {step.data && <JsonViewer data={step.data} label={`${step.label} Response`} />}
+                  {!!step.data && <JsonViewer data={step.data} label={`${step.label} Response`} />}
                 </View>
               ))}
             </View>
@@ -904,13 +930,13 @@ export default function TestPaymentsScreen() {
               {payoutSteps.map(step => (
                 <View key={step.id}>
                   <StepDisplay step={step} />
-                  {step.data && <JsonViewer data={step.data} label={`${step.label} Response`} />}
+                  {!!step.data && <JsonViewer data={step.data} label={`${step.label} Response`} />}
                 </View>
               ))}
             </View>
           )}
 
-          {payoutResult && (
+          {!!payoutResult && (
             <View style={styles.receiptCard}>
               <View style={styles.receiptHeader}>
                 <MaterialIcons name="account-balance-wallet" size={20} color={Colors.success} />

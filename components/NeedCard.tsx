@@ -3,13 +3,14 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { Need } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { Need } from '@/lib/data';
 import ProgressBar from './ProgressBar';
 import CategoryBadge from './CategoryBadge';
 import StatusBadge from './StatusBadge';
 import ExpirationTimer from './ExpirationTimer';
 import GracefulImage from './GracefulImage';
+import { useApp } from '@/lib/store';
 
 const NEED_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -27,7 +28,6 @@ interface NeedCardProps {
   need: Need;
   onContribute?: (needId: string, amount: number) => void;
   compact?: boolean;
-  showAsFunded?: boolean;
 }
 
 function getTimeAgo(dateStr: string): string {
@@ -48,13 +48,15 @@ function getTimeAgo(dateStr: string): string {
 }
 
 // Wrap in React.memo to prevent re-renders when parent state changes but need data hasn't
-function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardProps) {
+function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
 
   const router = useRouter();
-  const progress = showAsFunded ? 1 : need.raisedAmount / need.goalAmount;
+  const progress = need.goalAmount > 0 ? Math.min(need.raisedAmount / need.goalAmount, 1) : 0;
   const expired = isExpiredByTime(need);
   const isComplete = need.status !== 'Collecting' || expired;
-  const canContribute = need.status === 'Collecting' && !expired;
+  const canContribute = need.status === 'Collecting' && !expired && need.verificationStatus !== 'pending';
+  const { currentUser } = useApp();
+  const isOwner = !!need.userId && need.userId === currentUser.id;
 
   const handlePress = () => {
     router.push(`/need/${need.id}`);
@@ -84,7 +86,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
           <Text style={styles.compactTitle} numberOfLines={1}>{need.title}</Text>
           <ProgressBar progress={progress} height={4} />
           <Text style={styles.compactAmount}>
-            ${showAsFunded ? need.goalAmount : need.raisedAmount} of ${need.goalAmount}
+            ${need.raisedAmount} of ${need.goalAmount}
           </Text>
         </View>
       </TouchableOpacity>
@@ -105,7 +107,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
           <View>
             <View style={styles.nameRow}>
               <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
-              {need.userVerified && (
+              {!!need.userVerified && (
                 <MaterialIcons name="verified" size={15} color="rgba(255,255,255,0.95)" style={{ marginLeft: 3 }} />
               )}
               {need.userCity ? (
@@ -131,6 +133,10 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
       </View>
 
 
+      {need.photo ? (
+        <GracefulImage uri={need.photo} type="photo" style={styles.cardPhoto} category={need.category} />
+      ) : null}
+
       {/* Content */}
       <View style={styles.content}>
         <View style={styles.titleRow}>
@@ -146,13 +152,19 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
             <Text style={styles.verifiedNeedText}>SpotMe Verified</Text>
           </View>
         )}
+        {need.verificationStatus === 'pending' && (
+          <View style={[styles.verifiedNeedBadge, { backgroundColor: Colors.accentLight }]}>
+            <MaterialIcons name="hourglass-empty" size={13} color={Colors.textSecondary} />
+            <Text style={[styles.verifiedNeedText, { color: Colors.textSecondary }]}>Under review: only you can see this</Text>
+          </View>
+        )}
 
         {/* Progress Section */}
         <View style={styles.progressSection}>
           <ProgressBar progress={progress} height={10} showGlow={progress >= 0.75 && !expired} />
           <View style={styles.progressInfo}>
             <View style={styles.amountRow}>
-              <Text style={styles.raisedAmount}>${showAsFunded ? need.goalAmount : need.raisedAmount}</Text>
+              <Text style={styles.raisedAmount}>${need.raisedAmount}</Text>
               <Text style={styles.goalAmount}> of ${need.goalAmount}</Text>
             </View>
             <Text style={styles.contributorText}>
@@ -171,8 +183,20 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
           />
         )}
 
+        {/* Owner: share instead of spotting their own need */}
+        {canContribute && isOwner && (
+          <TouchableOpacity
+            style={[styles.spotButton, styles.ownerShareButton]}
+            onPress={() => router.push(`/share/${need.id}`)}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="share" size={15} color={Colors.primary} />
+            <Text style={styles.spotButtonText}>Share your need</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Quick Contribute Buttons - only for active, non-expired needs */}
-        {canContribute && (
+        {canContribute && !isOwner && (
           <View style={styles.contributeRow}>
             {[1, 5, 10].map(amount => (
               <TouchableOpacity
@@ -196,7 +220,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
         )}
 
         {/* Expired Banner */}
-        {expired && need.raisedAmount > 0 && (
+        {!!expired && need.raisedAmount > 0 && (
           <View style={styles.expiredBanner}>
             <MaterialIcons name="timer-off" size={18} color={Colors.textLight} />
             <Text style={styles.expiredBannerText}>
@@ -205,7 +229,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
           </View>
         )}
 
-        {expired && need.raisedAmount === 0 && (
+        {!!expired && need.raisedAmount === 0 && (
           <View style={styles.expiredBanner}>
             <MaterialIcons name="timer-off" size={18} color={Colors.textLight} />
             <Text style={styles.expiredBannerText}>
@@ -215,7 +239,7 @@ function NeedCardInner({ need, onContribute, compact, showAsFunded }: NeedCardPr
         )}
 
         {/* Goal Met Banner */}
-        {!expired && (need.status === 'Goal Met' || showAsFunded) && (
+        {!expired && need.status === 'Goal Met' && (
           <View style={styles.goalMetBanner}>
             <MaterialIcons name="celebration" size={20} color={Colors.success} />
             <Text style={styles.goalMetText}>Goal Met!</Text>
@@ -333,6 +357,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
+  cardPhoto: { width: '100%', height: 170 },
+  ownerShareButton: { marginTop: Spacing.md, flex: 0, alignSelf: 'stretch', justifyContent: 'center' },
   photo: {
     width: '100%',
     height: 200,

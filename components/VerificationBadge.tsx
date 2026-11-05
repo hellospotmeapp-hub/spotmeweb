@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { VERIFICATION_STATUSES } from '@/app/lib/data';
-import { FontSize, Spacing, BorderRadius } from '@/app/lib/theme';
+import { VERIFICATION_STATUSES } from '@/lib/data';
+import { FontSize, Spacing, BorderRadius } from '@/lib/theme';
 
 interface VerificationBadgeProps {
   status?: string;

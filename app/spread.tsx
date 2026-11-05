@@ -5,13 +5,14 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack as navigateBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { CATEGORIES } from '@/app/lib/data';
-import { smartSplit, getImpactMessage, SplitResult, SpreadMode } from '@/app/lib/smartSplit';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { CATEGORIES } from '@/lib/data';
+import { smartSplit, getImpactMessage, SplitResult, SpreadMode } from '@/lib/smartSplit';
 import SpreadPreview from '@/components/SpreadPreview';
-import { supabase } from '@/app/lib/supabase';
+import { supabase } from '@/lib/supabase';
 
 type Step = 'amount' | 'mode' | 'privacy' | 'preview' | 'processing' | 'success';
 type PrivacyMode = 'public' | 'anonymous' | 'specific';
@@ -66,7 +67,7 @@ export default function SpreadTheLoveScreen() {
   }, [amount, needs, spreadMode, selectedCategory, privacyMode, selectedNeedIds]);
 
   const eligibleNeeds = useMemo(() => {
-    let filtered = needs.filter(n => n.status === 'Collecting');
+    let filtered = needs.filter(n => n.status === 'Collecting' && n.verificationStatus !== 'pending');
     if (spreadMode === 'category') filtered = filtered.filter(n => n.category === selectedCategory);
     return filtered.sort((a, b) => (a.goalAmount - a.raisedAmount) - (b.goalAmount - b.raisedAmount));
   }, [needs, spreadMode, selectedCategory]);
@@ -83,30 +84,12 @@ export default function SpreadTheLoveScreen() {
 
     try {
       const isAnonymous = privacyMode === 'anonymous';
-      const contributorName = isAnonymous ? 'A kind stranger' : currentUser.name;
 
-      const { data, error } = await supabase.functions.invoke('process-contribution', {
-        body: {
-          action: 'spread_the_love',
-          allocations: splitResult.allocations.map(a => ({ needId: a.needId, needTitle: a.needTitle, amount: a.amount, userName: a.userName })),
-          totalAmount: splitResult.totalAmount,
-          contributorName,
-          spreadMode,
-          isAnonymous,
-        },
-      });
-
-      if (error) throw new Error(error.message || 'Spread processing failed');
-
-      if (data?.success) {
-        for (const allocation of splitResult.allocations) {
-          contribute(allocation.needId, allocation.amount, isAnonymous ? 'Spread the Love' : `Spread the Love from ${currentUser.name}`);
-        }
-        setStep('success');
-        animateSuccess();
-      } else {
-        throw new Error(data?.error || 'Spread failed');
-      }
+      // Charged through Stripe; the server records each allocation once the payment succeeds.
+      // On web this redirects to the checkout page.
+      const result = await spreadWithPayment(splitResult.allocations, splitResult.totalAmount, spreadMode, isAnonymous);
+      if (!result.success) throw new Error(result.error || 'Spread failed');
+      if (Platform.OS !== 'web') throw new Error('Spread the Love checkout is available on the web app.');
     } catch (err: any) {
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
       setStep('preview');
@@ -147,7 +130,7 @@ export default function SpreadTheLoveScreen() {
       case 'mode': setStep('amount'); break;
       case 'privacy': setStep('mode'); break;
       case 'preview': setStep('privacy'); break;
-      default: router.back(); break;
+      default: navigateBack(router); break;
     }
   };
 
@@ -157,7 +140,7 @@ export default function SpreadTheLoveScreen() {
 
   const canProceed = () => {
     switch (step) {
-      case 'amount': return amount > 0 && amount <= 300;
+      case 'amount': return amount > 0 && amount <= 300 && splitResult.totalPeople > 0;
       case 'mode': return true;
       case 'privacy': return privacyMode === 'specific' ? selectedNeedIds.length > 0 : true;
       case 'preview': return splitResult.allocations.length > 0;
@@ -223,7 +206,7 @@ export default function SpreadTheLoveScreen() {
               <MaterialIcons name="edit" size={18} color={isCustom ? Colors.primary : Colors.textSecondary} />
               <Text style={[styles.customToggleText, isCustom && styles.customToggleTextActive]}>Enter custom amount</Text>
             </TouchableOpacity>
-            {isCustom && (
+            {!!isCustom && (
               <View style={styles.customInputRow}>
                 <Text style={styles.customDollar}>$</Text>
                 <TextInput style={styles.customInput} value={customAmount} onChangeText={setCustomAmount} keyboardType="numeric" placeholder="Max $300" placeholderTextColor={Colors.textLight} maxLength={6} autoFocus />
@@ -233,7 +216,7 @@ export default function SpreadTheLoveScreen() {
               <View style={styles.quickPreview}>
                 <MaterialIcons name="auto-awesome" size={18} color={Colors.accent} />
                 <Text style={styles.quickPreviewText}>
-                  Smart Split: ${amount} across {splitResult.totalPeople} {splitResult.totalPeople === 1 ? 'person' : 'people'}
+                  {splitResult.totalPeople === 0 ? 'There are no active needs to spread to right now. Check back soon!' : <>Smart Split: ${amount} across {splitResult.totalPeople} {splitResult.totalPeople === 1 ? 'person' : 'people'}</>}
                   {splitResult.goalsCompleted > 0 && <Text style={{ color: Colors.success, fontWeight: '700' }}> completing {splitResult.goalsCompleted} {splitResult.goalsCompleted === 1 ? 'goal' : 'goals'}</Text>}
                 </Text>
               </View>
@@ -321,7 +304,7 @@ export default function SpreadTheLoveScreen() {
                         <Text style={styles.specificRemaining}>${need.goalAmount - need.raisedAmount} remaining</Text>
                       </View>
                       <View style={[styles.specificCheck, isSelected && styles.specificCheckSelected]}>
-                        {isSelected && <MaterialIcons name="check" size={16} color={Colors.white} />}
+                        {!!isSelected && <MaterialIcons name="check" size={16} color={Colors.white} />}
                       </View>
                     </TouchableOpacity>
                   );
@@ -388,12 +371,12 @@ export default function SpreadTheLoveScreen() {
                     <Image source={{ uri: alloc.userAvatar }} style={styles.successAvatar} />
                     <Text style={styles.successName} numberOfLines={1}>{alloc.userName}</Text>
                     <Text style={styles.successAmount}>${alloc.amount.toFixed(2)}</Text>
-                    {alloc.willComplete && <MaterialIcons name="check-circle" size={16} color={Colors.success} />}
+                    {!!alloc.willComplete && <MaterialIcons name="check-circle" size={16} color={Colors.success} />}
                   </View>
                 ))}
               </View>
               <Text style={styles.successQuote}>"{getImpactMessage(splitResult)}"</Text>
-              <TouchableOpacity style={styles.successButton} onPress={() => router.back()} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.successButton} onPress={() => navigateBack(router)} activeOpacity={0.8}>
                 <Text style={styles.successButtonText}>Back to Home</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.successSecondaryButton} onPress={() => {

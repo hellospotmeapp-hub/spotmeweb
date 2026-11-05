@@ -2,8 +2,11 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { useResponsive, PAGE_MAX_WIDTH } from '@/lib/responsive';
+import WebTopNav from '@/components/WebTopNav';
 
 // Memoize tab icons to prevent re-renders on every tab switch
 const TabIcon = React.memo(function TabIcon({ name, color, focused }: { name: string; color: string; focused: boolean }) {
@@ -39,13 +42,24 @@ const CreateTabIcon = React.memo(function CreateTabIcon() {
 });
 
 export default function TabLayout() {
+  // Room for icon + label, plus the device's gesture bar / nav buttons
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 8);
+  // Website layout: top navigation + centered pages; phones keep the bottom tabs
+  const { isWide } = useResponsive();
+
   return (
     <Tabs
+      tabBar={isWide ? (props) => <WebTopNav {...props} /> : undefined}
       screenOptions={{
+        tabBarPosition: isWide ? 'top' : 'bottom',
+        sceneStyle: isWide
+          ? { width: '100%', maxWidth: PAGE_MAX_WIDTH, alignSelf: 'center', backgroundColor: Colors.background }
+          : undefined,
         headerShown: false,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textLight,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { height: 62 + bottomPad, paddingBottom: bottomPad }],
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
         // Freeze inactive tabs to prevent background re-renders
@@ -102,8 +116,7 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: Colors.surface,
     borderTopWidth: 0,
-    height: Platform.OS === 'web' ? 68 : 85,
-    paddingTop: Spacing.sm,
+    paddingTop: 6,
     // Web-safe shadow
     ...(Platform.OS === 'web'
       ? {
@@ -113,10 +126,6 @@ const styles = StyleSheet.create({
           zIndex: 100,
         }
       : Shadow.lg),
-    // Safe area bottom padding handled by the tab bar on native
-    ...(Platform.OS === 'web'
-      ? { paddingBottom: 8 }
-      : {}),
   },
   tabLabel: {
     fontSize: FontSize.xs,
@@ -144,7 +153,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Platform.OS === 'web' ? 8 : 20,
+    marginBottom: 18,
     ...Shadow.md,
   },
   badge: {

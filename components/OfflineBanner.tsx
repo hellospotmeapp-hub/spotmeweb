@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
-import { offlineManager, NetworkStatus } from '@/app/lib/offlineManager';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
+import { offlineManager, NetworkStatus } from '@/lib/offlineManager';
 
 interface OfflineBannerProps {
   pendingCount?: number;
@@ -182,7 +182,7 @@ export default function OfflineBanner({ pendingCount = 0, isSyncing = false, onR
             <MaterialIcons name="refresh" size={14} color={iconColor} />
           </View>
         )}
-        {isSyncing && (
+        {!!isSyncing && (
           <View style={styles.syncDots}>
             <View style={[styles.syncDot, { backgroundColor: iconColor }]} />
             <View style={[styles.syncDot, { backgroundColor: iconColor, opacity: 0.6 }]} />

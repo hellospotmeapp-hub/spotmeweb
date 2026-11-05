@@ -2,9 +2,10 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { COMMUNITY_GUIDELINES } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { COMMUNITY_GUIDELINES } from '@/lib/data';
 
 const GUIDELINE_ICONS = [
   'verified-user',
@@ -25,14 +26,14 @@ export default function GuidelinesScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="close" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Community Guidelines</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Hero */}
         <View style={styles.hero}>
           <View style={styles.heroIcon}>
@@ -113,7 +114,7 @@ export default function GuidelinesScreen() {
           <Text style={styles.ctaText}>
             Questions about our guidelines?
           </Text>
-          <TouchableOpacity style={styles.ctaButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.ctaButton} onPress={() => goBack(router)}>
             <MaterialIcons name="chat" size={18} color={Colors.white} />
             <Text style={styles.ctaButtonText}>Contact Support</Text>
           </TouchableOpacity>

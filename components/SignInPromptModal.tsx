@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Image, Animated, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 interface SignInPromptModalProps {
   visible: boolean;

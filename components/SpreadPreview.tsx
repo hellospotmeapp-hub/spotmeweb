@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
-import { SplitAllocation, SplitResult } from '@/app/lib/smartSplit';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
+import { SplitAllocation, SplitResult } from '@/lib/smartSplit';
 
 
 interface SpreadPreviewProps {
@@ -27,7 +27,7 @@ function AllocationCard({ allocation, index }: { allocation: SplitAllocation; in
         </View>
         <View style={styles.allocationAmountContainer}>
           <Text style={styles.allocationAmount}>${allocation.amount.toFixed(2)}</Text>
-          {allocation.willComplete && (
+          {!!allocation.willComplete && (
             <View style={styles.completeBadge}>
               <MaterialIcons name="check-circle" size={12} color={Colors.success} />
               <Text style={styles.completeText}>Completes goal</Text>
@@ -74,7 +74,7 @@ function AllocationCard({ allocation, index }: { allocation: SplitAllocation; in
       <View style={styles.allocationFooter}>
         <View style={[styles.categoryDot, { backgroundColor: catColor }]} />
         <Text style={[styles.categoryLabel, { color: catColor }]}>{allocation.category}</Text>
-        {allocation.userCity && (
+        {!!allocation.userCity && (
           <>
             <Text style={styles.dotSeparator}>·</Text>
             <MaterialIcons name="place" size={12} color={Colors.textLight} />
@@ -151,7 +151,7 @@ export default function SpreadPreview({ result, isAnonymous }: SpreadPreviewProp
       </View>
 
       {/* Anonymous note */}
-      {isAnonymous && (
+      {!!isAnonymous && (
         <View style={styles.anonymousNote}>
           <MaterialIcons name="visibility-off" size={16} color={Colors.textSecondary} />
           <Text style={styles.anonymousText}>

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { MOCK_USERS } from '@/app/lib/data';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { User } from '@/lib/data';
+import { supabase } from '@/lib/supabase';
 import ProgressBar from '@/components/ProgressBar';
 import ShareSheet from '@/components/ShareSheet';
 import VideoPlayer from '@/components/VideoPlayer';
@@ -38,9 +39,44 @@ export default function PublicProfilePage() {
 
   const topPadding = Platform.OS === 'web' ? 0 : insets.top;
 
-  const user = id === currentUser.id || id === 'current'
-    ? currentUser
-    : MOCK_USERS.find(u => u.id === id);
+  const isSelf = id === currentUser.id || id === 'current';
+  const [fetchedUser, setFetchedUser] = useState<User | null>(null);
+  const [userLoading, setUserLoading] = useState(!isSelf);
+  const user = isSelf ? currentUser : fetchedUser;
+
+  // Load public profile fields from Supabase (never email/password)
+  useEffect(() => {
+    if (!id || isSelf) return;
+    let cancelled = false;
+    setUserLoading(true);
+    (async () => {
+      try {
+        const { data } = await supabase.from('profiles')
+          .select('id, name, avatar, bio, city, verified, trust_score, trust_level, total_raised, total_given, created_at')
+          .eq('id', id)
+          .maybeSingle();
+        if (!cancelled) {
+          setFetchedUser(data ? {
+            id: data.id,
+            name: data.name || 'SpotMe User',
+            avatar: data.avatar || '',
+            bio: data.bio || '',
+            city: data.city || '',
+            joinedDate: data.created_at,
+            totalRaised: Number(data.total_raised) || 0,
+            totalGiven: Number(data.total_given) || 0,
+            verified: !!data.verified,
+            trustScore: data.trust_score || 0,
+            trustLevel: data.trust_level || 'new',
+          } : null);
+        }
+      } catch {
+        if (!cancelled) setFetchedUser(null);
+      }
+      if (!cancelled) setUserLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [id, isSelf]);
 
   // Fetch thank-you videos for this user
   useEffect(() => {
@@ -90,7 +126,17 @@ export default function PublicProfilePage() {
 
   const userNeeds = needs.filter(n => n.userId === id || (id === 'current' && n.userId === currentUser.id));
   const activeNeeds = userNeeds.filter(n => n.status === 'Collecting');
-  const completedNeeds = userNeeds.filter(n => n.status !== 'Collecting');
+  const completedNeeds = userNeeds.filter(n => n.status !== 'Collecting' && n.status !== 'Deleted');
+  // Raised is derived from the user's needs so it always matches what's shown below
+  const totalRaised = userNeeds.reduce((sum, n) => sum + (n.raisedAmount || 0), 0);
+
+  if (!user && userLoading) {
+    return (
+      <View style={[styles.container, { paddingTop: topPadding, alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
 
   if (!user) {
     return (
@@ -112,10 +158,10 @@ export default function PublicProfilePage() {
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
         {/* Header */}
         <View style={[styles.header, Platform.OS === 'web' ? { paddingTop: 16 } : {}]}>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => goBack(router)}>
             <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
           <View style={styles.headerBrand}>
@@ -135,7 +181,7 @@ export default function PublicProfilePage() {
           <View style={styles.avatarWrapper}>
             <GracefulImage uri={user.avatar} type="avatar" style={styles.avatar} />
 
-            {user.verified && (
+            {!!user.verified && (
               <View style={styles.verifiedBadge}>
                 <MaterialIcons name="verified" size={20} color={Colors.primary} />
               </View>
@@ -158,12 +204,12 @@ export default function PublicProfilePage() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <MaterialIcons name="trending-up" size={22} color={Colors.primary} />
-            <Text style={styles.statNumber}>${user.totalRaised}</Text>
+            <Text style={styles.statNumber}>${totalRaised.toLocaleString()}</Text>
             <Text style={styles.statLabel}>Raised</Text>
           </View>
           <View style={styles.statCard}>
             <MaterialIcons name="favorite" size={22} color={Colors.secondary} />
-            <Text style={styles.statNumber}>${user.totalGiven}</Text>
+            <Text style={styles.statNumber}>${(user.totalGiven || 0).toLocaleString()}</Text>
             <Text style={styles.statLabel}>Given</Text>
           </View>
           <View style={styles.statCard}>
@@ -240,7 +286,7 @@ export default function PublicProfilePage() {
                   onPress={() => router.push(`/share/${need.id}`)}
                   activeOpacity={0.8}
                 >
-                  {need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.needPhoto} category={need.category} />}
+                  {!!need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.needPhoto} category={need.category} />}
 
                   <View style={styles.needContent}>
                     <View style={styles.needCategoryRow}>
@@ -278,7 +324,7 @@ export default function PublicProfilePage() {
         {completedNeeds.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Completed</Text>
+              <Text style={styles.sectionTitle}>Past Needs</Text>
               <View style={[styles.sectionBadge, { backgroundColor: Colors.secondaryLight }]}>
                 <Text style={[styles.sectionBadgeText, { color: Colors.secondary }]}>{completedNeeds.length}</Text>
               </View>
@@ -290,15 +336,20 @@ export default function PublicProfilePage() {
                 onPress={() => router.push(`/need/${need.id}`)}
                 activeOpacity={0.8}
               >
-                {need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.completedPhoto} category={need.category} />}
+                {!!need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.completedPhoto} category={need.category} />}
 
                 <View style={styles.completedContent}>
                   <Text style={styles.completedTitle} numberOfLines={1}>{need.title}</Text>
                   <Text style={styles.completedAmount}>${need.raisedAmount} raised</Text>
-                  <View style={styles.completedBadge}>
-                    <MaterialIcons name="check-circle" size={12} color={Colors.success} />
-                    <Text style={styles.completedBadgeText}>{need.status}</Text>
-                  </View>
+                  {(() => {
+                    const funded = need.raisedAmount >= need.goalAmount || need.status === 'Paid';
+                    return (
+                      <View style={styles.completedBadge}>
+                        <MaterialIcons name={funded ? 'check-circle' : 'schedule'} size={12} color={funded ? Colors.success : Colors.textLight} />
+                        <Text style={[styles.completedBadgeText, !funded && { color: Colors.textLight }]}>{funded ? 'Funded' : need.status}</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </TouchableOpacity>
             ))}

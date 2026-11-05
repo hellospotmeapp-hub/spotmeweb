@@ -4,10 +4,12 @@ import {
   Platform, ActivityIndicator, Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
-import { supabase, safeInvoke } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
+import { supabase, safeInvoke } from '@/lib/supabase';
+import { showAlert } from '@/lib/alert';
 
 // ── Tier definitions ──────────────────────────────────────────
 const TIERS = [
@@ -104,7 +106,7 @@ export default function SpotterTiersScreen() {
       });
 
       if (error || !data?.url) {
-        Alert.alert('Something went wrong', error?.message || data?.error || 'Could not start subscription. Please try again.');
+        showAlert('Something went wrong', error?.message || data?.error || 'Could not start subscription. Please try again.');
         return;
       }
 
@@ -114,7 +116,7 @@ export default function SpotterTiersScreen() {
         router.push({ pathname: '/spotter-success', params: { url: data.url } });
       }
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Could not start subscription.');
+      showAlert('Error', err.message || 'Could not start subscription.');
     } finally {
       setLoadingTier(null);
     }
@@ -122,7 +124,7 @@ export default function SpotterTiersScreen() {
 
   const handleCancel = async () => {
     if (!activeSub) return;
-    Alert.alert(
+    showAlert(
       'Cancel Subscription',
       "You'll keep your Spotter status until the end of the billing period. Cancel?",
       [
@@ -133,11 +135,11 @@ export default function SpotterTiersScreen() {
               const { error } = await safeInvoke('spotter-subscription', {
                 body: { action: 'cancel_spotter_subscription', spotterId: activeSub.id },
               });
-              if (error) { Alert.alert('Error', error.message); return; }
+              if (error) { showAlert('Error', error.message); return; }
               setActiveSub(null);
-              Alert.alert('Cancelled', 'Your subscription has been cancelled. Thank you for spotting needs!');
+              showAlert('Cancelled', 'Your subscription has been cancelled. Thank you for spotting needs!');
             } catch (err: any) {
-              Alert.alert('Error', err.message);
+              showAlert('Error', err.message);
             }
           }
         },
@@ -149,12 +151,12 @@ export default function SpotterTiersScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header bar */}
       <View style={styles.headerBar}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+        <TouchableOpacity onPress={() => goBack(router)} style={styles.closeBtn}>
           <MaterialIcons name="close" size={24} color={Colors.text} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
@@ -185,7 +187,7 @@ export default function SpotterTiersScreen() {
         {/* Tier cards */}
         {TIERS.map((tier) => (
           <View key={tier.id} style={[styles.card, activeSub?.tier === tier.id && styles.cardActive]}>
-            {tier.badge && (
+            {!!tier.badge && (
               <View style={[styles.badge, { backgroundColor: tier.color }]}>
                 <Text style={styles.badgeText}>🔥 {tier.badge}</Text>
               </View>

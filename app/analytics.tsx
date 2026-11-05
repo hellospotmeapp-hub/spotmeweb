@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, TextInput, Modal } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
-import { useApp } from '@/app/lib/store';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
+import { useApp } from '@/lib/store';
 
 type Period = 'daily' | 'weekly' | 'monthly';
 type Tab = 'overview' | 'payments' | 'webhooks' | 'config' | 'health';
@@ -72,8 +73,8 @@ function MetricCard({ icon, label, value, color, subtitle, trend }: {
       </View>
       <Text style={s.metricValue}>{value}</Text>
       <Text style={s.metricLabel}>{label}</Text>
-      {subtitle && <Text style={s.metricSub}>{subtitle}</Text>}
-      {trend && <Text style={[s.metricTrend, { color: trend.startsWith('+') ? Colors.success : trend.startsWith('-') ? Colors.error : Colors.textLight }]}>{trend}</Text>}
+      {!!subtitle && <Text style={s.metricSub}>{subtitle}</Text>}
+      {!!trend && <Text style={[s.metricTrend, { color: trend.startsWith('+') ? Colors.success : trend.startsWith('-') ? Colors.error : Colors.textLight }]}>{trend}</Text>}
     </View>
   );
 }
@@ -108,7 +109,7 @@ function StatusIndicator({ ok, label, detail }: { ok: boolean; label: string; de
       <View style={[s.statusDot, { backgroundColor: ok ? Colors.success : Colors.error }]} />
       <View style={{ flex: 1 }}>
         <Text style={s.statusLabel}>{label}</Text>
-        {detail && <Text style={s.statusDetail}>{detail}</Text>}
+        {!!detail && <Text style={s.statusDetail}>{detail}</Text>}
       </View>
       <MaterialIcons name={ok ? 'check-circle' : 'error'} size={18} color={ok ? Colors.success : Colors.error} />
     </View>
@@ -204,51 +205,19 @@ export default function AnalyticsDashboard() {
     } catch {}
   };
 
+  // Stripe keys never pass through the browser. They are Supabase Edge Function
+  // secrets (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET), set in the Supabase dashboard
+  // under Edge Functions → Secrets, or with `supabase secrets set`.
+  const STRIPE_SECRETS_HELP = 'Stripe keys are stored as Supabase secrets. Set them in Supabase → Edge Functions → Secrets.';
+
   const saveStripeKey = async () => {
-    if (!stripeKeyInput.startsWith('sk_')) {
-      setKeyMessage({ text: 'Key must start with sk_test_ or sk_live_', success: false });
-      return;
-    }
-    setSavingKey(true);
-    try {
-      const { data } = await supabase.functions.invoke('stripe-connect', {
-        body: { action: 'update_stripe_key', userId: currentUser.id, stripeSecretKey: stripeKeyInput },
-      });
-      if (data?.success) {
-        setKeyMessage({ text: `Key saved! Mode: ${data.isTestMode ? 'Test' : 'Live'}`, success: true });
-        setStripeKeyInput('');
-        fetchConnectConfig();
-      } else {
-        setKeyMessage({ text: data?.error || 'Failed to save key', success: false });
-      }
-    } catch (err: any) {
-      setKeyMessage({ text: err.message, success: false });
-    }
-    setSavingKey(false);
-    setTimeout(() => setKeyMessage(null), 5000);
+    setKeyMessage({ text: STRIPE_SECRETS_HELP, success: false });
+    setTimeout(() => setKeyMessage(null), 6000);
   };
 
   const saveWebhookSecret = async () => {
-    if (!webhookSecretInput.startsWith('whsec_')) {
-      setKeyMessage({ text: 'Secret must start with whsec_', success: false });
-      return;
-    }
-    setSavingKey(true);
-    try {
-      const res = await supabase.from('app_secrets').upsert({
-        key: 'STRIPE_WEBHOOK_SECRET',
-        value: webhookSecretInput,
-        description: 'Stripe Webhook Signing Secret',
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'key' });
-      setKeyMessage({ text: 'Webhook secret saved! Signature verification is now active.', success: true });
-      setWebhookSecretInput('');
-      fetchConnectConfig();
-    } catch (err: any) {
-      setKeyMessage({ text: err.message, success: false });
-    }
-    setSavingKey(false);
-    setTimeout(() => setKeyMessage(null), 5000);
+    setKeyMessage({ text: STRIPE_SECRETS_HELP, success: false });
+    setTimeout(() => setKeyMessage(null), 6000);
   };
 
   useEffect(() => {
@@ -288,7 +257,7 @@ export default function AnalyticsDashboard() {
         <MaterialIcons name="lock" size={56} color={Colors.borderLight} />
         <Text style={s.emptyTitle}>Admin Access Required</Text>
         <Text style={s.emptySubtitle}>This dashboard is restricted to administrators.</Text>
-        <TouchableOpacity style={s.secondaryBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.secondaryBtn} onPress={() => goBack(router)}>
           <Text style={s.secondaryBtnText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -315,13 +284,13 @@ export default function AnalyticsDashboard() {
     <View style={[s.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Payment Analytics</Text>
           <View style={s.headerBadges}>
-            {sc?.hasSecretKey && (
+            {!!sc?.hasSecretKey && (
               <View style={[s.modeBadge, { backgroundColor: sc.keyMode === 'live' ? Colors.success + '20' : Colors.accent + '20' }]}>
                 <View style={[s.modeDot, { backgroundColor: sc.keyMode === 'live' ? Colors.success : Colors.accent }]} />
                 <Text style={[s.modeText, { color: sc.keyMode === 'live' ? Colors.success : Colors.accent }]}>
@@ -329,7 +298,7 @@ export default function AnalyticsDashboard() {
                 </Text>
               </View>
             )}
-            {sc?.signatureVerification && (
+            {!!sc?.signatureVerification && (
               <View style={[s.modeBadge, { backgroundColor: Colors.success + '20' }]}>
                 <MaterialIcons name="verified-user" size={10} color={Colors.success} />
                 <Text style={[s.modeText, { color: Colors.success }]}>Verified</Text>
@@ -343,7 +312,7 @@ export default function AnalyticsDashboard() {
       </View>
 
       {/* Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={s.tabRow}>
         {([
           { id: 'overview', label: 'Overview', icon: 'dashboard' },
           { id: 'payments', label: 'Payments', icon: 'payments' },
@@ -378,19 +347,19 @@ export default function AnalyticsDashboard() {
         </View>
       )}
 
-      {keyMessage && (
+      {!!keyMessage && (
         <View style={[s.messageBanner, { backgroundColor: keyMessage.success ? Colors.success + '15' : Colors.error + '15' }]}>
           <MaterialIcons name={keyMessage.success ? 'check-circle' : 'error'} size={16} color={keyMessage.success ? Colors.success : Colors.error} />
           <Text style={[s.messageText, { color: keyMessage.success ? Colors.success : Colors.error }]}>{keyMessage.text}</Text>
         </View>
       )}
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAnalytics(true); }} tintColor={Colors.primary} />}
       >
-        {loading && !analytics ? (
+        {!!loading && !analytics ? (
           <View style={s.loadingWrap}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={s.loadingText}>Loading analytics...</Text>

@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { View, Image, Animated, StyleSheet, ImageStyle, ViewStyle, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius } from '@/app/lib/theme';
-import { NEED_PHOTOS } from '@/app/lib/data';
+import { Colors, BorderRadius } from '@/lib/theme';
+import { NEED_PHOTOS } from '@/lib/data';
 
-const DEFAULT_AVATAR = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png';
 
 // ─── In-memory failed URL cache ────────────────────────────────────────────
 const _failedUrls = new Set<string>();
@@ -160,14 +159,11 @@ function GracefulImageInner({
   }, [fadeAnim, uri]);
 
   // Determine the effective URI
-  const effectiveUri =
-    hasError || !uri
-      ? type === 'avatar'
-        ? DEFAULT_AVATAR
-        : getFallbackPhoto(category)
-      : uri;
+  const effectiveUri = hasError || !uri ? getFallbackPhoto(category) : uri;
 
   const shouldShowSkeleton = isLoading && !!uri && !hasError;
+  // No photo (or it failed): a neutral person icon, never someone else's face
+  const showAvatarIcon = type === 'avatar' && (!uri || hasError);
 
   // Compute dimensions from style for the skeleton
   const flatStyle = StyleSheet.flatten(style) || {};
@@ -183,7 +179,7 @@ function GracefulImageInner({
       ]}
     >
       {/* Shimmer skeleton layer */}
-      {shouldShowSkeleton && (
+      {!!shouldShowSkeleton && (
         <Animated.View
           style={[
             StyleSheet.absoluteFill,
@@ -212,7 +208,15 @@ function GracefulImageInner({
         </Animated.View>
       )}
 
-      {/* Actual image with fade-in */}
+      {showAvatarIcon ? (
+        <View style={[StyleSheet.absoluteFill, styles.avatarPlaceholder]}>
+          <MaterialIcons
+            name="person"
+            size={Math.min(Number(width) || 40, Number(height) || 40) * 0.55}
+            color={Colors.textLight}
+          />
+        </View>
+      ) : (
       <Animated.View
         style={[StyleSheet.absoluteFill, { opacity: shouldShowSkeleton ? fadeAnim : 1 }]}
       >
@@ -226,9 +230,10 @@ function GracefulImageInner({
           {...(Platform.OS === 'web' ? { loading: 'lazy' as any } : {})}
         />
       </Animated.View>
+      )}
 
       {/* Error indicator overlay for photos (subtle) */}
-      {hasError && type === 'photo' && !!uri && (
+      {!!hasError && type === 'photo' && !!uri && (
         <View style={styles.errorBadge}>
           <MaterialIcons name="broken-image" size={12} color={Colors.white} />
         </View>
@@ -250,6 +255,7 @@ const GracefulImage = memo(GracefulImageInner, (prev, next) => {
 export default GracefulImage;
 
 const styles = StyleSheet.create({
+  avatarPlaceholder: { backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
   errorBadge: {
     position: 'absolute',
     bottom: 6,

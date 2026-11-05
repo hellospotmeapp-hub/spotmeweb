@@ -1,35 +1,37 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { supabase, safeInvoke } from './supabase';
-import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate, MOCK_NOTIFICATIONS, MOCK_THANK_YOU_UPDATES, CURRENT_USER } from './data';
+import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate } from './data';
 import { offlineManager, QueuedAction } from './offlineManager';
 
 
 // In-memory fallback for when localStorage is unavailable
 const memoryStore: Record<string, string> = {};
 
+// Web: localStorage. Native: AsyncStorage (persists across app restarts).
+// memoryStore mirrors writes so reads work even if persistent storage fails.
 const storage = {
   async get(key: string): Promise<string | null> {
-    if (Platform.OS === 'web') {
-      try {
-        const val = localStorage.getItem(key);
-        if (val !== null) return val;
-      } catch {}
-      return memoryStore[key] || null;
-    }
+    try {
+      const val = Platform.OS === 'web' ? localStorage.getItem(key) : await AsyncStorage.getItem(key);
+      if (val !== null) return val;
+    } catch {}
     return memoryStore[key] || null;
   },
   async set(key: string, value: string): Promise<void> {
     memoryStore[key] = value;
-    if (Platform.OS === 'web') {
-      try { localStorage.setItem(key, value); } catch {}
-    }
+    try {
+      if (Platform.OS === 'web') localStorage.setItem(key, value);
+      else await AsyncStorage.setItem(key, value);
+    } catch {}
   },
   async remove(key: string): Promise<void> {
     delete memoryStore[key];
-    if (Platform.OS === 'web') {
-      try { localStorage.removeItem(key); } catch {}
-    }
+    try {
+      if (Platform.OS === 'web') localStorage.removeItem(key);
+      else await AsyncStorage.removeItem(key);
+    } catch {}
   },
 };
 
@@ -437,6 +439,9 @@ interface PayoutDashboard {
     directDepositCount: number;
     platformCollectCount: number;
     pendingAmount: number;
+    pendingTransfers: number;
+    totalTransferred: number;
+    completedTransfers: number;
     paidAmount: number;
     totalPayments: number;
   };
@@ -515,7 +520,7 @@ interface AppState {
   contribute: (needId: string, amount: number, note?: string) => void;
   contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string, guestPhone?: string) => Promise<PaymentResult>;
   spreadWithPayment: (allocations: any[], totalAmount: number, spreadMode: string, isAnonymous?: boolean) => Promise<PaymentResult>;
-  createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => void;
+  createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => Promise<{ success: boolean; queued?: boolean; error?: string }>;
   editNeed: (needId: string, updates: { title?: string; message?: string; photo?: string; goalAmount?: number }) => Promise<boolean>;
   deleteNeed: (needId: string) => Promise<{ success: boolean; error?: string }>;
   requestPayout: (needId: string) => Promise<PayoutResult>;
@@ -526,16 +531,16 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string) => void;
   login: (name: string, email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (name: string, email: string, password: string, bio?: string, city?: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (name: string, email: string, password: string, bio?: string, city?: string) => Promise<{ success: boolean; error?: string; needsConfirmation?: boolean }>;
   logout: () => void;
-  updateProfile: (updates: Partial<User>) => void;
+  updateProfile: (updates: Partial<User>) => Promise<void>;
   getFilteredNeeds: () => Need[];
   unreadNotificationCount: number;
   refreshNeeds: () => Promise<void>;
   fetchActivity: () => Promise<void>;
   subscribeToPush: () => Promise<boolean>;
   unsubscribeFromPush: () => Promise<void>;
-  setupPayouts: () => Promise<{ success: boolean; onboardingUrl?: string; error?: string }>;
+  setupPayouts: () => Promise<{ success: boolean; onboardingUrl?: string; accountId?: string; error?: string }>;
   checkPayoutStatus: () => Promise<PayoutStatus>;
   completePayoutOnboarding: () => Promise<boolean>;
   fetchFailedPayments: () => Promise<void>;
@@ -553,7 +558,8 @@ interface AppState {
   updateCartItem: (needId: string, updates: Partial<CartItem>) => void;
   clearCart: () => void;
   isInCart: (needId: string) => boolean;
-  resetPassword: (email: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (email: string, newPassword: string) => Promise<{ success: boolean; error?: string; emailSent?: boolean }>;
+  passwordRecovery: boolean;
   saveNeed: (needId: string) => void;
   unsaveNeed: (needId: string) => void;
   isSaved: (needId: string) => boolean;
@@ -680,8 +686,8 @@ const AppContext = createContext<AppState | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [needs, setNeeds] = useState<Need[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
-  const [thankYouUpdates, setThankYouUpdates] = useState<ThankYouUpdate[]>(MOCK_THANK_YOU_UPDATES);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [thankYouUpdates, setThankYouUpdates] = useState<ThankYouUpdate[]>([]);
 
   const _initial = getInitialAuthState();
   const [currentUser, setCurrentUser] = useState<User>(_initial.user);
@@ -701,6 +707,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [savedNeeds, setSavedNeeds] = useState<string[]>(getInitialSavedNeeds);
   const [cart, setCart] = useState<CartItem[]>(getInitialCart);
   const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   // ---- PUSH NOTIFICATION PROMPT STATE ----
   const [showPushPrompt, setShowPushPrompt] = useState(false);
@@ -836,7 +843,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           try { setSavedNeeds(JSON.parse(savedNeedsData)); } catch {}
         }
         if (Platform.OS === 'web' && 'Notification' in window) {
-          setPushEnabled(Notification.permission === 'granted');
+          setPushEnabled(window.Notification.permission === 'granted');
         }
 
         // ---- PENDING NEEDS: Restore any needs cached in localStorage ----
@@ -857,17 +864,68 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         await fetchNeeds();
-      } catch {}
+      } catch (e: any) {
+        console.warn('[SpotMe] Startup failed:', e?.message);
+      }
       setIsLoading(false);
     })();
   }, []);
 
 
 
+  // ---- SUPABASE AUTH SESSION ----
+  // The Supabase Auth session is the source of truth for who is signed in.
+  // The cached spotme_user only paints the UI quickly while it is confirmed.
+  const signOutLocal = async () => {
+    setIsLoggedIn(false);
+    setCurrentUser(GUEST_USER);
+    try {
+      await storage.remove('spotme_user');
+      await storage.remove('spotme_email');
+    } catch {}
+  };
+
+  const loadSessionUser = async (): Promise<User | null> => {
+    const { data, error } = await safeInvoke('process-contribution', { body: { action: 'get_profile' } }, 10000);
+    if (error || !data?.success || !data.profile) return null;
+    const user: User = data.profile;
+    setCurrentUser(user);
+    setIsLoggedIn(true);
+    try { await storage.set('spotme_user', JSON.stringify(user)); } catch {}
+    return user;
+  };
+
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        try { await storage.set('spotme_email', session.user.email || ''); } catch {}
+        await loadSessionUser();
+      } else if (isLoggedIn) {
+        // Cached login from before Supabase Auth (or an expired session): sign in again
+        console.warn('[SpotMe Auth] No active session, signing out cached user');
+        await signOutLocal();
+      }
+    })().catch(() => {});
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setIsLoggedIn(false);
+        setCurrentUser(GUEST_USER);
+      } else if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   // Check payout status when user logs in
   useEffect(() => {
     if (isLoggedIn && currentUser.id !== 'guest') {
       checkPayoutStatusInternal();
+      fetchNotificationsSilent();
+    } else {
+      setNotifications([]);
     }
   }, [isLoggedIn, currentUser.id]);
 
@@ -886,9 +944,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const fetchNeeds = async () => {
     try {
-      const { data, error } = await safeInvoke('process-contribution', {
+      let { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'fetch_needs' },
-      }, 8000);
+      }, 20000);
+      if (error) {
+        ({ data, error } = await safeInvoke('process-contribution', {
+          body: { action: 'fetch_needs' },
+        }, 20000));
+      }
       if (!error && data?.success && Array.isArray(data.needs)) {
         // Filter out deleted needs BEFORE merging with pending
         const filteredServerNeeds = filterDeletedNeeds(data.needs);
@@ -925,7 +988,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await safeInvoke('process-contribution', {
         body: { action: 'fetch_needs' },
-      }, 8000);
+      }, 20000);
       if (!error && data?.success && Array.isArray(data.needs)) {
         // Filter out deleted needs BEFORE merging with pending
         const filteredServerNeeds = filterDeletedNeeds(data.needs);
@@ -1169,17 +1232,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const returnUrl = Platform.OS === 'web' ? window.location.origin : 'https://spotmeone.com';
 
 
+      // Charge exactly what's allocated to needs that are still open
+      const chargeAmount = Math.round(validAllocations.reduce((s, a) => s + Number(a.amount), 0) * 100) / 100;
       const { data, error } = await supabase.functions.invoke('stripe-checkout', {
         body: {
           action: 'create_checkout',
-          amount: totalAmount,
-          contributorId: currentUser.id !== 'guest' ? currentUser.id : null,
+          amount: chargeAmount,
           contributorName: currentUser.name,
-          contributorAvatar: currentUser.avatar,
           isAnonymous: isAnonymous || false,
           returnUrl,
           type: 'spread',
-          spreadAllocations: validAllocations,
+          spreadAllocations: validAllocations.map(a => ({ needId: a.needId, amount: a.amount })),
         },
       });
 
@@ -1191,7 +1254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const checkoutParams = new URLSearchParams({
               client_secret: data.clientSecret,
               payment_id: data.paymentId || '',
-              amount: String(totalAmount),
+              amount: String(chargeAmount),
               need_title: 'Spread the Love',
               destination_charge: String(!!data.destinationCharge),
               application_fee: String(data.applicationFee || 0),
@@ -1252,7 +1315,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentUser, needs]);
 
   // ---- PAYOUT SETUP (Stripe Connect Onboarding) ----
-  const setupPayouts = useCallback(async (): Promise<{ success: boolean; onboardingUrl?: string; error?: string }> => {
+  const setupPayouts = useCallback(async (): Promise<{ success: boolean; onboardingUrl?: string; accountId?: string; error?: string }> => {
     try {
       if (currentUser.id === 'guest') {
         return { success: false, error: 'Please sign in first' };
@@ -1314,9 +1377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (linkErr || !linkData?.success) {
         return {
           success: false,
-          error: linkData?.error || 'Could not generate your Stripe onboarding link. Please open your Stripe dashboard at dashboard.stripe.com to complete your setup.',
-          accountId: linkData?.accountId,
-          needsSqlSetup: linkData?.needsSqlSetup,
+          error: linkData?.error || 'Could not open Stripe payout setup. Please try again.',
         };
       }
 
@@ -1381,104 +1442,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return completePayoutOnboardingInternal();
   }, [currentUser.id]);
 
-  // Legacy contribute (optimistic + DB)
-  const contribute = useCallback(async (needId: string, amount: number, note?: string) => {
-    const need = needs.find(n => n.id === needId);
-    
-    // ---- EXPIRATION CHECK ----
-    if (need && (need.status === 'Expired' || isNeedExpiredByTime(need))) {
-      setNotifications(prev => [{
-        id: `not_${Date.now()}`,
-        type: 'welcome' as const,
-        title: 'Need Expired',
-        message: 'This need has expired and is no longer accepting contributions.',
-        timestamp: new Date().toISOString(),
-        read: false,
-        needId,
-      }, ...prev]);
-      return;
-    }
+  // Contributions are recorded server-side once Stripe confirms the payment;
+  // this only refreshes the needs so the UI picks up the new totals.
+  const contribute = useCallback(async (_needId: string, _amount: number, _note?: string) => {
+    await fetchNeedsSilent();
+  }, []);
 
-    setNeeds(prev => prev.map(n => {
-      if (n.id === needId) {
-        const newRaised = Math.min(n.raisedAmount + amount, n.goalAmount);
-        const newContribution: Contribution = {
-          id: `c_${Date.now()}`,
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userAvatar: currentUser.avatar,
-          amount,
-          note,
-          timestamp: new Date().toISOString(),
-        };
-        const isGoalMet = newRaised >= n.goalAmount;
-        return {
-          ...n,
-          raisedAmount: newRaised,
-          contributorCount: n.contributorCount + 1,
-          contributions: [newContribution, ...n.contributions],
-          status: isGoalMet ? 'Goal Met' as const : n.status,
-        };
-      }
-      return n;
-    }));
-
-    if (need) {
-      const newNotif: Notification = {
-        id: `not_${Date.now()}`,
-        type: 'contribution',
-        title: 'New Spot!',
-        message: `${currentUser.name} spotted $${amount} on "${need.title}"`,
-        timestamp: new Date().toISOString(),
-        read: false,
-        needId,
-        avatar: currentUser.avatar,
-      };
-      setNotifications(prev => [newNotif, ...prev]);
-    }
-
-    setCurrentUser(prev => {
-      const updated = { ...prev, totalGiven: prev.totalGiven + amount };
-      storage.set('spotme_user', JSON.stringify(updated));
-      return updated;
-    });
-
-    try {
-      await supabase.functions.invoke('process-contribution', {
-        body: {
-          action: 'contribute',
-          needId,
-          amount,
-          note,
-          contributorId: currentUser.id !== 'guest' ? currentUser.id : null,
-          contributorName: currentUser.name,
-          contributorAvatar: currentUser.avatar,
-          isAnonymous: false,
-        },
-      });
-      offlineManager.markOnline();
-      setTimeout(() => fetchNeedsSilent(), 1000);
-    } catch (err) {
-      offlineManager.enqueue({
-        type: 'contribution',
-        payload: {
-          needId,
-          amount,
-          note,
-          contributorId: currentUser.id !== 'guest' ? currentUser.id : null,
-          contributorName: currentUser.name,
-          contributorAvatar: currentUser.avatar,
-          isAnonymous: false,
-        },
-      });
-      setPendingActions(offlineManager.pendingCount);
-    }
-  }, [currentUser, needs]);
-
-  const createNeed = useCallback(async (needData: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => {
-    // No need limit — users can create unlimited needs
-
-
+  const createNeed = useCallback(async (needData: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>): Promise<{ success: boolean; queued?: boolean; error?: string }> => {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + NEED_EXPIRATION_MS).toISOString();
 
@@ -1490,6 +1460,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       userAvatar: currentUser.avatar,
       userCity: currentUser.city,
       status: 'Collecting',
+      verificationStatus: 'pending',
       raisedAmount: 0,
       contributorCount: 0,
       contributions: [],
@@ -1504,26 +1475,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     savePendingNeed(localNeed);
 
     try {
-        const { data: insertedNeed, error: insertError } = await supabase
-          .from('needs')
-          .insert({
+        const { data, error: networkError } = await safeInvoke('process-contribution', {
+          body: {
+            action: 'create_need',
             title: needData.title,
             message: needData.message,
             category: needData.category,
-            goal_amount: needData.goalAmount,
+            goalAmount: needData.goalAmount,
             photo: needData.photo || '',
-            user_id: currentUser.id !== 'guest' ? currentUser.id : null,
-            user_name: currentUser.name,
-            user_avatar: currentUser.avatar,
-            user_city: currentUser.city,
-            expires_at: expiresAt,
-            status: 'Collecting',
-            verification_status: 'pending',
-            raised_amount: 0,
-            contributor_count: 0,
-          })
-          .select()
-          .single();
+          },
+        }, 15000);
+        if (networkError) throw new Error(networkError.message);
+        const insertedNeed = data?.success ? data.need : null;
+        const insertError = insertedNeed ? null : { message: data?.error };
 
         if (insertError || !insertedNeed) {
           setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
@@ -1537,18 +1501,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             timestamp: new Date().toISOString(),
             read: false,
           }, ...prev]);
-          return;
+          return { success: false, error: insertError?.message || 'Your need could not be saved. Please try again.' };
         }
 
         // Direct insert confirmed — update local state with server-assigned ID
         setNeeds(prev => prev.map(n => n.id === localNeed.id
-          ? { ...localNeed, id: insertedNeed.id, expiresAt: insertedNeed.expires_at || expiresAt }
+          ? { ...localNeed, ...insertedNeed }
           : n
         ));
         removePendingNeed(localNeed.id);
         console.log(`[SpotMe PendingNeeds] Need saved: ${localNeed.id} → ${insertedNeed.id}`);
         offlineManager.markOnline();
-  
+        return { success: true };
     } catch (err) {
       // Server call failed — need stays in pending cache for recovery on next load
       console.log(`[SpotMe PendingNeeds] Server call failed, need preserved in pending cache: ${localNeed.id}`);
@@ -1560,14 +1524,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           category: needData.category,
           goalAmount: needData.goalAmount,
           photo: needData.photo,
-          userId: currentUser.id !== 'guest' ? currentUser.id : null,
-          userName: currentUser.name,
-          userAvatar: currentUser.avatar,
-          userCity: currentUser.city,
-          expiresAt,
         },
       });
       setPendingActions(offlineManager.pendingCount);
+      return { success: true, queued: true };
     }
   }, [currentUser, needs]);
 
@@ -1621,14 +1581,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications(prev => [newNotif, ...prev]);
 
     try {
-      const { data, error } = await supabase.functions.invoke('stripe-checkout', {
-        body: { 
-          action: 'request_payout', 
-          needId, 
-          userId: currentUser.id,
-          amount: need.raisedAmount,
-          needTitle: need.title,
-        },
+      const { data, error } = await supabase.functions.invoke('process-contribution', {
+        body: { action: 'request_payout', needId },
       });
 
       if (error || !data?.success) {
@@ -1667,7 +1621,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentUser.id, needs]);
 
 
-  const reportNeed = useCallback((_needId: string, _reason: string) => {
+  const reportNeed = useCallback((needId: string, reason: string) => {
+    supabase.functions.invoke('process-contribution', {
+      body: { action: 'report', needId, reason },
+    }).catch(() => {});
     const newNotif: Notification = {
       id: `not_${Date.now()}`,
       type: 'welcome',
@@ -1701,242 +1658,87 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [currentUser.id]);
 
-  const generateLocalId = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let id = 'local_';
-    for (let i = 0; i < 20; i++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return id;
-  };
-
-  const signup = useCallback(async (name: string, email: string, password: string, bio?: string, city?: string): Promise<{ success: boolean; error?: string }> => {
+  const signup = useCallback(async (name: string, email: string, password: string, bio?: string, city?: string): Promise<{ success: boolean; error?: string; needsConfirmation?: boolean }> => {
     logoutIntentionalRef.current = false; // Reset: user is actively signing up
     try {
 
-      let storedEmail: string | null = null;
-      try { storedEmail = await storage.get('spotme_email'); } catch {}
+      // The profile row is created by the on_auth_user_created trigger from this metadata
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: (name && name.trim()) ? name.trim() : 'SpotMe User',
+            bio: (bio && bio.trim()) ? bio.trim() : '',
+            city: (city && city.trim()) ? city.trim() : '',
+            avatar: '',
+          },
+          emailRedirectTo: Platform.OS === 'web' ? `${window.location.origin}/auth` : undefined,
+        },
+      });
 
-      if (storedEmail === email) {
-        try {
-          const storedUser = await storage.get('spotme_user');
-          if (storedUser) {
-            const user = JSON.parse(storedUser);
-            setCurrentUser(user);
-            setIsLoggedIn(true);
-            return { success: true };
-          }
-        } catch {}
-      }
-
-      // Establish a real Supabase auth session immediately so the user gets
-      // their permanent UUID from the start. This means any needs or profile
-      // updates they make right after signup will pass RLS — no 3-second window
-      // where writes fail because they still have a local_ ID.
-      let immediateAuthId: string | null = null;
-      try {
-        const { data: authData } = await supabase.auth.signUp({ email, password });
-        if (authData?.user?.id) {
-          immediateAuthId = authData.user.id;
-          console.log('[signup] Auth session established immediately, UUID:', immediateAuthId.slice(0, 8));
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('already registered') || msg.includes('already exists')) {
+          return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
         }
-      } catch (authErr) {
-        console.warn('[signup] Immediate auth signUp failed (will retry via create_profile):', authErr);
+        if (msg.includes('rate limit')) {
+          return { success: false, error: "We can't send more confirmation emails right now. Please try again in a little while." };
+        }
+        return { success: false, error: error.message };
+      }
+      // Supabase hides existing emails behind a fake success with no identities
+      if (data.user && data.user.identities && data.user.identities.length === 0) {
+        return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+      }
+      if (!data.session) {
+        return { success: false, needsConfirmation: true, error: `We sent a confirmation link to ${email}. Open it to activate your account, then sign in.` };
       }
 
-      const avatarIndex = Math.floor(Math.random() * 8);
-      const avatarUrls = [
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056573_451fb65f.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037041799_20c595bd.jpg',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037064960_2d7609c5.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037049254_f950ccb1.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037060145_0ca59f8e.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037062543_b10ff8a6.png',
-        'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037046421_52a3035d.jpg',
-      ];
+      try { await storage.set('spotme_email', email); } catch {}
+      const user = await loadSessionUser();
+      if (!user) return { success: false, error: 'Your account was created but your profile could not be loaded. Please sign in.' };
 
-      const localUser: User = {
-        id: immediateAuthId || generateLocalId(),
-        name: (name && name.trim()) ? name.trim() : 'SpotMe User',
-        avatar: avatarUrls[avatarIndex] || '',
-        bio: (bio && bio.trim()) ? bio.trim() : '',
-        city: (city && city.trim()) ? city.trim() : '',
-        joinedDate: new Date().toISOString(),
-        totalRaised: 0,
-        totalGiven: 0,
-        verified: false,
-      };
-
-      try {
-        await storage.set('spotme_user', JSON.stringify(localUser));
-        await storage.set('spotme_email', email);
-        await storage.set('spotme_pass', password);
-      } catch {}
-
-      setCurrentUser(localUser);
-      setIsLoggedIn(true);
-
-      try {
-        setNotifications(prev => [{
-          id: `not_${Date.now()}`,
-          type: 'welcome' as const,
-          title: 'Welcome to SpotMe!',
-          message: `Hey ${localUser.name}! You're in. Start by browsing Needs or creating your own.`,
-          timestamp: new Date().toISOString(),
-          read: false,
-        }, ...prev]);
-      } catch {}
-
-      setTimeout(async () => {
-          try {
-            const { data: profile, error: profileError } = await supabase
-              .from('profiles')
-              .upsert({
-                id: localUser.id,
-                name: localUser.name,
-                email,
-                avatar: localUser.avatar || '',
-                bio: localUser.bio || '',
-                city: localUser.city || '',
-                verified: false,
-                trust_score: 0,
-                total_raised: 0,
-                total_given: 0,
-              }, { onConflict: 'email' })
-              .select()
-              .single();
-            if (!profileError && profile) {
-              const syncedUser: User = {
-                id: profile.id,
-                name: profile.name || localUser.name,
-                avatar: profile.avatar || localUser.avatar,
-                bio: profile.bio || localUser.bio,
-                city: profile.city || localUser.city,
-                joinedDate: profile.created_at || localUser.joinedDate,
-                totalRaised: 0, totalGiven: 0, verified: false,
-              };
-              try { await storage.set('spotme_user', JSON.stringify(syncedUser)); } catch {}
-              setCurrentUser(syncedUser);
-              // Establish a real Supabase auth session so writes pass RLS
-              supabase.auth.signInWithPassword({ email, password }).catch(() => {});
-            }
-          } catch {}
-        }, 3000);
-
+      setNotifications(prev => [{
+        id: `not_${Date.now()}`,
+        type: 'welcome' as const,
+        title: 'Welcome to SpotMe!',
+        message: `Hey ${user.name}! You're in. Start by browsing Needs or creating your own.`,
+        timestamp: new Date().toISOString(),
+        read: false,
+      }, ...prev]);
       return { success: true };
     } catch (err: any) {
       return { success: false, error: `Signup failed: ${err?.message || 'Unknown error'}` };
     }
   }, []);
 
-  const login = useCallback(async (name: string, email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
+  const login = useCallback(async (_name: string, email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     logoutIntentionalRef.current = false; // Reset: user is actively logging in
+    if (!email || !password) return { success: false, error: 'Please enter your email and password' };
     try {
-
-      let storedEmail: string | null = null;
-      let storedPass: string | null = null;
-      let storedUser: string | null = null;
-      
-      try {
-        storedEmail = await storage.get('spotme_email');
-        storedPass = await storage.get('spotme_pass');
-        storedUser = await storage.get('spotme_user');
-      } catch {}
-
-      if (storedEmail === email && storedUser) {
-        if (password && storedPass && storedPass !== password) {
-          return { success: false, error: 'Incorrect password' };
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('email not confirmed')) {
+          return { success: false, error: 'Please confirm your email first. Check your inbox for the link we sent.' };
         }
-        try {
-          const user = JSON.parse(storedUser);
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-          // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
-          const pass = password || storedPass;
-          if (pass) {
-            supabase.auth.signInWithPassword({ email, password: pass }).catch(() => {});
-          }
-
-          // FIX: Always refresh profile from DB in the background so stale localStorage
-          // data (e.g. "SpotMe User" from the signup window) gets corrected immediately.
-          const passForRefresh = pass;
-          setTimeout(async () => {
-            try {
-              const { data: freshData } = await safeInvoke('process-contribution', {
-                body: { action: 'login', email, password: passForRefresh || '' },
-              }, 8000);
-              if (freshData?.success && freshData.profile) {
-                const freshUser: User = {
-                  id: freshData.profile.id || user.id,
-                  name: freshData.profile.name || user.name,
-                  avatar: freshData.profile.avatar || user.avatar,
-                  bio: freshData.profile.bio || user.bio,
-                  city: freshData.profile.city || user.city,
-                  joinedDate: freshData.profile.joinedDate || user.joinedDate,
-                  totalRaised: freshData.profile.totalRaised || 0,
-                  totalGiven: freshData.profile.totalGiven || 0,
-                  verified: freshData.profile.verified || false,
-                };
-                setCurrentUser(freshUser);
-                try { await storage.set('spotme_user', JSON.stringify(freshUser)); } catch {}
-
-                // If the name or avatar changed from what was in localStorage,
-                // sync the fresh values to all existing need cards in the DB.
-                if (freshUser.name !== user.name || freshUser.avatar !== user.avatar) {
-                  const syncUpdates: Record<string, any> = {};
-                  if (freshUser.name !== user.name) syncUpdates.name = freshUser.name;
-                  if (freshUser.avatar !== user.avatar) syncUpdates.avatar = freshUser.avatar;
-                  supabase.functions.invoke('process-contribution', {
-                    body: { action: 'update_profile', profileId: freshUser.id, updates: syncUpdates },
-                  }).catch(() => {});
-                }
-              }
-            } catch {}
-          }, 800);
-
-          return { success: true };
-        } catch {}
+        if (msg.includes('invalid login credentials')) {
+          return { success: false, error: 'Incorrect email or password' };
+        }
+        return { success: false, error: error.message };
       }
-
-      try {
-        const { data, error: serverError } = await safeInvoke('process-contribution', {
-          body: { action: 'login', email, password },
-        }, 8000);
-
-        if (!serverError && data?.success && data.profile) {
-          const user: User = {
-            id: data.profile.id,
-            name: data.profile.name || name || 'SpotMe User',
-            avatar: data.profile.avatar || '',
-            bio: data.profile.bio || '',
-            city: data.profile.city || '',
-            joinedDate: data.profile.joinedDate || new Date().toISOString(),
-            totalRaised: data.profile.totalRaised || 0,
-            totalGiven: data.profile.totalGiven || 0,
-            verified: data.profile.verified || false,
-          };
-          try {
-            await storage.set('spotme_user', JSON.stringify(user));
-            await storage.set('spotme_email', email);
-            if (password) await storage.set('spotme_pass', password);
-          } catch {}
-          // Establish a real Supabase auth session so avatar/profile DB writes pass RLS
-          if (password) {
-            supabase.auth.signInWithPassword({ email, password }).catch(() => {});
-          }
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-          return { success: true };
-        }
-      } catch {}
-
-      const result = await signup(name || 'SpotMe User', email, password || 'default123');
-      return result;
+      try { await storage.set('spotme_email', email); } catch {}
+      const user = await loadSessionUser();
+      if (!user) {
+        await supabase.auth.signOut().catch(() => {});
+        return { success: false, error: 'Could not load your profile. Please try again.' };
+      }
+      return { success: true };
     } catch (err: any) {
       return { success: false, error: `Login failed: ${err?.message || 'Unknown error'}` };
     }
-  }, [signup]);
+  }, []);
 
   const logout = useCallback(async () => {
     // Mark as intentional so the auth recovery guard doesn't fight the logout
@@ -1966,7 +1768,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try { await supabase.auth.signOut(); } catch {}
     await storage.remove('spotme_user');
     await storage.remove('spotme_email');
-    await storage.remove('spotme_pass');
     await storage.remove('spotme_cart');
     await storage.remove('spotme_saved_needs');
   }, [pushEnabled, currentUser.id]);
@@ -1982,18 +1783,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     if (currentUser.id !== 'guest') {
       try {
-        // Re-establish Supabase auth session so the DB update passes RLS policies.
-        // Without this, profile writes silently fail and the name/city reverts on
-        // the next login when the stale DB value is fetched.
-        const storedEmail = await storage.get('spotme_email');
-        const storedPass = await storage.get('spotme_pass');
-        if (storedEmail && storedPass) {
-          await supabase.auth.signInWithPassword({ email: storedEmail, password: storedPass }).catch(() => {});
-        }
-        const { error: invokeErr } = await supabase.functions.invoke('process-contribution', {
-          body: { action: 'update_profile', profileId: currentUser.id, updates },
+        const { data, error: invokeErr } = await supabase.functions.invoke('process-contribution', {
+          body: { action: 'update_profile', updates },
         });
-        if (invokeErr) console.warn('[updateProfile] DB write failed:', invokeErr.message);
+        if (invokeErr || !data?.success) console.warn('[updateProfile] DB write failed:', invokeErr?.message || data?.error);
       } catch (e: any) {
         console.warn('[updateProfile] error:', e?.message);
       }
@@ -2004,7 +1797,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (Platform.OS !== 'web') return false;
     try {
       if (!('Notification' in window) || !('serviceWorker' in navigator)) return false;
-      const permission = await Notification.requestPermission();
+      const permission = await window.Notification.requestPermission();
       if (permission !== 'granted') return false;
 
       const registration = await navigator.serviceWorker.ready;
@@ -2015,7 +1808,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         try {
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
           });
         } catch {
           setPushEnabled(true);
@@ -2070,7 +1863,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       // Step 2: Request notification permission
-      const permission = await Notification.requestPermission();
+      const permission = await window.Notification.requestPermission();
       if (permission !== 'granted') {
         console.log('[SpotMe PushPrompt] Permission denied by user');
         return false;
@@ -2122,7 +1915,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           subscription = await Promise.race([
             registration.pushManager.subscribe({
               userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
             }),
             new Promise<never>((_, reject) =>
               setTimeout(() => reject(new Error('Push subscribe timeout')), 10000)
@@ -2405,28 +2198,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return cart.some(c => c.needId === needId);
   }, [cart]);
 
-  const resetPassword = useCallback(async (email: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+  // Two steps: without a recovery session this emails a reset link; after the
+  // user opens that link (PASSWORD_RECOVERY), it sets the new password.
+  const resetPassword = useCallback(async (email: string, newPassword: string): Promise<{ success: boolean; error?: string; emailSent?: boolean }> => {
     try {
-      const storedEmail = await storage.get('spotme_email');
-      if (storedEmail === email) {
-        await storage.set('spotme_pass', newPassword);
+      if (passwordRecovery) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        if (error) return { success: false, error: error.message };
+        setPasswordRecovery(false);
+        await loadSessionUser();
         return { success: true };
       }
-      try {
-        const { data } = await safeInvoke('process-contribution', {
-          body: { action: 'login', email },
-        }, 8000);
-        if (data?.success && data.profile) {
-          await storage.set('spotme_email', email);
-          await storage.set('spotme_pass', newPassword);
-          return { success: true };
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: Platform.OS === 'web' ? `${window.location.origin}/auth?reset=1` : undefined,
+      });
+      if (error) {
+        if (error.message.toLowerCase().includes('rate limit')) {
+          return { success: false, error: "We can't send more reset emails right now. Please try again in a little while." };
         }
-      } catch {}
-      return { success: false, error: 'No account found with that email address.' };
+        return { success: false, error: error.message };
+      }
+      return { success: true, emailSent: true };
     } catch (err: any) {
       return { success: false, error: err.message || 'Password reset failed' };
     }
-  }, []);
+  }, [passwordRecovery]);
 
   const saveNeed = useCallback((needId: string) => {
     setSavedNeeds(prev => {
@@ -2547,34 +2343,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     setIsSyncing(true);
     const result = await offlineManager.syncQueue(async (action: QueuedAction) => {
-      if (action.type === 'contribution') {
-        const { data, error } = await safeInvoke('process-contribution', {
-          body: { action: 'contribute', ...action.payload },
-        }, 10000);
-        return !error && data?.success;
-      }
+      // Queued offline contributions were never charged; money only moves through checkout
+      if (action.type === 'contribution') return true;
       if (action.type === 'create_need') {
-        const { data: retryNeed, error: retryError } = await supabase
-          .from('needs')
-          .insert({
-            title: action.payload.title,
-            message: action.payload.message,
-            category: action.payload.category,
-            goal_amount: action.payload.goalAmount,
-            photo: action.payload.photo || '',
-            user_id: action.payload.userId,
-            user_name: action.payload.userName,
-            user_avatar: action.payload.userAvatar,
-            user_city: action.payload.userCity,
-            expires_at: action.payload.expiresAt,
-            status: 'Collecting',
-            verification_status: 'pending',
-            raised_amount: 0,
-            contributor_count: 0,
-          })
-          .select()
-          .single();
-        return !retryError && !!retryNeed;
+        const { data, error } = await safeInvoke('process-contribution', {
+          body: { action: 'create_need', ...action.payload },
+        }, 15000);
+        return !error && !!data?.success;
       }
       return false;
     });
@@ -2647,17 +2422,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { success: false, error: err.message };
     }
   }, [currentUser.id]);
-
-  // Auto-expire cron: trigger every 5 minutes from client
-  const autoExpireRef = useRef<any>(null);
-  useEffect(() => {
-    const runAutoExpire = async () => {
-      try { await safeInvoke('auto-expire', { body: { triggered_by: 'client_cron' } }, 10000); } catch {}
-    };
-    runAutoExpire();
-    autoExpireRef.current = setInterval(runAutoExpire, 5 * 60 * 1000);
-    return () => clearInterval(autoExpireRef.current);
-  }, []);
 
   // ---- AUTO-PAYOUT SYSTEM ----
   const [autoPayoutEnabled, setAutoPayoutEnabledState] = useState(false);
@@ -2990,7 +2754,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       checkPayoutStatus, completePayoutOnboarding, fetchFailedPayments, retryPayment,
       fetchPayoutDashboard, fetchReceipts, fetchTrustScore, verifyNeed, reportNeedTracked,
       createThankYou, togglePinUpdate, likeUpdate, addToCart, removeFromCart, updateCartItem,
-      clearCart, isInCart, resetPassword, saveNeed, unsaveNeed, isSaved,
+      clearCart, isInCart, resetPassword, passwordRecovery, saveNeed, unsaveNeed, isSaved,
       checkAndExpireNeeds, isNeedExpired,
       fetchBankInfo, resendPayoutReceipt, triggerAutoExpire, openStripeDashboard,
       bankInfo, autoExpireLastRun,

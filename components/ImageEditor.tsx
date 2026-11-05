@@ -4,8 +4,8 @@ import {
   Dimensions, Platform, PanResponder, ActivityIndicator,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { hapticLight, hapticMedium, hapticSuccess } from '@/app/lib/haptics';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { hapticLight, hapticMedium, hapticSuccess } from '@/lib/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CANVAS_SIZE = Math.min(SCREEN_WIDTH - 48, 360);

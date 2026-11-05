@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, Alert } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 function StatBox({ label, value, color, icon, subtitle }: { label: string; value: string; color: string; icon: string; subtitle?: string }) {
   return (
@@ -124,13 +126,13 @@ export default function PayoutDashboard() {
         setExportSuccess(true);
         setTimeout(() => setExportSuccess(false), 3000);
       } else {
-        Alert.alert('Export Ready', 'CSV export is available on web.');
+        showAlert('Export Ready', 'CSV export is available on web.');
       }
     } catch (err: any) {
       if (Platform.OS === 'web') {
         alert('Export failed: ' + (err.message || 'Unknown error'));
       } else {
-        Alert.alert('Export Failed', err.message || 'Unknown error');
+        showAlert('Export Failed', err.message || 'Unknown error');
       }
     }
     setExporting(false);
@@ -201,12 +203,12 @@ export default function PayoutDashboard() {
     <View style={[s.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Payout Dashboard</Text>
         <View style={s.headerActions}>
-          {hasData && (
+          {!!hasData && (
             <TouchableOpacity
               style={[s.exportBtn, exportSuccess && s.exportBtnSuccess]}
               onPress={handleExportCSV}
@@ -234,7 +236,7 @@ export default function PayoutDashboard() {
         </View>
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); loadData(true); }} tintColor={Colors.primary} />}
@@ -252,7 +254,7 @@ export default function PayoutDashboard() {
             </Text>
             <Text style={s.statusDesc}>
               {isActive
-                ? 'Contributions go directly to your bank. No platform fees — you receive 100%.'
+                ? 'Withdraw to your bank once a need reaches its goal. No platform fees — you receive 100%.'
                 : 'Connect your bank to receive funds directly from contributors.'}
             </Text>
           </View>
@@ -293,7 +295,7 @@ export default function PayoutDashboard() {
                       <Text style={s.eligibleNeedTitle} numberOfLines={1}>{need.title}</Text>
                     </View>
                     <Text style={s.eligibleNeedAmount}>${need.raisedAmount} raised</Text>
-                    {msg && (
+                    {!!msg && (
                       <Text style={[s.eligibleNeedMsg, { color: msg.success ? Colors.success : Colors.error }]}>
                         {msg.msg}
                       </Text>
@@ -316,7 +318,7 @@ export default function PayoutDashboard() {
                       )}
                     </TouchableOpacity>
                   )}
-                  {msg?.success && (
+                  {!!msg?.success && (
                     <View style={s.payoutSuccessIcon}>
                       <MaterialIcons name="check-circle" size={24} color={Colors.success} />
                     </View>
@@ -328,7 +330,7 @@ export default function PayoutDashboard() {
         )}
 
         {/* Summary Stats */}
-        {db?.summary && (
+        {!!db?.summary && (
           <View style={s.statsGrid}>
             <StatBox icon="attach-money" label="Net Received" value={`$${(db.summary.netReceived || 0).toFixed(2)}`} color={Colors.success} />            <StatBox icon="receipt" label="Total Payments" value={db.summary.totalPayments.toString()} color={Colors.primary} />
             <StatBox icon="send" label="Transferred" value={`$${(db.summary.totalTransferred || 0).toFixed(2)}`} color={Colors.secondary} subtitle={`${db.summary.completedTransfers || 0} transfers`} />
@@ -340,7 +342,7 @@ export default function PayoutDashboard() {
 
 
         {/* Monthly Chart */}
-        {db?.monthlyData && db.monthlyData.some(m => m.net > 0) && (
+        {!!db?.monthlyData && db.monthlyData.some(m => m.net > 0) && (
           <View style={s.sectionCard}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Monthly Earnings</Text>
@@ -351,7 +353,7 @@ export default function PayoutDashboard() {
         )}
 
         {/* Your Needs */}
-        {db?.needs && db.needs.length > 0 && (
+        {!!db?.needs && db.needs.length > 0 && (
           <View style={s.sectionCard}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Your Needs</Text>
@@ -395,7 +397,7 @@ export default function PayoutDashboard() {
         )}
 
         {/* Recent Transactions */}
-        {db?.recentTransactions && db.recentTransactions.length > 0 && (
+        {!!db?.recentTransactions && db.recentTransactions.length > 0 && (
           <View style={s.sectionCard}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Recent Transactions</Text>
@@ -414,12 +416,12 @@ export default function PayoutDashboard() {
                   <Text style={s.txName}>{tx.contributorName}</Text>
                   <Text style={s.txNeed} numberOfLines={1}>{tx.needTitle}</Text>
                   <View style={s.txBadges}>
-                    {tx.destinationCharge && (
+                    {!!tx.destinationCharge && (
                       <View style={s.txDirectBadge}>
                         <Text style={s.txDirectBadgeText}>Direct</Text>
                       </View>
                     )}
-                    {tx.webhookConfirmed && (
+                    {!!tx.webhookConfirmed && (
                       <View style={s.txVerifiedBadge}>
                         <MaterialIcons name="verified" size={10} color={Colors.success} />
                         <Text style={s.txVerifiedText}>Verified</Text>
@@ -430,7 +432,7 @@ export default function PayoutDashboard() {
                 <View style={s.txAmounts}>
                   <Text style={s.txGross}>+${tx.amount.toFixed(2)}</Text>
                   <Text style={s.txNet}>${tx.net.toFixed(2)} net</Text>
-                  {tx.completedAt && <Text style={s.txDate}>{formatTime(tx.completedAt)}</Text>}
+                  {!!tx.completedAt && <Text style={s.txDate}>{formatTime(tx.completedAt)}</Text>}
                 </View>
               </View>
             ))}
@@ -438,7 +440,7 @@ export default function PayoutDashboard() {
         )}
 
         {/* Export CTA */}
-        {hasData && (
+        {!!hasData && (
           <TouchableOpacity style={s.exportCTA} onPress={handleExportCSV} disabled={exporting} activeOpacity={0.7}>
             <View style={s.exportCTAIcon}>
               <MaterialIcons name="file-download" size={24} color={Colors.primary} />

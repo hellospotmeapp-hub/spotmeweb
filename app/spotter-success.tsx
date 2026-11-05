@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 
 export default function SpotterSuccessScreen() {
   const router = useRouter();

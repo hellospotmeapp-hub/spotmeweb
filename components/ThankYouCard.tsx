@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 interface ThankYouUpdate {
   id: string;
@@ -43,7 +43,7 @@ export default function ThankYouCard({ update, isOwner, onTogglePin, onLike, onV
   return (
     <View style={[styles.card, update.pinned && styles.pinnedCard]}>
       {/* Pinned badge */}
-      {update.pinned && (
+      {!!update.pinned && (
         <View style={styles.pinnedBadge}>
           <MaterialIcons name="push-pin" size={12} color={Colors.primary} />
           <Text style={styles.pinnedText}>Pinned to profile</Text>
@@ -57,7 +57,7 @@ export default function ThankYouCard({ update, isOwner, onTogglePin, onLike, onV
           <Text style={styles.userName}>{update.userName}</Text>
           <Text style={styles.timeAgo}>{getTimeAgo(update.createdAt)}</Text>
         </View>
-        {isOwner && onTogglePin && (
+        {!!isOwner && onTogglePin && (
           <TouchableOpacity
             style={styles.pinButton}
             onPress={() => onTogglePin(update.id)}
@@ -87,14 +87,14 @@ export default function ThankYouCard({ update, isOwner, onTogglePin, onLike, onV
       <Text style={styles.message}>{update.message}</Text>
 
       {/* Photo */}
-      {update.photoUrl && (
+      {!!update.photoUrl && (
         <View style={styles.mediaContainer}>
           <Image source={{ uri: update.photoUrl }} style={styles.photo} />
         </View>
       )}
 
       {/* Video thumbnail */}
-      {update.videoUrl && !update.photoUrl && (
+      {!!update.videoUrl && !update.photoUrl && (
         <View style={styles.mediaContainer}>
           <Image source={{ uri: update.videoUrl }} style={styles.photo} />
           <View style={styles.videoOverlay}>

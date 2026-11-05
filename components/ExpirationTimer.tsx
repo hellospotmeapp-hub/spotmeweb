@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 
 interface ExpirationTimerProps {
   expiresAt?: string;
@@ -71,7 +71,7 @@ export default function ExpirationTimer({ expiresAt, createdAt, status, compact 
         <View style={styles.expiredContent}>
           <Text style={styles.expiredTitle}>This need has expired</Text>
           <Text style={styles.expiredSubtitle}>
-            Needs are active for 14 days. The owner can still request a payout for the amount raised.
+            Needs are open for contributions for 14 days.
           </Text>
         </View>
       </View>
@@ -103,7 +103,7 @@ export default function ExpirationTimer({ expiresAt, createdAt, status, compact 
           <MaterialIcons name="timer" size={18} color={timerColor} />
           <Text style={[styles.label, { color: timerColor }]}>Time Remaining</Text>
         </View>
-        {isUrgent && (
+        {!!isUrgent && (
           <View style={styles.urgentBadge}>
             <MaterialIcons name="warning" size={12} color={Colors.white} />
             <Text style={styles.urgentText}>Ending Soon</Text>

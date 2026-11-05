@@ -10,8 +10,8 @@ import {
   Animated,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -389,7 +389,7 @@ export default function CommentsSection({
             <Text style={styles.commentUserName} numberOfLines={1}>
               {comment.userName}
             </Text>
-            {isCurrentUser && (
+            {!!isCurrentUser && (
               <View style={styles.youBadge}>
                 <Text style={styles.youBadgeText}>you</Text>
               </View>
@@ -400,7 +400,7 @@ export default function CommentsSection({
           </View>
 
           {/* Show "replying to @username" for replies */}
-          {isReply && comment.parentUserName && (
+          {!!isReply && !!comment.parentUserName && (
             <View style={styles.replyToIndicator}>
               <MaterialIcons name="reply" size={12} color={Colors.primary} style={{ transform: [{ scaleX: -1 }] }} />
               <Text style={styles.replyToText}>
@@ -444,7 +444,7 @@ export default function CommentsSection({
         {renderComment(comment, false)}
 
         {/* Replies section */}
-        {hasReplies && (
+        {!!hasReplies && (
           <View style={styles.repliesSection}>
             {/* Thread toggle button */}
             <TouchableOpacity
@@ -509,7 +509,7 @@ export default function CommentsSection({
       </View>
 
       {/* Error State */}
-      {error && !isLoading && (
+      {!!error && !isLoading && (
         <View style={styles.errorCard}>
           <MaterialIcons name="error-outline" size={18} color={Colors.error} />
           <Text style={styles.errorText}>{error}</Text>
@@ -520,7 +520,7 @@ export default function CommentsSection({
       )}
 
       {/* Loading State */}
-      {isLoading && (
+      {!!isLoading && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={styles.loadingText}>Loading comments...</Text>
@@ -547,7 +547,7 @@ export default function CommentsSection({
           )}
 
           {/* Load More Button */}
-          {hasMore && (
+          {!!hasMore && (
             <TouchableOpacity
               style={styles.loadMoreBtn}
               onPress={handleLoadMore}
@@ -570,7 +570,7 @@ export default function CommentsSection({
       )}
 
       {/* Send Error */}
-      {sendError && (
+      {!!sendError && (
         <View style={styles.sendErrorCard}>
           <MaterialIcons name="warning" size={14} color={Colors.error} />
           <Text style={styles.sendErrorText}>{sendError}</Text>
@@ -585,7 +585,7 @@ export default function CommentsSection({
         {isLoggedIn ? (
           <>
             {/* Replying-to indicator */}
-            {replyingTo && (
+            {!!replyingTo && (
               <View style={styles.replyingToBar}>
                 <View style={styles.replyingToLeft}>
                   <MaterialIcons name="reply" size={16} color={Colors.primary} style={{ transform: [{ scaleX: -1 }] }} />

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, memo } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 
 interface UploadProgressBarProps {
   progress: number; // 0-1
@@ -153,13 +153,13 @@ function UploadProgressBarInner({
       {/* Action buttons for error state */}
       {status === 'error' && (
         <View style={styles.actionRow}>
-          {onRetry && (
+          {!!onRetry && (
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: Colors.primaryLight }]} onPress={onRetry} activeOpacity={0.7}>
               <MaterialIcons name="refresh" size={14} color={Colors.primary} />
               <Text style={[styles.actionBtnText, { color: Colors.primary }]}>Retry</Text>
             </TouchableOpacity>
           )}
-          {onCancel && (
+          {!!onCancel && (
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#FDE8E8' }]} onPress={onCancel} activeOpacity={0.7}>
               <MaterialIcons name="close" size={14} color={Colors.error} />
               <Text style={[styles.actionBtnText, { color: Colors.error }]}>Remove</Text>

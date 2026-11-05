@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Modal, Platform, ActivityIndicator, Pressable,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 interface PushNotificationPromptProps {
   visible: boolean;
@@ -135,7 +135,7 @@ export default function PushNotificationPrompt({
               <View style={styles.content}>
                 <Text style={styles.title}>Never Miss a Spot</Text>
 
-                {contributorName && needTitle && amount ? (
+                {!!contributorName && needTitle && amount ? (
                   <View style={styles.contextCard}>
                     <View style={styles.contextIcon}>
                       <MaterialIcons name="favorite" size={16} color={Colors.primary} />

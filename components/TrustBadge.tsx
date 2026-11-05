@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { TRUST_LEVELS } from '@/app/lib/data';
-import { FontSize, Spacing, BorderRadius } from '@/app/lib/theme';
+import { TRUST_LEVELS } from '@/lib/data';
+import { FontSize, Spacing, BorderRadius } from '@/lib/theme';
 
 interface TrustBadgeProps {
   level?: string;
@@ -20,7 +20,7 @@ export default function TrustBadge({ level = 'new', score, size = 'sm', showScor
     <View style={[styles.badge, { backgroundColor: config.color + '18', borderColor: config.color + '40' }]}>
       <MaterialIcons name={config.icon as any} size={iconSize} color={config.color} />
       <Text style={[styles.label, { color: config.color, fontSize }]}>{config.label}</Text>
-      {showScore && score !== undefined && (
+      {!!showScore && score !== undefined && (
         <Text style={[styles.score, { color: config.color, fontSize }]}>{score}</Text>
       )}
     </View>

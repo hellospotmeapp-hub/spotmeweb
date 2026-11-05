@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { NEED_PHOTOS } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { NEED_PHOTOS } from '@/lib/data';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PHONE_WIDTH = Math.min(SCREEN_WIDTH * 0.65, 280);
