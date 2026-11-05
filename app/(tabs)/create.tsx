@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
 import { useApp } from '@/lib/store';
-import { CATEGORIES, NEED_PHOTOS } from '@/lib/data';
+import { CATEGORIES } from '@/lib/data';
 import { pickNeedPhoto, uploadNeedPhoto, UploadProgressCallback } from '@/lib/imageUpload';
 import { hapticLight, hapticMedium, hapticSuccess, hapticSelection } from '@/lib/haptics';
 import ConfettiAnimation from '@/components/ConfettiAnimation';
@@ -407,7 +407,8 @@ export default function CreateScreen() {
       return;
     }
 
-    const finalPhoto = photoUrl || NEED_PHOTOS[Math.floor(Math.random() * NEED_PHOTOS.length)];
+    // No photo picked: post without one rather than a stock image
+    const finalPhoto = photoUrl || '';
 
     const result = await createNeed({
       title: title.trim(),
@@ -1100,7 +1101,7 @@ export default function CreateScreen() {
               <View style={styles.tipCard}>
                 <MaterialIcons name="lightbulb" size={20} color={Colors.accent} />
                 <Text style={styles.tipText}>
-                  Tip: Needs with a personal photo get funded 3x faster than those with stock images.
+                  Tip: A photo is optional. If you skip it, your need is posted without one.
                 </Text>
               </View>
             </View>
@@ -1232,20 +1233,20 @@ export default function CreateScreen() {
                     {photoUrl ? (
                       <>
                         <Image source={{ uri: photoLocalUri || photoUrl }} style={styles.summaryPhotoThumb} />
-                        <Text style={[styles.summaryValue, { color: Colors.success }]} numberOfLines={1}>Custom photo</Text>
+                        <Text style={[styles.summaryPhotoText, { color: Colors.success }]} numberOfLines={1}>Custom photo</Text>
                       </>
                     ) : photoLocalUri && isUploadingPhoto ? (
                       <>
                         <Image source={{ uri: photoLocalUri }} style={styles.summaryPhotoThumb} />
-                        <Text style={[styles.summaryValue, { color: Colors.accent }]} numberOfLines={1}>Uploading...</Text>
+                        <Text style={[styles.summaryPhotoText, { color: Colors.accent }]} numberOfLines={1}>Uploading...</Text>
                       </>
                     ) : photoLocalUri && photoError ? (
                       <>
                         <Image source={{ uri: photoLocalUri }} style={styles.summaryPhotoThumb} />
-                        <Text style={[styles.summaryValue, { color: Colors.error }]} numberOfLines={1}>Failed — using default</Text>
+                        <Text style={[styles.summaryPhotoText, { color: Colors.error }]} numberOfLines={1}>Upload failed — no photo</Text>
                       </>
                     ) : (
-                      <Text style={styles.summaryValue} numberOfLines={1}>Default image</Text>
+                      <Text style={styles.summaryPhotoText} numberOfLines={1}>No photo</Text>
                     )}
                   </View>
                 </View>
@@ -1726,6 +1727,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flexShrink: 1,
+    marginLeft: Spacing.md,
+  },
+  summaryPhotoText: {
+    fontSize: FontSize.sm,
+    fontWeight: '600',
+    color: Colors.text,
+    flexShrink: 1,
   },
   summaryPhotoThumb: {
     width: 28,

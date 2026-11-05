@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platfo
 
 import { MaterialIcons } from '@expo/vector-icons';
 
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 import { useApp } from '@/lib/store';
@@ -20,12 +20,13 @@ import ReceiptHistory from '@/components/ReceiptHistory';
 import GracefulImage, { prefetchImages } from '@/components/GracefulImage';
 import AvatarPicker from '@/components/AvatarPicker';
 import VerificationRequestModal from '@/components/VerificationRequestModal';
+import { showAlert } from '@/lib/alert';
 
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { currentUser, needs, thankYouUpdates, isLoggedIn, isLoading, logout, updateProfile, requestPayout, payoutStatus, createThankYou, togglePinUpdate, likeUpdate, deleteNeed, editNeed } = useApp();
+  const { currentUser, needs, thankYouUpdates, isLoggedIn, isLoading, logout, updateProfile, refreshProfile, requestPayout, payoutStatus, createThankYou, togglePinUpdate, likeUpdate, deleteNeed, editNeed } = useApp();
 
 
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'updates' | 'given' | 'receipts'>('active');
@@ -106,24 +107,35 @@ export default function ProfileScreen() {
 
 
 
+  // Pick up server-side changes (verified checkmark, avatar) whenever the tab is opened
+  useFocusEffect(React.useCallback(() => { refreshProfile(); }, [refreshProfile]));
+
+  const saveAvatar = async (url: string) => {
+    if (await updateProfile({ avatar: url })) {
+      setAvatarSuccess(true);
+      setTimeout(() => setAvatarSuccess(false), 3000);
+    } else {
+      showAlert('Photo not saved', 'We couldn\'t save your profile photo. Please try again.');
+      refreshProfile();
+    }
+  };
+
   const handleChangeAvatar = async () => {
     if (avatarUploading) return;
     setAvatarUploading(true);
     setAvatarSuccess(false);
     try {
       const result = await pickAndUploadAvatar(currentUser.id);
-      if (result.error === 'cancelled') { setAvatarUploading(false); return; }
+      if (result.error === 'cancelled') return;
       if (result.success && result.avatarUrl) {
-        updateProfile({ avatar: result.avatarUrl });
-        setAvatarSuccess(true);
-        setTimeout(() => setAvatarSuccess(false), 3000);
-      } else if (result.localUri) {
-        updateProfile({ avatar: result.localUri });
-        setAvatarSuccess(true);
-        setTimeout(() => setAvatarSuccess(false), 3000);
+        await saveAvatar(result.avatarUrl);
+      } else {
+        // The picked file only exists on this device, so never save it as the profile photo
+        showAlert('Photo not uploaded', result.error || 'Please try again.');
       }
     } catch (err) {
       console.error('Avatar change error:', err);
+      showAlert('Photo not uploaded', 'Please try again.');
     } finally {
       setAvatarUploading(false);
     }
@@ -656,10 +668,8 @@ export default function ProfileScreen() {
         visible={showAvatarPicker}
         onClose={() => setShowAvatarPicker(false)}
         onSelectAvatar={(url) => {
-          updateProfile({ avatar: url });
-          setAvatarSuccess(true);
-          setTimeout(() => setAvatarSuccess(false), 3000);
           setShowAvatarPicker(false);
+          saveAvatar(url);
         }}
         onUploadPhoto={handleChangeAvatar}
         currentAvatar={currentUser.avatar}

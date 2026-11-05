@@ -1,29 +1,29 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Platform, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
-import GracefulImage from '@/components/GracefulImage';
 
-// Pre-made avatar options — mix of the original signup avatars + new ones
-const AVATAR_OPTIONS = [
-  // Original signup avatars
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056573_451fb65f.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037041799_20c595bd.jpg',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037064960_2d7609c5.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037049254_f950ccb1.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037060145_0ca59f8e.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037062543_b10ff8a6.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037046421_52a3035d.jpg',
-  // New avatar options
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397896682_c38826be.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397896644_323208c3.jpg',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397896891_6688ce77.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397897317_01b8255b.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397899620_ce190502.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397898065_c4147d1b.png',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397900544_a2296cba.jpg',
-  'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397899907_e484fd4f.jpg',
+// Pre-made avatar options. The 320px files live in public/avatars, so the web
+// deploy serves them at AVATAR_HOST; the picker shows the bundled copies instantly.
+// legacyUrl is the original full-size image older profiles may still point at.
+const AVATAR_HOST = 'https://spotmeone.com/avatars';
+const AVATAR_OPTIONS: { url: string; image: number; legacyUrl: string }[] = [
+  { url: `${AVATAR_HOST}/avatar-01.jpg`, image: require('../public/avatars/avatar-01.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png' },
+  { url: `${AVATAR_HOST}/avatar-02.jpg`, image: require('../public/avatars/avatar-02.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056573_451fb65f.png' },
+  { url: `${AVATAR_HOST}/avatar-03.jpg`, image: require('../public/avatars/avatar-03.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037041799_20c595bd.jpg' },
+  { url: `${AVATAR_HOST}/avatar-04.jpg`, image: require('../public/avatars/avatar-04.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037064960_2d7609c5.png' },
+  { url: `${AVATAR_HOST}/avatar-05.jpg`, image: require('../public/avatars/avatar-05.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037049254_f950ccb1.png' },
+  { url: `${AVATAR_HOST}/avatar-06.jpg`, image: require('../public/avatars/avatar-06.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037060145_0ca59f8e.png' },
+  { url: `${AVATAR_HOST}/avatar-07.jpg`, image: require('../public/avatars/avatar-07.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037062543_b10ff8a6.png' },
+  { url: `${AVATAR_HOST}/avatar-08.jpg`, image: require('../public/avatars/avatar-08.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037046421_52a3035d.jpg' },
+  { url: `${AVATAR_HOST}/avatar-09.jpg`, image: require('../public/avatars/avatar-09.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397896682_c38826be.png' },
+  { url: `${AVATAR_HOST}/avatar-10.jpg`, image: require('../public/avatars/avatar-10.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397896644_323208c3.jpg' },
+  { url: `${AVATAR_HOST}/avatar-11.jpg`, image: require('../public/avatars/avatar-11.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397896891_6688ce77.png' },
+  { url: `${AVATAR_HOST}/avatar-12.jpg`, image: require('../public/avatars/avatar-12.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397897317_01b8255b.png' },
+  { url: `${AVATAR_HOST}/avatar-13.jpg`, image: require('../public/avatars/avatar-13.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397899620_ce190502.png' },
+  { url: `${AVATAR_HOST}/avatar-14.jpg`, image: require('../public/avatars/avatar-14.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397898065_c4147d1b.png' },
+  { url: `${AVATAR_HOST}/avatar-15.jpg`, image: require('../public/avatars/avatar-15.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397900544_a2296cba.jpg' },
+  { url: `${AVATAR_HOST}/avatar-16.jpg`, image: require('../public/avatars/avatar-16.jpg'), legacyUrl: 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1772397899907_e484fd4f.jpg' },
 ];
 
 export { AVATAR_OPTIONS };
@@ -120,9 +120,9 @@ export default function AvatarPicker({
             contentContainerStyle={styles.gridContainer}
           >
             <View style={styles.grid}>
-              {AVATAR_OPTIONS.map((url, index) => {
+              {AVATAR_OPTIONS.map(({ url, image, legacyUrl }, index) => {
                 const isSelected = selectedUrl === url;
-                const isCurrent = currentAvatar === url && !selectedUrl;
+                const isCurrent = (currentAvatar === url || currentAvatar === legacyUrl) && !selectedUrl;
                 return (
                   <TouchableOpacity
                     key={index}
@@ -134,7 +134,7 @@ export default function AvatarPicker({
                     onPress={() => handleSelect(url)}
                     activeOpacity={0.7}
                   >
-                    <GracefulImage uri={url} type="avatar" style={styles.avatarImage} />
+                    <Image source={image} style={styles.avatarImage} />
                     {!!isSelected && (
                       <View style={styles.selectedBadge}>
                         <MaterialIcons name="check-circle" size={22} color={Colors.primary} />
