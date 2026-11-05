@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { showAlert } from './alert';
 import { supabase } from './supabase';
 
 export interface ImagePickResult {
@@ -98,7 +99,7 @@ async function pickImageNative(opts: NativePickOptions): Promise<ImagePickResult
       console.warn('[ImageUpload] Media library permission denied');
       try {
         const { Alert } = require('react-native');
-        Alert.alert(
+        showAlert(
           'Permission Needed',
           'Please allow access to your photo library in Settings to upload photos.',
           [{ text: 'OK' }]
@@ -177,7 +178,7 @@ export async function pickImageFromCamera(): Promise<ImagePickResult | null> {
       console.warn('[ImageUpload] Camera permission denied');
       try {
         const { Alert } = require('react-native');
-        Alert.alert(
+        showAlert(
           'Camera Permission Needed',
           'Please allow camera access in Settings to take photos.',
           [{ text: 'OK' }]
@@ -561,11 +562,15 @@ export async function uploadNeedPhoto(
     console.log(`[ImageUpload] Uploading ${fileSizeKB}KB to storage`);
 
     // Determine file extension
+    const session = await storageSession();
+    if (!session) {
+      report(0, 'error');
+      return { success: false, error: 'Please sign in to upload photos.' };
+    }
     const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
-    const prefix = (userId || 'anon').substring(0, 40);
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(2, 10);
-    const fileName = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
+    const fileName = `${session.uid}/${timestamp}_${randomSuffix}.${ext}`;
     const bucket = 'need-photos';
 
     const { supabaseUrl, supabaseKey } = await import('./supabaseClient');
@@ -596,12 +601,11 @@ export async function uploadNeedPhoto(
         const uploadResp = await fetch(uploadUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${supabaseKey}`,
+            'Authorization': `Bearer ${session.token}`,
             'apikey': supabaseKey,
             'Content-Type': mimeType || 'image/jpeg',
-            'x-upsert': 'true',
           },
-          body: bytes,
+          body: bytes as unknown as BodyInit,
         });
 
         clearInterval(progressInterval);
@@ -651,6 +655,20 @@ export async function uploadNeedPhoto(
 }
 
 
+// Uploads go to <bucket>/<auth user id>/<file>; storage policies only let a
+// signed-in user write inside their own folder.
+async function storageSession(): Promise<{ uid: string; token: string } | null> {
+  try {
+    const { supabase: db } = await import('./supabase');
+    const { data } = await db.auth.getSession();
+    if (data?.session?.access_token && data.session.user?.id) {
+      return { uid: data.session.user.id, token: data.session.access_token };
+    }
+  } catch {}
+  return null;
+}
+
+
 export async function uploadAvatar(
   userId: string, imageBase64: string, mimeType: string = 'image/jpeg'
 ): Promise<{ success: boolean; avatarUrl?: string; error?: string }> {
@@ -692,11 +710,12 @@ export async function uploadAvatar(
 
     console.log(`[ImageUpload] Avatar decoded ${bytes.length} bytes, uploading to Supabase storage...`);
 
+    const session = await storageSession();
+    if (!session) return { success: false, error: 'Please sign in to upload a photo.' };
     const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
-    const prefix = (userId || 'anon').substring(0, 40);
     const timestamp = Date.now();
     const randomSuffix = Math.random().toString(36).substring(2, 10);
-    const fileName = `${prefix}_${timestamp}_${randomSuffix}.${ext}`;
+    const fileName = `${session.uid}/${timestamp}_${randomSuffix}.${ext}`;
     const bucket = 'avatars';
 
     const { supabaseUrl, supabaseKey } = await import('./supabaseClient');
@@ -709,48 +728,28 @@ export async function uploadAvatar(
         await delay(BASE_DELAY_MS * Math.pow(2, attempt - 1));
       }
 
-      // Use the current session's access token so Storage RLS allows the upload.
-      // Fall back to the anon key if no session is active.
-      let authToken = supabaseKey;
-      try {
-        const { supabase: _db } = await import('./supabase');
-        const { data: _sess } = await _db.auth.getSession();
-        if (_sess?.session?.access_token) authToken = _sess.session.access_token;
-      } catch {}
-
       try {
         const uploadResp = await fetch(uploadUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${authToken}`,
+            'Authorization': `Bearer ${session.token}`,
             'apikey': supabaseKey,
             'Content-Type': mimeType || 'image/jpeg',
-            'x-upsert': 'true',
           },
-          body: bytes,
+          body: bytes as unknown as BodyInit,
         });
 
         if (uploadResp.ok) {
           const avatarUrl = `${supabaseUrl}/storage/v1/object/public/${bucket}/${fileName}`;
           console.log(`[ImageUpload] Avatar upload SUCCESS: ${avatarUrl}`);
 
-          // Sync avatar across profile and needs
+          // Save to the profile; the server also syncs it onto the user's needs and contributions
           try {
             const { supabase: db } = await import('./supabase');
-            const { error: profileErr } = await db.from('profiles').update({ avatar: avatarUrl }).eq('id', userId);
-            if (profileErr) console.warn('[ImageUpload] Failed to update profile avatar:', profileErr.message);
-
-            const { data: updatedNeeds, error: needsErr } = await db
-              .from('needs')
-              .update({ user_avatar: avatarUrl })
-              .eq('user_id', userId)
-              .select('id');
-            if (needsErr) console.warn('[ImageUpload] Failed to sync avatar to needs:', needsErr.message);
-            else console.log(`[ImageUpload] Synced avatar to ${updatedNeeds?.length || 0} existing need(s)`);
-
-            try {
-              await db.from('contributions').update({ user_avatar: avatarUrl }).eq('user_id', userId);
-            } catch {}
+            const { data } = await db.functions.invoke('process-contribution', {
+              body: { action: 'update_profile', updates: { avatar: avatarUrl } },
+            });
+            if (!data?.success) console.warn('[ImageUpload] Failed to save avatar to profile:', data?.error);
           } catch (syncErr: any) {
             console.warn('[ImageUpload] Avatar sync error (non-fatal):', syncErr.message);
           }

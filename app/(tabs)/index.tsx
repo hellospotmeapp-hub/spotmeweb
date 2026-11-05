@@ -3,11 +3,13 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { HERO_IMAGE, CATEGORIES } from '@/app/lib/data';
-import { smartSplit } from '@/app/lib/smartSplit';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { HERO_IMAGE, CATEGORIES } from '@/lib/data';
+import { smartSplit } from '@/lib/smartSplit';
 import NeedCard from '@/components/NeedCard';
+import NeedGrid from '@/components/NeedGrid';
+import { useResponsive } from '@/lib/responsive';
 import ContributeModal from '@/components/ContributeModal';
 import MamaRechargeCard from '@/components/MamaRechargeCard';
 import SignInPromptModal from '@/components/SignInPromptModal';
@@ -18,7 +20,6 @@ import HomeSearchBar from '@/components/HomeSearchBar';
 
 
 
-const DEFAULT_AVATAR = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png';
 
 // Check localStorage directly for auth state (web only)
 function hasStoredAuth(): boolean {
@@ -32,19 +33,12 @@ function hasStoredAuth(): boolean {
   } catch {}
   return false;
 }
-const MOCK_NEEDS = [
-  { id: 'mock1', title: 'Gas to get to work this week', message: "My check doesn't hit until Friday and I'm running on empty literally 😅", userName: 'Aisha Williams', userAvatar: '', goalAmount: 40, raisedAmount: 28, contributorCount: 6, category: 'Transportation', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Atlanta, GA' },
-  { id: 'mock2', title: 'Phone bill suspended — need it for work', message: 'Just need $35 to get it back on until payday next Thursday.', userName: 'Marcus J.', userAvatar: '', goalAmount: 35, raisedAmount: 15, contributorCount: 3, category: 'Bills', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Houston, TX' },
-  { id: 'mock3', title: 'Groceries for me and my two kids', message: 'Single mama of two — fridge is pretty bare right now. Just need enough for basics 🙏', userName: 'Tamara Reed', userAvatar: '', goalAmount: 60, raisedAmount: 42, contributorCount: 9, category: 'Groceries', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Charlotte, NC' },
-  { id: 'mock4', title: 'Bus pass to start my new job Monday', message: 'Just need $20 for a weekly pass so I can actually get there on time.', userName: 'DeShawn P.', userAvatar: '', goalAmount: 20, raisedAmount: 20, contributorCount: 5, category: 'Transportation', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Memphis, TN' },
-  { id: 'mock5', title: 'Birthday hair appointment ✨', message: 'Birthday is Saturday and I just want to get my hair done. Sometimes a girl just needs a treat yourself moment.', userName: 'Latoya M.', userAvatar: '', goalAmount: 75, raisedAmount: 55, contributorCount: 11, category: 'Self Care', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Birmingham, AL' },
-  { id: 'mock6', title: 'Light bill past due — kids at home', message: "It'll be cut off tomorrow. I've got kids at home — just need a little help to keep the lights on.", userName: 'Jasmine K.', userAvatar: '', goalAmount: 48, raisedAmount: 30, contributorCount: 7, category: 'Bills', status: 'Collecting', createdAt: new Date().toISOString(), location: 'New Orleans, LA' },
-  { id: 'mock7', title: 'Lunch on a double shift 😮‍💨', message: "Working a double and forgot lunch. Been on my feet since 6am and still got 6 hours to go.", userName: 'RJ Thomas', userAvatar: '', goalAmount: 12, raisedAmount: 8, contributorCount: 2, category: 'Food', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Jackson, MS' },
-  { id: 'mock8', title: "Backpack for my daughter's picture day", message: 'Hers broke and school picture day is Friday. Just $25 would mean the world to both of us 🖤', userName: 'Nia Brooks', userAvatar: '', goalAmount: 25, raisedAmount: 10, contributorCount: 4, category: 'Kids', status: 'Collecting', createdAt: new Date().toISOString(), location: 'Nashville, TN' },
-];function HomeScreenContent() {
+
+function HomeScreenContent() {
   // ALL hooks must be called unconditionally at the top - no early returns before hooks!
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { isWide, isDesktop } = useResponsive();
   
   // Direct context access - AppProvider always wraps this component
   const appContext = useApp();
@@ -114,7 +108,7 @@ const MOCK_NEEDS = [
     return (
       <View style={[styles.container, { paddingTop: Platform.OS === 'web' ? 0 : insets.top }]}>
           {/* Soft Launch Complete Overlay */}
-          {showLaunchModal && (
+          {!!showLaunchModal && (
             <View style={styles.launchOverlay}>
               <View style={styles.launchCard}>
                 <View style={styles.launchHeader}>
@@ -186,7 +180,7 @@ const MOCK_NEEDS = [
 
   let totalNeeds = 0, totalRaised = 0, totalSpots = 0;
   try {
-    totalNeeds = safeNeeds.length;
+    totalNeeds = activeNeeds.length;
     totalRaised = safeNeeds.reduce((sum: number, n: any) => sum + (n?.raisedAmount || 0), 0);
     totalSpots = safeNeeds.reduce((sum: number, n: any) => sum + (n?.contributorCount || 0), 0);
   } catch {}
@@ -194,32 +188,10 @@ const MOCK_NEEDS = [
   const safeSpreadPreview = spreadPreview || { allocations: [], totalAmount: 30, totalPeople: 0, goalsCompleted: 0 };
   const safeAllocations = Array.isArray(safeSpreadPreview.allocations) ? safeSpreadPreview.allocations : [];
 
-  return (
-    <View style={[styles.container, { paddingTop: topPadding }]}>
-      <View style={styles.topBar}>
-        <View><Text style={styles.logo}>SpotMe</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
-        <View style={styles.topBarRight}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => { try { router.push('/settings'); } catch {} }}>
-            <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
-          </TouchableOpacity>
-          {!isLoggedIn && !isLoading && authSettled ? (
-            <TouchableOpacity style={styles.signInButton} onPress={() => { try { router.push('/auth'); } catch {} }}>
-              <Text style={styles.signInText}>Sign In</Text>
-            </TouchableOpacity>
-          ) : isLoggedIn ? (
-            <TouchableOpacity onPress={() => { try { router.push('/(tabs)/profile'); } catch {} }}>
-              <GracefulImage uri={safeUser.avatar || DEFAULT_AVATAR} type="avatar" style={styles.topAvatar} />
-            </TouchableOpacity>
 
-          ) : null}
-
-        </View>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false}
-        refreshControl={Platform.OS !== 'web' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} /> : undefined}
-        style={Platform.OS === 'web' ? { flex: 1 } : undefined}>
-
+  // ---- Page sections, composed differently for phones and wide screens ----
+  const heroBlock = (
+    <>
         <View style={styles.heroContainer}>
           <GracefulImage uri={HERO_IMAGE} type="photo" style={styles.heroImage} />
 
@@ -233,10 +205,10 @@ const MOCK_NEEDS = [
           </View>
         </View>
 
-        {/* Search Bar - Find people and their needs */}
-        <HomeSearchBar needs={safeNeeds} />
-
-
+    </>
+  );
+  const announcementBlock = (
+    <>
           {/* Soft Launch Announcement Banner */}
           <TouchableOpacity
             style={styles.announcementBanner}
@@ -251,6 +223,10 @@ const MOCK_NEEDS = [
               </View>
             </View>
           </TouchableOpacity>
+    </>
+  );
+  const walkthroughBlock = (
+    <>
           <TouchableOpacity style={styles.walkthroughBanner} onPress={() => { try { router.push('/welcome'); } catch {} }} activeOpacity={0.8}>
 
 
@@ -262,19 +238,22 @@ const MOCK_NEEDS = [
           <MaterialIcons name="chevron-right" size={20} color={Colors.textLight} />
         </TouchableOpacity>
 
+    </>
+  );
+  const statsBlock = (
+    <>
         <View style={styles.statsRow}>
           <View style={styles.statItem}><Text style={styles.statNumber}>{totalNeeds}</Text><Text style={styles.statLabel}>Active Needs</Text></View>
           <View style={styles.statDivider} />
-          <View style={styles.statItem}><Text style={styles.statNumber}>$325</Text><Text style={styles.statLabel}>Raised</Text></View>
+          <View style={styles.statItem}><Text style={styles.statNumber}>${totalRaised.toLocaleString()}</Text><Text style={styles.statLabel}>Raised</Text></View>
           <View style={styles.statDivider} />
-          <View style={styles.statItem}><Text style={styles.statNumber}>15</Text><Text style={styles.statLabel}>Spots Given</Text></View>
+          <View style={styles.statItem}><Text style={styles.statNumber}>{totalSpots}</Text><Text style={styles.statLabel}>Spots Given</Text></View>
         </View>
 
-        {/* Featured Needs — show before Smart Split */}
-        {(activeNeeds.length > 0 ? activeNeeds : MOCK_NEEDS.filter((n: any) => n.status === 'Collecting')).slice(0, 2).map((need: any) => (
-          <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} showAsFunded />
-        ))}
-
+    </>
+  );
+  const spreadBlock = (
+    <>
         <TouchableOpacity style={styles.spreadCard} onPress={() => { try { router.push('/spread'); } catch {} }} activeOpacity={0.85}>
           <View style={styles.spreadGradient}>
             <View style={[styles.spreadCircle, styles.spreadCircle1]} />
@@ -285,11 +264,15 @@ const MOCK_NEEDS = [
                 <View style={styles.spreadBadge}><MaterialIcons name="auto-awesome" size={12} color={Colors.accent} /><Text style={styles.spreadBadgeText}>Smart Split</Text></View>
               </View>
               <Text style={styles.spreadTitle}>Spread the Love</Text>
-              <Text style={styles.spreadSubtitle}>One payment. Multiple smiles. Help {safeSpreadPreview.totalPeople || 0} people with just $30.</Text>
+              <Text style={styles.spreadSubtitle}>
+                {safeSpreadPreview.totalPeople > 0
+                  ? `One payment. Multiple smiles. Help ${safeSpreadPreview.totalPeople} ${safeSpreadPreview.totalPeople === 1 ? 'person' : 'people'} with just $30.`
+                  : 'One payment. Multiple smiles. Split one gift across several neighbors at once.'}
+              </Text>
               <View style={styles.spreadPreviewRow}>
                 <View style={styles.spreadAvatars}>
                   {safeAllocations.slice(0, 4).map((alloc: any, i: number) => (
-                    <Image key={alloc?.needId || i} source={{ uri: alloc?.userAvatar || DEFAULT_AVATAR }} style={[styles.spreadAvatar, { marginLeft: i > 0 ? -8 : 0, zIndex: 4 - i }]} />
+                    <GracefulImage key={alloc?.needId || i} uri={alloc?.userAvatar} type="avatar" style={styles.spreadAvatar} containerStyle={{ marginLeft: i > 0 ? -8 : 0, zIndex: 4 - i }} />
                   ))}
                 </View>
                 <View style={styles.spreadCTAButton}><Text style={styles.spreadCTAText}>Spread Now</Text><MaterialIcons name="arrow-forward" size={16} color={Colors.white} /></View>
@@ -298,10 +281,10 @@ const MOCK_NEEDS = [
           </View>
         </TouchableOpacity>
 
-        <View style={{ marginHorizontal: Spacing.lg, marginTop: Spacing.lg }}>
-          <MamaRechargeCard />
-        </View>
-
+    </>
+  );
+  const spotterBlock = (
+    <>
         {/* ── Community Spotter banner ── */}
         <TouchableOpacity
           style={styles.spotterBanner}
@@ -318,13 +301,17 @@ const MOCK_NEEDS = [
           <MaterialIcons name="arrow-forward-ios" size={16} color="rgba(255,255,255,0.8)" />
         </TouchableOpacity>
 
+    </>
+  );
+  const almostThereBlock = (
+    <>
         {almostThereNeeds.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View><Text style={styles.sectionTitle}>Almost There</Text><Text style={styles.sectionSubtitle}>These needs are close to their goal</Text></View>
               <MaterialIcons name="local-fire-department" size={24} color={Colors.accent} />
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+            <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
               {almostThereNeeds.map((need: any) => (
                 <TouchableOpacity key={need.id} style={styles.almostCard} onPress={() => { try { router.push(`/need/${need.id}`); } catch {} }} activeOpacity={0.8}>
                   {need.photo ? <GracefulImage uri={need.photo} type="photo" style={styles.almostImage} category={need.category} /> : null}
@@ -343,9 +330,210 @@ const MOCK_NEEDS = [
           </View>
         )}
 
+    </>
+  );
+  const needsListBlock = (
+    <>
+    {filteredNeeds.length === 0 ? (
+  isLoading ? (
+    <View style={styles.emptyState}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+    </View>
+  ) : (
+    <View style={styles.emptyState}>
+      <MaterialIcons name="search-off" size={48} color={Colors.textLight} />
+      <Text style={styles.emptyTitle}>{selectedCategory === 'All' ? 'No active needs right now' : 'No needs in this category'}</Text>
+      <Text style={styles.emptySubtitle}>{selectedCategory === 'All' ? 'Be the first to post a need' : 'Try browsing a different category'}</Text>
+      {selectedCategory === 'All' ? (
+        <TouchableOpacity style={[styles.heroCTA, { alignSelf: 'center', marginTop: Spacing.sm }]} onPress={() => { try { router.push('/(tabs)/create'); } catch {} }} activeOpacity={0.8}>
+          <MaterialIcons name="add-circle" size={20} color={Colors.white} />
+          <Text style={styles.heroCTAText}>Post a Need</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity onPress={() => { try { if (setSelectedCategory) setSelectedCategory('All'); } catch {} }} activeOpacity={0.7}>
+          <Text style={[styles.emptySubtitle, { color: Colors.primary, fontWeight: '700' }]}>Show all categories</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  )
+) : (
+  <NeedGrid>
+    {filteredNeeds.map((need: any) => (
+      <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+    ))}
+  </NeedGrid>
+)}
+    </>
+  );
+  const footerBlock = (
+    <>
+        {Platform.OS === 'web' && (
+          <View style={styles.webFooter}>
+            <Text style={styles.webFooterLogo}>SpotMe</Text>
+            <Text style={styles.webFooterTagline}>No tragedy. Just life.</Text>
+            <View style={styles.webFooterLinks}>
+              <TouchableOpacity onPress={() => { try { router.push('/guidelines'); } catch {} }}><Text style={styles.webFooterLink}>Guidelines</Text></TouchableOpacity>
+              <Text style={styles.webFooterDot}>·</Text>
+              <TouchableOpacity onPress={() => { try { router.push('/settings'); } catch {} }}><Text style={styles.webFooterLink}>Settings</Text></TouchableOpacity>
+            </View>
+            <Text style={styles.webFooterCopy}>© 2026 SpotMe. All rights reserved.</Text>
+          </View>
+        )}
+    </>
+  );
+
+  // Website hero: copy + calls to action on the left, live stats on the right
+  const heroWideBlock = (
+    <View style={styles.heroWide}>
+      <GracefulImage uri={HERO_IMAGE} type="photo" style={styles.heroImage} />
+      <View style={[styles.heroWideOverlay, !isDesktop && styles.heroWideOverlayStacked]}>
+        <View style={styles.heroWideCopy}>
+          <Text style={styles.heroWideTitle}>Small acts.{'\n'}Big impact.</Text>
+          <Text style={styles.heroWideSubtitle}>Help your neighbors with everyday needs. Every dollar counts.</Text>
+          <View style={styles.heroWideActions}>
+            <TouchableOpacity style={styles.heroCTA} onPress={() => { try { router.push('/(tabs)/create'); } catch {} }} activeOpacity={0.8}>
+              <MaterialIcons name="add-circle" size={20} color={Colors.white} />
+              <Text style={styles.heroCTAText}>Post a Need</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.heroSecondaryCTA} onPress={() => { try { router.push('/(tabs)/search'); } catch {} }} activeOpacity={0.8}>
+              <Text style={styles.heroSecondaryCTAText}>Browse needs</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+        <View style={styles.heroStats}>
+          <View style={styles.heroStat}><Text style={styles.heroStatNumber}>{totalNeeds}</Text><Text style={styles.heroStatLabel}>Active needs</Text></View>
+          <View style={styles.heroStat}><Text style={styles.heroStatNumber}>${totalRaised.toLocaleString()}</Text><Text style={styles.heroStatLabel}>Raised</Text></View>
+          <View style={styles.heroStat}><Text style={styles.heroStatNumber}>{totalSpots}</Text><Text style={styles.heroStatLabel}>Spots given</Text></View>
+        </View>
+      </View>
+    </View>
+  );
+
+  const sidebarBlock = (
+    <>
+      {spreadBlock}
+      <MamaRechargeCard />
+      {spotterBlock}
+      {walkthroughBlock}
+    </>
+  );
+  const mainColumnBlock = (
+    <>
+      <HomeSearchBar needs={safeNeeds} />
+      {announcementBlock}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Browse by Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
+          <View style={styles.categoriesWrap}>
+            {(CATEGORIES || []).map((cat: any) => {
+              const isSelected = selectedCategory === cat.name;
+              return (
+                <TouchableOpacity key={cat.name} style={[styles.categoryChip, isSelected && styles.categoryChipSelected]} onPress={() => { try { if (setSelectedCategory) setSelectedCategory(cat.name); } catch {} }} activeOpacity={0.7}>
+                  <MaterialIcons name={cat.icon as any} size={18} color={isSelected ? Colors.white : Colors.textSecondary} />
+                  <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}>{cat.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{selectedCategory === 'All' ? 'Latest Needs' : selectedCategory}</Text>
+            <Text style={styles.needCount}>{filteredNeeds.length} {filteredNeeds.length === 1 ? 'need' : 'needs'}</Text>
+          </View>
+        </View>
+
+      {almostThereBlock}
+    {filteredNeeds.length === 0 ? (
+  isLoading ? (
+    <View style={styles.emptyState}>
+      <ActivityIndicator size="large" color={Colors.primary} />
+    </View>
+  ) : (
+    <View style={styles.emptyState}>
+      <MaterialIcons name="search-off" size={48} color={Colors.textLight} />
+      <Text style={styles.emptyTitle}>{selectedCategory === 'All' ? 'No active needs right now' : 'No needs in this category'}</Text>
+      <Text style={styles.emptySubtitle}>{selectedCategory === 'All' ? 'Be the first to post a need' : 'Try browsing a different category'}</Text>
+      {selectedCategory === 'All' ? (
+        <TouchableOpacity style={[styles.heroCTA, { alignSelf: 'center', marginTop: Spacing.sm }]} onPress={() => { try { router.push('/(tabs)/create'); } catch {} }} activeOpacity={0.8}>
+          <MaterialIcons name="add-circle" size={20} color={Colors.white} />
+          <Text style={styles.heroCTAText}>Post a Need</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity onPress={() => { try { if (setSelectedCategory) setSelectedCategory('All'); } catch {} }} activeOpacity={0.7}>
+          <Text style={[styles.emptySubtitle, { color: Colors.primary, fontWeight: '700' }]}>Show all categories</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  )
+) : (
+  <NeedGrid columns={2}>
+    {filteredNeeds.map((need: any) => (
+      <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+    ))}
+  </NeedGrid>
+)}
+    </>
+  );
+
+  return (
+    <View style={[styles.container, { paddingTop: topPadding }]}>
+      {!isWide && (
+      <View style={styles.topBar}>
+        <View><Text style={styles.logo}>SpotMe</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => { try { router.push('/settings'); } catch {} }}>
+            <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
+          </TouchableOpacity>
+          {!isLoggedIn && !isLoading && authSettled ? (
+            <TouchableOpacity style={styles.signInButton} onPress={() => { try { router.push('/auth'); } catch {} }}>
+              <Text style={styles.signInText}>Sign In</Text>
+            </TouchableOpacity>
+          ) : isLoggedIn ? (
+            <TouchableOpacity onPress={() => { try { router.push('/(tabs)/profile'); } catch {} }}>
+              <GracefulImage uri={safeUser.avatar} type="avatar" style={styles.topAvatar} />
+            </TouchableOpacity>
+
+          ) : null}
+
+        </View>
+      </View>
+      )}
+
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+        refreshControl={Platform.OS !== 'web' ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} /> : undefined}
+        style={Platform.OS === 'web' ? { flex: 1 } : undefined}>
+
+        {isWide ? (
+          <>
+            {heroWideBlock}
+            <View style={isDesktop ? styles.pageColumns : undefined}>
+              <View style={isDesktop ? styles.mainColumn : undefined}>{mainColumnBlock}</View>
+              <View style={isDesktop ? styles.sidebar : styles.sidebarStacked}>{sidebarBlock}</View>
+            </View>
+            {footerBlock}
+          </>
+        ) : (
+          <>
+            {heroBlock}
+            {/* Search Bar - Find people and their needs */}
+            <HomeSearchBar needs={safeNeeds} />
+            {announcementBlock}
+            {walkthroughBlock}
+            {statsBlock}
+            {/* Featured Needs — show before Smart Split */}
+            <NeedGrid>
+              {activeNeeds.slice(0, 2).map((need: any) => (
+                <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} />
+              ))}
+            </NeedGrid>
+            {spreadBlock}
+            <MamaRechargeCard />
+            {spotterBlock}
+            {almostThereBlock}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Browse by Category</Text>
+          <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
             {(CATEGORIES || []).map((cat: any) => {
               const isSelected = selectedCategory === cat.name;
               return (
@@ -361,38 +549,13 @@ const MOCK_NEEDS = [
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{selectedCategory === 'All' ? 'Latest Needs' : selectedCategory}</Text>
-            <Text style={styles.needCount}>{filteredNeeds.length} needs</Text>
+            <Text style={styles.needCount}>{filteredNeeds.length} {filteredNeeds.length === 1 ? 'need' : 'needs'}</Text>
           </View>
         </View>
 
-    {filteredNeeds.length === 0 ? (
-  MOCK_NEEDS.filter(n => selectedCategory === 'All' || n.category === selectedCategory).length === 0 ? (
-    <View style={styles.emptyState}>
-      <MaterialIcons name="search-off" size={48} color={Colors.textLight} />
-      <Text style={styles.emptyTitle}>No needs in this category</Text>
-      <Text style={styles.emptySubtitle}>Try browsing a different category</Text>
-    </View>
-  ) : (
-    MOCK_NEEDS.filter(n => selectedCategory === 'All' || n.category === selectedCategory).map((need) => (
-      <NeedCard key={need.id} need={need} onContribute={() => {}} showAsFunded />
-    ))
-  )
-) : (
-  filteredNeeds.map((need: any) => (
-    <NeedCard key={need.id} need={need} onContribute={handleQuickContribute} showAsFunded />
-  ))
-)}
-        {Platform.OS === 'web' && (
-          <View style={styles.webFooter}>
-            <Text style={styles.webFooterLogo}>SpotMe</Text>
-            <Text style={styles.webFooterTagline}>No tragedy. Just life.</Text>
-            <View style={styles.webFooterLinks}>
-              <TouchableOpacity onPress={() => { try { router.push('/guidelines'); } catch {} }}><Text style={styles.webFooterLink}>Guidelines</Text></TouchableOpacity>
-              <Text style={styles.webFooterDot}>·</Text>
-              <TouchableOpacity onPress={() => { try { router.push('/settings'); } catch {} }}><Text style={styles.webFooterLink}>Settings</Text></TouchableOpacity>
-            </View>
-            <Text style={styles.webFooterCopy}>© 2026 SpotMe. All rights reserved.</Text>
-          </View>
+            {needsListBlock}
+            {footerBlock}
+          </>
         )}
         <View style={{ height: 40 }} />
 </ScrollView> 
@@ -423,6 +586,34 @@ const styles = StyleSheet.create({
   signInText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.white },
   topAvatar: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: Colors.primary },
   heroContainer: { marginHorizontal: Spacing.lg, marginTop: Spacing.sm, borderRadius: BorderRadius.xl, overflow: 'hidden', height: 220 },
+  // ---- Website layout ----
+  heroWide: { marginHorizontal: Spacing.lg, marginTop: Spacing.xl, borderRadius: 24, overflow: 'hidden', height: 380 },
+  heroWideOverlay: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(30, 24, 20, 0.5)',
+    paddingHorizontal: 56, paddingVertical: 48, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32,
+  },
+  heroWideOverlayStacked: { flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 36, paddingVertical: 32, gap: 20 },
+  heroWideCopy: { flex: 1, maxWidth: 560, justifyContent: 'flex-end' },
+  heroWideTitle: { fontSize: 52, lineHeight: 58, fontWeight: '900', color: Colors.white, letterSpacing: -1 },
+  heroWideSubtitle: { fontSize: 18, lineHeight: 27, color: 'rgba(255,255,255,0.9)', marginTop: Spacing.md, marginBottom: Spacing.xl },
+  heroWideActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  heroSecondaryCTA: {
+    paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: BorderRadius.full,
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)',
+  },
+  heroSecondaryCTAText: { color: Colors.white, fontWeight: '700', fontSize: FontSize.md },
+  heroStats: {
+    flexDirection: 'row', gap: 4, backgroundColor: 'rgba(255,255,255,0.14)', borderRadius: 18, padding: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  heroStat: { alignItems: 'center', paddingHorizontal: 22, paddingVertical: 14, borderRadius: 14, minWidth: 110 },
+  heroStatNumber: { fontSize: 28, fontWeight: '800', color: Colors.white },
+  heroStatLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.8)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.6 },
+  pageColumns: { flexDirection: 'row', alignItems: 'flex-start', marginTop: Spacing.lg },
+  mainColumn: { flex: 1, minWidth: 0 },
+  sidebar: { width: 380, marginTop: -Spacing.sm },
+  sidebarStacked: { marginTop: Spacing.sm },
+  categoriesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   heroImage: { width: '100%', height: '100%' },
   heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(45, 41, 38, 0.55)', padding: Spacing.xxl, justifyContent: 'flex-end' },
   heroTitle: { fontSize: FontSize.xxxl, fontWeight: '900', color: Colors.white, lineHeight: 36, marginBottom: Spacing.xs },
@@ -435,7 +626,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: 2 },
   statDivider: { width: 1, height: 30, backgroundColor: Colors.borderLight },
   spreadCard: { marginHorizontal: Spacing.lg, marginTop: Spacing.lg, borderRadius: BorderRadius.xl, overflow: 'hidden', ...Shadow.lg },
-  spreadGradient: { backgroundColor: Colors.primary, padding: Spacing.xl, position: 'relative', overflow: 'hidden' },
+  spreadGradient: { flexGrow: 1, backgroundColor: Colors.primary, padding: Spacing.xl, position: 'relative', overflow: 'hidden' },
   spreadCircle: { position: 'absolute', borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.08)' },
   spreadCircle1: { width: 180, height: 180, top: -60, right: -40 },
   spreadCircle2: { width: 120, height: 120, bottom: -30, left: -20 },
@@ -473,7 +664,7 @@ const styles = StyleSheet.create({
   categoryChipTextSelected: { color: Colors.white },
   emptyState: { alignItems: 'center', paddingVertical: Spacing.huge, gap: Spacing.md },
   emptyTitle: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.textSecondary },
-  emptySubtitle: { fontSize: FontSize.sm, color: Colors.textLight },
+  emptySubtitle: { fontSize: FontSize.sm, color: Colors.textLight, textAlign: 'center', paddingHorizontal: Spacing.xl },
   spotterBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginHorizontal: Spacing.lg, marginTop: Spacing.lg,
@@ -589,10 +780,10 @@ const styles = StyleSheet.create({
       fontSize: 14,
     },
   announcementBanner: {
-      marginHorizontal: 16,
-      marginBottom: 10,
+      marginHorizontal: Spacing.lg,
+      marginTop: Spacing.md,
       backgroundColor: Colors.primary,
-      borderRadius: 12,
+      borderRadius: BorderRadius.lg,
       paddingVertical: 14,
       paddingHorizontal: 16,
       flexDirection: 'row' as const,

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 import GracefulImage from '@/components/GracefulImage';
 
 // Pre-made avatar options — mix of the original signup avatars + new ones
@@ -115,7 +115,7 @@ export default function AvatarPicker({
           </View>
 
           {/* Avatar Grid */}
-          <ScrollView
+          <ScrollView keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.gridContainer}
           >
@@ -135,12 +135,12 @@ export default function AvatarPicker({
                     activeOpacity={0.7}
                   >
                     <GracefulImage uri={url} type="avatar" style={styles.avatarImage} />
-                    {isSelected && (
+                    {!!isSelected && (
                       <View style={styles.selectedBadge}>
                         <MaterialIcons name="check-circle" size={22} color={Colors.primary} />
                       </View>
                     )}
-                    {isCurrent && !isSelected && (
+                    {!!isCurrent && !isSelected && (
                       <View style={styles.currentBadge}>
                         <Text style={styles.currentBadgeText}>Current</Text>
                       </View>

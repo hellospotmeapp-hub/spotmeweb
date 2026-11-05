@@ -28,7 +28,7 @@ All API endpoints are rate-limited per user ID (authenticated) or per IP (anonym
 - **RLS**: Row Level Security enabled on all tables
 - **Admin Access**: Controlled via `admin_users` table; first user self-registers, subsequent admins must be added by existing admins
 - **Input Validation**: UUID validation, HTML/XSS stripping, amount bounds ($0.01–$10,000), string length limits
-- **API Keys**: Stripe secret key stored securely in PostgreSQL `spotme_get_stripe_key()` function (SECURITY DEFINER, not accessible to anon/authenticated roles). No edge function secrets needed.
+- **API Keys**: Stripe secret key is a Supabase Edge Function secret (`STRIPE_SECRET_KEY`), used only by the `api` and `stripe-webhook` functions. See PRODUCTION.md.
 - **Error Monitoring**: Client errors logged via `error_logs` table; global error/unhandledrejection handlers on web
 - **Database Indexes**: 41 indexes across all tables for query performance
 - **Trust Score System**: Automatic scoring (0–100) based on account age, verification, contributions, and reports
@@ -39,8 +39,8 @@ All API endpoints are rate-limited per user ID (authenticated) or per IP (anonym
 
 ## Stripe Configuration
 
-- Integration: Direct Stripe API via PostgreSQL RPC functions (pg_http extension)
-- Secret key: Stored in `spotme_get_stripe_key()` SQL function (set via SQL Editor — see DEPLOY_EDGE_FUNCTIONS.md Step 3)
+- Integration: Stripe REST API from the `api` Edge Function (`supabase/functions/api`)
+- Secret key: `STRIPE_SECRET_KEY` Edge Function secret; publishable key: `EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY` (see PRODUCTION.md)
 
 - Publishable key: `pk_test_51T3T8o2Xr21chucT...` (test mode) / `pk_live_51T3T8o2Xr21chucT...` (live mode)
 - Platform fee: None (tip-based model — optional tips via application_fee_amount)

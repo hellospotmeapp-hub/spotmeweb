@@ -10,9 +10,6 @@ config.resolver.sourceExts = [...(config.resolver.sourceExts || []), 'mjs'];
 // Force Metro to use project-local resolution only
 config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
 
-// Prevent cross-project module resolution
-config.resolver.disableHierarchicalLookup = true;
-
 // Add alias for @supabase/node-fetch to prevent dynamic import issues
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,

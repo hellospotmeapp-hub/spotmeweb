@@ -2,10 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform, RefreshControl, TextInput, Modal } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
-import { useApp } from '@/app/lib/store';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
+import { showAlert } from '@/lib/alert';
+import { useApp } from '@/lib/store';
 
 type Tab = 'overview' | 'approvals' | 'users' | 'needs' | 'transactions' | 'webhooks' | 'security' | 'activity' | 'onboarding' | 'tips' | 'verifications';
 
@@ -96,7 +98,7 @@ function StatCard({ icon, label, value, color, subtitle }: { icon: string; label
       <View style={s.statInfo}>
         <Text style={s.statValue}>{value}</Text>
         <Text style={s.statLabel}>{label}</Text>
-        {subtitle && <Text style={s.statSubtitle}>{subtitle}</Text>}
+        {!!subtitle && <Text style={s.statSubtitle}>{subtitle}</Text>}
       </View>
     </View>
   );
@@ -143,7 +145,7 @@ const EVENT_TYPE_CONFIG: Record<string, { icon: string; color: string; label: st
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { currentUser, isLoggedIn } = useApp();
+  const { currentUser, isLoggedIn, isLoading: authLoading } = useApp();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -195,45 +197,22 @@ export default function AdminDashboard() {
   const [verificationAction, setVerificationAction] = useState<Record<string, 'loading' | 'done'>>({});
 
 
-  // Check admin access on mount
+  // Check admin access once the saved session has been restored
   useEffect(() => {
+    if (authLoading) return;
     checkAdminAccess();
-  }, [currentUser.id]);
+  }, [currentUser.id, isLoggedIn, authLoading]);
 
+  // The server decides who is an admin (admin_users table); this only drives the UI
   const checkAdminAccess = async () => {
-    const ADMIN_EMAIL = 'hellospotme.app@gmail.com';
     if (!isLoggedIn || currentUser.id === 'guest') {
       setIsAdminUser(false);
       setAdminCheckDone(true);
       return;
     }
     try {
-      // Read the stored login email directly from localStorage — most reliable source
-      let storedEmail: string | null = null;
-      try {
-        storedEmail = typeof localStorage !== 'undefined'
-          ? localStorage.getItem('spotme_email')
-          : null;
-      } catch {}
-
-      if (storedEmail?.toLowerCase() === ADMIN_EMAIL) {
-        setIsAdminUser(true);
-        setAdminCheckDone(true);
-        return;
-      }
-
-      // Fallback: check supabase auth session
-      try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const sessionEmail = sessionData?.session?.user?.email?.toLowerCase();
-        if (sessionEmail === ADMIN_EMAIL) {
-          setIsAdminUser(true);
-          setAdminCheckDone(true);
-          return;
-        }
-      } catch {}
-
-      setIsAdminUser(false);
+      const { data } = await supabase.functions.invoke('stripe-checkout', { body: { action: 'admin_check' } });
+      setIsAdminUser(!!data?.isAdmin);
     } catch {
       setIsAdminUser(false);
     }
@@ -279,12 +258,10 @@ export default function AdminDashboard() {
   const fetchPendingApprovals = useCallback(async () => {
     setApprovalsLoading(true);
     try {
-      const { data } = await supabase
-        .from('needs')
-        .select('id, title, message, category, goal_amount, photo, created_at, user_id, profiles:user_id(name, avatar, city, phone)')
-        .eq('verification_status', 'pending')
-        .order('created_at', { ascending: true });
-      setPendingNeeds(data || []);
+      const { data } = await supabase.functions.invoke('process-contribution', {
+        body: { action: 'fetch_pending_needs' },
+      });
+      setPendingNeeds((data?.needs || []).filter((n: any) => n.verificationStatus === 'pending'));
     } catch {}
     setApprovalsLoading(false);
   }, []);
@@ -292,14 +269,28 @@ export default function AdminDashboard() {
   const handleApproveNeed = async (needId: string, approve: boolean) => {
     setApprovingId(needId);
     try {
-      await supabase.from('needs').update({
-        verification_status: approve ? 'approved' : 'rejected',
-        status: approve ? 'Collecting' : 'Expired',
-        verified_at: approve ? new Date().toISOString() : null,
-      }).eq('id', needId);
+      const { data } = await supabase.functions.invoke('process-contribution', {
+        body: { action: 'admin_review_need', needId, approve },
+      });
+      if (!data?.success) throw new Error(data?.error || 'Review failed');
       setPendingNeeds(prev => prev.filter(n => n.id !== needId));
-    } catch {}
+    } catch (err) {
+      showAlert(approve ? 'Not approved yet' : 'Review failed', (err as Error).message);
+    }
     setApprovingId(null);
+  };
+
+  const [stripeStatus, setStripeStatus] = useState<any>(null);
+  const [stripeChecking, setStripeChecking] = useState(false);
+  const checkStripe = async () => {
+    setStripeChecking(true);
+    try {
+      const { data } = await supabase.functions.invoke('process-contribution', { body: { action: 'admin_stripe_status' } });
+      setStripeStatus(data?.success ? data : { error: data?.error || 'Stripe check failed' });
+    } catch (err) {
+      setStripeStatus({ error: (err as Error).message });
+    }
+    setStripeChecking(false);
   };
 
   const fetchWebhookLogs = useCallback(async () => {
@@ -403,11 +394,10 @@ export default function AdminDashboard() {
   const fetchVerificationRequests = useCallback(async () => {
     setVerificationsLoading(true);
     try {
-      const { data } = await supabase.from('verification_requests')
-        .select('id, user_id, name, city, phone, status, notes, created_at, profiles(name, avatar, city)')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      setVerificationRequests(data || []);
+      const { data } = await supabase.functions.invoke('process-contribution', {
+        body: { action: 'admin_list_verifications' },
+      });
+      setVerificationRequests(data?.requests || []);
     } catch {}
     setVerificationsLoading(false);
   }, []);
@@ -415,10 +405,10 @@ export default function AdminDashboard() {
   const handleVerificationAction = async (reqId: string, userId: string, action: 'approve' | 'reject', notes = '') => {
     setVerificationAction(prev => ({ ...prev, [reqId]: 'loading' }));
     try {
-      await supabase.from('verification_requests').update({ status: action === 'approve' ? 'approved' : 'rejected', notes, reviewed_at: new Date().toISOString() }).eq('id', reqId);
-      if (action === 'approve') {
-        await supabase.from('profiles').update({ verified: true }).eq('id', userId);
-      }
+      const { data } = await supabase.functions.invoke('process-contribution', {
+        body: { action: 'admin_review_verification', requestId: reqId, verificationAction: action, notes },
+      });
+      if (!data?.success) throw new Error(data?.error || 'Review failed');
       setVerificationAction(prev => ({ ...prev, [reqId]: 'done' }));
       setVerificationRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: action === 'approve' ? 'approved' : 'rejected' } : r));
     } catch {
@@ -495,7 +485,7 @@ export default function AdminDashboard() {
         <TouchableOpacity style={s.retryBtn} onPress={() => router.push('/auth')}>
           <Text style={s.retryBtnText}>Sign In</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 12 }}>
+        <TouchableOpacity onPress={() => goBack(router)} style={{ marginTop: 12 }}>
           <Text style={{ color: Colors.primary, fontWeight: '600' }}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -527,7 +517,7 @@ export default function AdminDashboard() {
             Logged in as: {currentUser.name}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
+        <TouchableOpacity onPress={() => goBack(router)} style={{ marginTop: 16 }}>
           <Text style={{ color: Colors.primary, fontWeight: '600' }}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -553,7 +543,7 @@ export default function AdminDashboard() {
         <TouchableOpacity style={s.retryBtn} onPress={() => fetchStats()}>
           <Text style={s.retryBtnText}>Retry</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 12 }}>
+        <TouchableOpacity onPress={() => goBack(router)} style={{ marginTop: 12 }}>
           <Text style={{ color: Colors.primary, fontWeight: '600' }}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -567,7 +557,7 @@ export default function AdminDashboard() {
     <View style={[s.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { router.back(); } }}>
+        <TouchableOpacity style={s.backBtn} onPress={() => { try { router.replace('/(tabs)'); } catch { goBack(router); } }}>
 
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
 
@@ -591,7 +581,7 @@ export default function AdminDashboard() {
       </View>
 
       {/* Tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={s.tabRow}>
         <TabButton tab="overview" current={activeTab} label="Overview" icon="dashboard" onPress={() => setActiveTab('overview')} />
         <TabButton tab="approvals" current={activeTab} label="Approvals" icon="verified-user" onPress={() => setActiveTab('approvals')} badge={pendingNeeds.length} />
         <TabButton tab="users" current={activeTab} label="Users" icon="people" onPress={() => setActiveTab('users')} />
@@ -607,7 +597,7 @@ export default function AdminDashboard() {
       </ScrollView>
 
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
@@ -621,7 +611,7 @@ export default function AdminDashboard() {
               ) : pendingNeeds.length === 0 ? (
                 <View style={s.emptyState}>
                   <MaterialIcons name="check-circle" size={48} color={Colors.success} />
-                  <Text style={s.emptyStateText}>All caught up! No needs pending review.</Text>
+                  <Text style={s.emptyText}>All caught up! No needs pending review.</Text>
                 </View>
               ) : (
                 pendingNeeds.map(need => (
@@ -632,10 +622,16 @@ export default function AdminDashboard() {
                     <View style={s.approvalInfo}>
                       <Text style={s.approvalTitle}>{need.title}</Text>
                       <Text style={s.approvalUser}>{need.profiles?.name || 'Unknown'} · {need.profiles?.city || ''}</Text>
-                      {need.profiles?.phone && (
+                      {!!need.profiles?.phone && (
                         <Text style={s.approvalMeta}>📞 {need.profiles.phone}</Text>
                       )}
+                      {!!need.profiles?.email && (
+                        <Text style={s.approvalMeta}>✉️ {need.profiles.email}</Text>
+                      )}
                       <Text style={s.approvalMeta}>{need.category} · ${need.goal_amount}</Text>
+                      <Text style={[s.approvalMeta, { color: need.payoutReady ? Colors.success : Colors.error }]}>
+                        {need.payoutReady ? 'Stripe payouts connected' : 'Stripe payouts not connected yet'}
+                      </Text>
                       <Text style={s.approvalMessage} numberOfLines={3}>{need.message}</Text>
                       <Text style={s.approvalDate}>Submitted {formatDate(need.created_at)}</Text>
                     </View>
@@ -686,7 +682,7 @@ export default function AdminDashboard() {
                   <Text style={s.sectionTitle}>System Health</Text>
                   <MaterialIcons name="favorite" size={20} color={Colors.textLight} />
                 </View>
-                {stats.webhookStats && (
+                {!!stats.webhookStats && (
                   <View style={s.healthGrid}>
                     <View style={s.healthItem}><View style={[s.healthDot, { backgroundColor: Colors.success }]} /><Text style={s.healthLabel}>Webhooks</Text><Text style={s.healthValue}>{stats.webhookStats.total} total</Text></View>
                     <View style={s.healthItem}><View style={[s.healthDot, { backgroundColor: Colors.success }]} /><Text style={s.healthLabel}>Processed</Text><Text style={s.healthValue}>{stats.webhookStats.processed}</Text></View>
@@ -694,7 +690,7 @@ export default function AdminDashboard() {
                     <View style={s.healthItem}><View style={[s.healthDot, { backgroundColor: stats.webhookStats.pending > 0 ? Colors.accent : Colors.success }]} /><Text style={s.healthLabel}>Pending</Text><Text style={s.healthValue}>{stats.webhookStats.pending}</Text></View>
                   </View>
                 )}
-                {stats.errorStats && (
+                {!!stats.errorStats && (
                   <View style={[s.healthGrid, { marginTop: Spacing.md, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.borderLight }]}>
                     <View style={s.healthItem}><View style={[s.healthDot, { backgroundColor: '#7B9ED9' }]} /><Text style={s.healthLabel}>Error Logs</Text><Text style={s.healthValue}>{stats.errorStats.total} total</Text></View>
                     <View style={s.healthItem}><View style={[s.healthDot, { backgroundColor: stats.errorStats.unresolved > 0 ? Colors.accent : Colors.success }]} /><Text style={s.healthLabel}>Unresolved</Text><Text style={s.healthValue}>{stats.errorStats.unresolved}</Text></View>
@@ -711,13 +707,41 @@ export default function AdminDashboard() {
             )}
 
             <View style={s.sectionCard}>
+              <View style={s.sectionHeader}>
+                <Text style={s.sectionTitle}>Stripe Connection</Text>
+                <TouchableOpacity onPress={checkStripe} disabled={stripeChecking}>
+                  {stripeChecking ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={{ color: Colors.primary, fontWeight: '700' }}>Check</Text>}
+                </TouchableOpacity>
+              </View>
+              {!stripeStatus ? (
+                <Text style={s.approvalMeta}>Shows which Stripe account the server uses and whether every payout account is reachable from it.</Text>
+              ) : stripeStatus.error ? (
+                <Text style={[s.approvalMeta, { color: Colors.error }]}>{stripeStatus.error}</Text>
+              ) : (
+                <>
+                  <Text style={s.approvalTitle}>{stripeStatus.platform.name || 'Unnamed account'} ({stripeStatus.platform.id})</Text>
+                  {!!stripeStatus.platform.email && <Text style={s.approvalMeta}>{stripeStatus.platform.email}</Text>}
+                  <Text style={[s.approvalMeta, { color: stripeStatus.platform.livemode ? Colors.success : Colors.textSecondary }]}>
+                    {stripeStatus.platform.livemode ? 'LIVE mode: real money' : 'TEST mode: no real money'}
+                  </Text>
+                  {stripeStatus.connected.length === 0 && <Text style={s.approvalMeta}>No payout accounts yet.</Text>}
+                  {stripeStatus.connected.map((c: any) => (
+                    <Text key={c.accountId} style={[s.approvalMeta, { color: c.found && c.payoutsEnabled ? Colors.success : Colors.error }]}>
+                      {c.found ? (c.payoutsEnabled ? '✓' : '!') : '✗'} {c.name} · {c.accountId} · {c.found ? (c.payoutsEnabled ? 'payouts on' : 'setup unfinished') : 'not found in this Stripe account'}
+                    </Text>
+                  ))}
+                </>
+              )}
+            </View>
+
+            <View style={s.sectionCard}>
               <View style={s.sectionHeader}><Text style={s.sectionTitle}>Contributions (7 Days)</Text><MaterialIcons name="bar-chart" size={20} color={Colors.textLight} /></View>
-              {stats.dailyData && <MiniChart data={stats.dailyData} />}
+              {!!stats.dailyData && <MiniChart data={stats.dailyData} />}
             </View>
 
             <View style={s.sectionCard}>
               <View style={s.sectionHeader}><Text style={s.sectionTitle}>Category Breakdown</Text><MaterialIcons name="pie-chart" size={20} color={Colors.textLight} /></View>
-              {stats.categoryBreakdown && Object.entries(stats.categoryBreakdown).map(([cat, data]) => (
+              {!!stats.categoryBreakdown && Object.entries(stats.categoryBreakdown).map(([cat, data]) => (
                 <View key={cat} style={s.catRow}>
                   <View style={[s.catDot, { backgroundColor: CategoryColors[cat] || Colors.textLight }]} />
                   <Text style={s.catName}>{cat}</Text>
@@ -751,8 +775,8 @@ export default function AdminDashboard() {
                 <View style={s.userInfo}>
                   <View style={s.userNameRow}>
                     <Text style={s.userName}>{user.name}</Text>
-                    {user.verified && <MaterialIcons name="verified" size={14} color={Colors.primary} />}
-                    {user.hasPayoutAccount && <MaterialIcons name="account-balance" size={12} color={Colors.secondary} />}
+                    {!!user.verified && <MaterialIcons name="verified" size={14} color={Colors.primary} />}
+                    {!!user.hasPayoutAccount && <MaterialIcons name="account-balance" size={12} color={Colors.secondary} />}
                   </View>
                   <Text style={s.userCity}>{user.city || 'No city'}</Text>
                   <View style={s.userStats}><Text style={s.userStatText}>Raised: ${user.totalRaised}</Text><Text style={s.userStatDot}>·</Text><Text style={s.userStatText}>Given: ${user.totalGiven}</Text></View>
@@ -814,7 +838,7 @@ export default function AdminDashboard() {
         {/* WEBHOOKS TAB */}
         {activeTab === 'webhooks' && (
           <>
-            {webhookSummary && (
+            {!!webhookSummary && (
               <View style={s.whSummaryGrid}>
                 <View style={[s.whSummaryCard, { borderLeftColor: '#7B9ED9' }]}><Text style={s.whSummaryValue}>{webhookSummary.totalEvents}</Text><Text style={s.whSummaryLabel}>Total Events</Text></View>
                 <View style={[s.whSummaryCard, { borderLeftColor: Colors.success }]}><Text style={[s.whSummaryValue, { color: Colors.success }]}>{webhookSummary.processedCount}</Text><Text style={s.whSummaryLabel}>Processed</Text></View>
@@ -823,7 +847,7 @@ export default function AdminDashboard() {
               </View>
             )}
 
-            {webhookSummary?.typeCounts && Object.keys(webhookSummary.typeCounts).length > 0 && (
+            {!!webhookSummary?.typeCounts && Object.keys(webhookSummary.typeCounts).length > 0 && (
               <View style={s.sectionCard}>
                 <Text style={[s.sectionTitle, { marginBottom: Spacing.sm }]}>Event Types</Text>
                 {Object.entries(webhookSummary.typeCounts).sort((a, b) => b[1] - a[1]).map(([type, count]) => {
@@ -876,11 +900,11 @@ export default function AdminDashboard() {
                       </View>
                     </View>
                     {!isExpanded && (evt.processingResult || evt.processingError) && (<Text style={[s.whEventSummary, hasError && { color: Colors.error }]} numberOfLines={1}>{evt.processingError || evt.processingResult}</Text>)}
-                    {isExpanded && (
+                    {!!isExpanded && (
                       <View style={s.whEventDetails}>
-                        {evt.processingResult && <View style={s.whDetailRow}><Text style={s.whDetailLabel}>Result</Text><Text style={s.whDetailValue}>{evt.processingResult}</Text></View>}
-                        {evt.processingError && <View style={s.whDetailRow}><Text style={[s.whDetailLabel, { color: Colors.error }]}>Error</Text><Text style={[s.whDetailValue, { color: Colors.error }]}>{evt.processingError}</Text></View>}
-                        {evt.relatedPaymentId && <View style={s.whDetailRow}><Text style={s.whDetailLabel}>Payment ID</Text><Text style={s.whDetailValue}>{evt.relatedPaymentId}</Text></View>}
+                        {!!evt.processingResult && <View style={s.whDetailRow}><Text style={s.whDetailLabel}>Result</Text><Text style={s.whDetailValue}>{evt.processingResult}</Text></View>}
+                        {!!evt.processingError && <View style={s.whDetailRow}><Text style={[s.whDetailLabel, { color: Colors.error }]}>Error</Text><Text style={[s.whDetailValue, { color: Colors.error }]}>{evt.processingError}</Text></View>}
+                        {!!evt.relatedPaymentId && <View style={s.whDetailRow}><Text style={s.whDetailLabel}>Payment ID</Text><Text style={s.whDetailValue}>{evt.relatedPaymentId}</Text></View>}
                         <View style={s.whDetailRow}><Text style={s.whDetailLabel}>Mode</Text><Text style={s.whDetailValue}>{evt.livemode ? 'Live' : 'Test'}</Text></View>
                         <TouchableOpacity style={s.whPayloadBtn} onPress={() => setSelectedEvent(evt)} activeOpacity={0.7}>
                           <MaterialIcons name="data-object" size={16} color={Colors.primary} /><Text style={s.whPayloadBtnText}>View Full Payload</Text>
@@ -1054,7 +1078,7 @@ export default function AdminDashboard() {
             </View>
             <View style={s.sectionCard}>
               <Text style={s.sectionTitle}>Daily Volume</Text>
-              {stats.dailyData && <MiniChart data={stats.dailyData} maxHeight={60} />}
+              {!!stats.dailyData && <MiniChart data={stats.dailyData} maxHeight={60} />}
             </View>
             <View style={s.sectionCard}>
               <Text style={s.sectionTitle}>System Health</Text>
@@ -1080,7 +1104,7 @@ export default function AdminDashboard() {
               </TouchableOpacity>
             </View>
 
-            {walkthroughLoading && !walkthroughStats ? (
+            {!!walkthroughLoading && !walkthroughStats ? (
               <View style={s.whLoadingWrap}><ActivityIndicator size="small" color={Colors.primary} /><Text style={s.whLoadingText}>Loading walkthrough stats...</Text></View>
             ) : !walkthroughStats ? (
               <View style={s.emptyState}><MaterialIcons name="play-circle-outline" size={48} color={Colors.borderLight} /><Text style={s.emptyText}>No walkthrough data yet</Text></View>
@@ -1115,7 +1139,7 @@ export default function AdminDashboard() {
                 </View>
 
                 {/* Scene Drop-off */}
-                {walkthroughStats.sceneFunnel && walkthroughStats.sceneFunnel.length > 0 && (
+                {!!walkthroughStats.sceneFunnel && walkthroughStats.sceneFunnel.length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Scene Retention</Text><MaterialIcons name="trending-down" size={20} color={Colors.textLight} /></View>
                     <Text style={s.securityDesc}>Shows how many users viewed each scene and where they dropped off.</Text>
@@ -1143,7 +1167,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Daily Trend */}
-                {walkthroughStats.dailyData && walkthroughStats.dailyData.length > 0 && (
+                {!!walkthroughStats.dailyData && walkthroughStats.dailyData.length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Daily Trend (14 days)</Text><MaterialIcons name="show-chart" size={20} color={Colors.textLight} /></View>
                     <View style={ob.trendGrid}>
@@ -1169,7 +1193,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Device Breakdown */}
-                {walkthroughStats.deviceCounts && Object.keys(walkthroughStats.deviceCounts).length > 0 && (
+                {!!walkthroughStats.deviceCounts && Object.keys(walkthroughStats.deviceCounts).length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Device Breakdown</Text><MaterialIcons name="devices" size={20} color={Colors.textLight} /></View>
                     {Object.entries(walkthroughStats.deviceCounts).map(([device, count]: [string, any]) => {
@@ -1187,7 +1211,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Recent Sessions */}
-                {walkthroughStats.recentSessions && walkthroughStats.recentSessions.length > 0 && (
+                {!!walkthroughStats.recentSessions && walkthroughStats.recentSessions.length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Recent Sessions</Text><MaterialIcons name="history" size={20} color={Colors.textLight} /></View>
                     {walkthroughStats.recentSessions.slice(0, 10).map((session: any, i: number) => {
@@ -1234,7 +1258,7 @@ export default function AdminDashboard() {
               </TouchableOpacity>
             </View>
 
-            {tipAnalyticsLoading && !tipAnalytics ? (
+            {!!tipAnalyticsLoading && !tipAnalytics ? (
               <View style={s.whLoadingWrap}><ActivityIndicator size="small" color={Colors.primary} /><Text style={s.whLoadingText}>Loading tip analytics...</Text></View>
             ) : !tipAnalytics ? (
               <View style={s.emptyState}><MaterialIcons name="volunteer-activism" size={48} color={Colors.borderLight} /><Text style={s.emptyText}>No tip data yet</Text></View>
@@ -1251,7 +1275,7 @@ export default function AdminDashboard() {
                 </View>
 
                 {/* Tip Distribution */}
-                {tipAnalytics.tipBuckets && (
+                {!!tipAnalytics.tipBuckets && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Tip Distribution</Text><MaterialIcons name="bar-chart" size={20} color={Colors.textLight} /></View>
                     <View style={tipStyles.bucketGrid}>
@@ -1275,7 +1299,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Daily Tip Trends */}
-                {tipAnalytics.dailyTipData && tipAnalytics.dailyTipData.length > 0 && (
+                {!!tipAnalytics.dailyTipData && tipAnalytics.dailyTipData.length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Daily Tips (14 days)</Text><MaterialIcons name="show-chart" size={20} color={Colors.textLight} /></View>
                     <View style={tipStyles.trendGrid}>
@@ -1300,7 +1324,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Tip by Donation Range */}
-                {tipAnalytics.tipByDonationRange && (
+                {!!tipAnalytics.tipByDonationRange && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Tips by Donation Size</Text><MaterialIcons name="stacked-bar-chart" size={20} color={Colors.textLight} /></View>
                     <Text style={s.securityDesc}>How tip behavior varies by donation amount range.</Text>
@@ -1326,7 +1350,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Top Tippers */}
-                {tipAnalytics.topTippers && tipAnalytics.topTippers.length > 0 && (
+                {!!tipAnalytics.topTippers && tipAnalytics.topTippers.length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Top Tippers</Text><MaterialIcons name="emoji-events" size={20} color={Colors.accent} /></View>
                     {tipAnalytics.topTippers.map((tipper: any, i: number) => (
@@ -1346,7 +1370,7 @@ export default function AdminDashboard() {
                 )}
 
                 {/* Recent Tips */}
-                {tipAnalytics.recentTips && tipAnalytics.recentTips.length > 0 && (
+                {!!tipAnalytics.recentTips && tipAnalytics.recentTips.length > 0 && (
                   <View style={s.sectionCard}>
                     <View style={s.sectionHeader}><Text style={s.sectionTitle}>Recent Tips</Text><MaterialIcons name="history" size={20} color={Colors.textLight} /></View>
                     {tipAnalytics.recentTips.slice(0, 15).map((tip: any, i: number) => (
@@ -1355,13 +1379,13 @@ export default function AdminDashboard() {
                           <MaterialIcons name="favorite" size={14} color={Colors.primary} />
                         </View>
                         <View style={tipStyles.recentTipInfo}>
-                          <Text style={tipStyles.recentTipName}>{tip.contributorName}</Text>
+                          <Text style={tipStyles.recentTipName}>{tip.contributorName || tip.name || "Anonymous"}</Text>
                           <Text style={tipStyles.recentTipMeta}>
-                            ${tip.donationAmount.toFixed(2)} donation{tip.destinationCharge ? ' (direct)' : ''}
+                            ${Number(tip.donationAmount ?? tip.amount ?? 0).toFixed(2)} donation{tip.destinationCharge ? ' (direct)' : ''}
                           </Text>
                         </View>
                         <View style={tipStyles.recentTipRight}>
-                          <Text style={tipStyles.recentTipAmount}>+${tip.tipAmount.toFixed(2)}</Text>
+                          <Text style={tipStyles.recentTipAmount}>+${Number(tip.tipAmount || 0).toFixed(2)}</Text>
                           <Text style={tipStyles.recentTipTime}>{formatTime(tip.date)}</Text>
                         </View>
                       </View>
@@ -1402,7 +1426,7 @@ export default function AdminDashboard() {
               <View style={s.emptyState}>
                 <MaterialIcons name="verified-user" size={48} color={Colors.borderLight} />
                 <Text style={s.emptyText}>No verification requests yet</Text>
-                <Text style={[s.emptySubtext, { textAlign: 'center', marginTop: 4 }]}>Users can request verification from their profile page</Text>
+                <Text style={[s.emptyText, { textAlign: 'center', marginTop: 4 }]}>Users can request verification from their profile page</Text>
               </View>
             ) : (
               <>
@@ -1439,7 +1463,7 @@ export default function AdminDashboard() {
                               </View>
                               <Text style={{ fontSize: FontSize.xs, color: Colors.textLight }}>{formatDate(req.created_at)}</Text>
                             </View>
-                            {req.phone && (
+                            {!!req.phone && (
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                                 <MaterialIcons name="phone" size={14} color={Colors.success} />
                                 <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary }}>Phone verified: {req.phone}</Text>
@@ -1448,7 +1472,7 @@ export default function AdminDashboard() {
                             {req.notes ? (
                               <Text style={{ fontSize: FontSize.xs, color: Colors.textLight, fontStyle: 'italic', marginBottom: 8 }}>Note: {req.notes}</Text>
                             ) : null}
-                            {isPending && (
+                            {!!isPending && (
                               <View style={{ flexDirection: 'row', gap: 10 }}>
                                 <TouchableOpacity
                                   style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: Colors.success + '15', borderRadius: BorderRadius.lg, paddingVertical: 10, borderWidth: 1, borderColor: Colors.success + '40', opacity: isActing ? 0.5 : 1 }}
@@ -1501,7 +1525,7 @@ export default function AdminDashboard() {
               <TouchableOpacity onPress={() => setSelectedEvent(null)} style={s.modalClose}><MaterialIcons name="close" size={24} color={Colors.text} /></TouchableOpacity>
             </View>
             <Text style={s.modalSubtitle}>{selectedEvent?.stripeEventId}</Text>
-            <ScrollView style={s.modalScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView keyboardShouldPersistTaps="handled" style={s.modalScroll} showsVerticalScrollIndicator={false}>
               <Text style={s.modalPayload}>{selectedEvent?.data ? JSON.stringify(selectedEvent.data, null, 2) : 'No payload data'}</Text>
             </ScrollView>
           </View>

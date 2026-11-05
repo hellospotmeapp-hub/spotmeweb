@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
-import { checkStripeSetup, type StripeSetupStatus } from '@/app/lib/stripeSetup';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 interface ContributeModalProps {
   visible: boolean;
@@ -409,7 +408,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
               <Text style={styles.successSubtext}>100% of your contribution goes to the recipient. You're making a difference.</Text>
             </View>
           ) : (
-            <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
               {/* Handle */}
               <View style={styles.handle} />
 
@@ -496,7 +495,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 </TouchableOpacity>
               </View>
 
-              {isCustom && (
+              {!!isCustom && (
                 <View style={styles.customInputRow}>
                   <Text style={styles.dollarSign}>$</Text>
                   <TextInput
@@ -534,7 +533,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 disabled={processing}
               >
                 <View style={[styles.checkbox, isAnonymous && styles.checkboxChecked]}>
-                  {isAnonymous && <MaterialIcons name="check" size={14} color={Colors.white} />}
+                  {!!isAnonymous && <MaterialIcons name="check" size={14} color={Colors.white} />}
                 </View>
                 <View style={styles.anonymousInfo}>
                   <Text style={styles.anonymousTitle}>Contribute anonymously</Text>
@@ -590,7 +589,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                         </Text>
                       </TouchableOpacity>
                     </View>
-                    {isCustomTip && (
+                    {!!isCustomTip && (
                       <View style={styles.customTipRow}>
                         <Text style={styles.customTipDollar}>$</Text>
                         <TextInput

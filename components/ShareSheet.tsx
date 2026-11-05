@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform, Share, Image, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 import QRCode from './QRCode';
 
 interface ShareSheetProps {
@@ -219,7 +219,7 @@ export default function ShareSheet({
         <TouchableOpacity style={styles.backdrop} onPress={onClose} activeOpacity={1} />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
 
             {/* Header */}
             <View style={styles.header}>
@@ -233,7 +233,7 @@ export default function ShareSheet({
             </View>
 
             {/* Preview Card */}
-            {needTitle && (
+            {!!needTitle && (
               <View style={styles.previewCard}>
                 <View style={styles.previewHeader}>
                   {userAvatar ? (
@@ -245,17 +245,17 @@ export default function ShareSheet({
                   )}
                   <View style={styles.previewUserInfo}>
                     <Text style={styles.previewUserName} numberOfLines={1}>{userName}</Text>
-                    {userCity && <Text style={styles.previewUserCity}>{userCity}</Text>}
+                    {!!userCity && <Text style={styles.previewUserCity}>{userCity}</Text>}
                   </View>
-                  {category && (
+                  {!!category && (
                     <View style={styles.previewBadge}>
                       <Text style={styles.previewBadgeText}>{category}</Text>
                     </View>
                   )}
                 </View>
                 <Text style={styles.previewTitle} numberOfLines={2}>{needTitle}</Text>
-                {needMessage && <Text style={styles.previewMessage} numberOfLines={2}>{needMessage}</Text>}
-                {needGoal && needRaised !== undefined && (
+                {!!needMessage && <Text style={styles.previewMessage} numberOfLines={2}>{needMessage}</Text>}
+                {!!needGoal && needRaised !== undefined && (
                   <View style={styles.previewProgress}>
                     <View style={styles.previewTrack}>
                       <View style={[styles.previewFill, { width: `${Math.min(progress, 100)}%` }]} />
@@ -408,11 +408,11 @@ export default function ShareSheet({
                     <Text style={styles.qrTagline}>No tragedy. Just life.</Text>
                   </View>
 
-                  {userAvatar && (
+                  {!!userAvatar && (
                     <Image source={{ uri: userAvatar }} style={styles.qrAvatar} />
                   )}
 
-                  {needTitle && (
+                  {!!needTitle && (
                     <Text style={styles.qrNeedTitle} numberOfLines={2}>"{needTitle}"</Text>
                   )}
 
@@ -422,7 +422,7 @@ export default function ShareSheet({
                     label="Scan to help"
                   />
 
-                  {userName && (
+                  {!!userName && (
                     <Text style={styles.qrUserName}>Help {userName}</Text>
                   )}
 
@@ -452,7 +452,7 @@ export default function ShareSheet({
 
                 {/* OG Preview - Twitter/Facebook style */}
                 <View style={styles.ogPreviewCard}>
-                  {needPhoto && (
+                  {!!needPhoto && (
                     <Image source={{ uri: needPhoto }} style={styles.ogPreviewImage} />
                   )}
                   <View style={styles.ogPreviewContent}>
@@ -474,7 +474,7 @@ export default function ShareSheet({
                       Hey! {userName} needs help with "{needTitle}" on SpotMe. ${remaining} still needed. Can you help?
                     </Text>
                     <View style={styles.imessageLinkPreview}>
-                      {needPhoto && (
+                      {!!needPhoto && (
                         <Image source={{ uri: needPhoto }} style={styles.imessageLinkImage} />
                       )}
                       <View style={styles.imessageLinkContent}>

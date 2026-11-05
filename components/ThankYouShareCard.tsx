@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Animated, Platform, Share } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 interface ThankYouShareCardProps {
   amount: number;
@@ -155,7 +155,7 @@ export default function ThankYouShareCard({
       <Text style={styles.subtitle}>for "{needTitle}"</Text>
 
       {/* Recipient Card */}
-      {userAvatar && (
+      {!!userAvatar && (
         <View style={styles.recipientCard}>
           <Image source={{ uri: userAvatar }} style={styles.recipientAvatar} />
           <View style={styles.recipientInfo}>

@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 const CTA_COLOR = Colors.primary;
 const MY_SPOTS_KEY = 'spotme_my_spots';
@@ -492,7 +492,7 @@ export default function PaymentSuccessScreen() {
 
       {/* ======== SUCCESS STATE ======== */}
       {status === 'success' && (
-        <ScrollView
+        <ScrollView keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.successScroll}
         >
@@ -541,7 +541,7 @@ export default function PaymentSuccessScreen() {
             </Text>
 
             {/* Recipient Card */}
-            {relatedNeed && (
+            {!!relatedNeed && (
               <TouchableOpacity
                 style={styles.recipientCard}
                 onPress={goToNeed}
@@ -586,7 +586,7 @@ export default function PaymentSuccessScreen() {
             )}
 
             {/* Collapsible Receipt */}
-            {showReceipt && (
+            {!!showReceipt && (
               <View style={styles.receiptCard}>
                 <View style={styles.receiptRow}>
                   <Text style={styles.receiptLabel}>Contribution</Text>
@@ -861,7 +861,7 @@ export default function PaymentSuccessScreen() {
             </View>
 
             {/* ===== COMMUNITY SPOTTER CTA ===== */}
-            {showSpotterCTA && (
+            {!!showSpotterCTA && (
               <View style={styles.spotterCTACard}>
                 <TouchableOpacity
                   style={styles.spotterCTADismiss}
@@ -939,7 +939,7 @@ export default function PaymentSuccessScreen() {
 
       {/* ======== ERROR STATE ======== */}
       {status === 'error' && (
-        <ScrollView contentContainerStyle={styles.errorScroll}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.errorScroll}>
           <View style={styles.errorContent}>
             <View style={styles.errorCircle}>
               <MaterialIcons name="error-outline" size={48} color="#FFF" />
@@ -950,7 +950,7 @@ export default function PaymentSuccessScreen() {
             </Text>
 
             {/* Show what we know from URL params */}
-            {(urlParams.amount || urlParams.needTitle) && (
+            {!!(urlParams.amount || urlParams.needTitle) && (
               <View style={styles.errorDetailsCard}>
                 <Text style={styles.errorDetailsTitle}>Payment Details</Text>
                 {urlParams.amount ? (

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl, TextInput, Modal, Alert } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 type Tab = 'eligible' | 'history' | 'disputes';
 
@@ -231,7 +233,7 @@ export default function RefundManager() {
     if (Platform.OS === 'web') {
       alert(`Batch refund complete: ${successCount} succeeded, ${failCount} failed`);
     } else {
-      Alert.alert('Batch Refund', `${successCount} succeeded, ${failCount} failed`);
+      showAlert('Batch Refund', `${successCount} succeeded, ${failCount} failed`);
     }
 
     fetchRefundData(true);
@@ -305,7 +307,7 @@ export default function RefundManager() {
     <View style={[st.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={st.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={st.headerTitle}>Refund Manager</Text>
@@ -315,7 +317,7 @@ export default function RefundManager() {
       </View>
 
       {/* Summary Cards */}
-      {summary && (
+      {!!summary && (
         <View style={st.summaryRow}>
           <View style={[st.summaryCard, { borderLeftColor: Colors.error }]}>
             <Text style={st.summaryValue}>${summary.totalRefunded.toFixed(2)}</Text>
@@ -377,7 +379,7 @@ export default function RefundManager() {
         )}
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={st.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchRefundData(true); }} tintColor={Colors.primary} />}
@@ -437,7 +439,7 @@ export default function RefundManager() {
                       </Text>
                       <View style={st.paymentMeta}>
                         <Text style={st.paymentDate}>{formatDate(payment.createdAt)}</Text>
-                        {payment.destinationCharge && (
+                        {!!payment.destinationCharge && (
                           <View style={st.directBadge}>
                             <Text style={st.directBadgeText}>Direct</Text>
                           </View>
@@ -515,7 +517,7 @@ export default function RefundManager() {
                       <View style={[st.refundStatusBadge, { backgroundColor: getRefundStatusColor(refund.status) + '15' }]}>
                         <Text style={[st.refundStatusText, { color: getRefundStatusColor(refund.status) }]}>{refund.status}</Text>
                       </View>
-                      {refund.isPartial && (
+                      {!!refund.isPartial && (
                         <View style={st.partialBadge}>
                           <Text style={st.partialBadgeText}>Partial</Text>
                         </View>
@@ -525,8 +527,8 @@ export default function RefundManager() {
                     <Text style={st.refundReason}>
                       {REFUND_REASONS.find(r => r.value === refund.reason)?.label || refund.reason}
                     </Text>
-                    {refund.error && <Text style={st.refundError}>{refund.error}</Text>}
-                    {refund.stripeRefundId && (
+                    {!!refund.error && <Text style={st.refundError}>{refund.error}</Text>}
+                    {!!refund.stripeRefundId && (
                       <Text style={st.refundStripeId}>{refund.stripeRefundId}</Text>
                     )}
                   </View>
@@ -577,8 +579,8 @@ export default function RefundManager() {
               </TouchableOpacity>
             </View>
 
-            {selectedPayment && (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
+            {!!selectedPayment && (
+              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ maxHeight: 500 }}>
                 {/* Payment Info */}
                 <View style={st.modalSection}>
                   <Text style={st.modalSectionTitle}>Payment Details</Text>
@@ -685,7 +687,7 @@ export default function RefundManager() {
                 </View>
 
                 {/* Result */}
-                {refundResult && (
+                {!!refundResult && (
                   <View style={[st.resultBanner, refundResult.success ? st.resultSuccess : st.resultError]}>
                     <MaterialIcons
                       name={refundResult.success ? 'check-circle' : 'error'}

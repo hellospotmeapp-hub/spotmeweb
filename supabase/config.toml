@@ -1,0 +1,8 @@
+project_id = "wjhxrpwobnyntokegrtx"
+
+[functions.api]
+verify_jwt = true
+
+[functions.stripe-webhook]
+# Stripe calls this directly and signs each request; the function verifies the signature
+verify_jwt = false

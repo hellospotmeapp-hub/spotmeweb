@@ -11,9 +11,10 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase, supabaseUrl, supabaseKey } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 import WalkthroughScene from '@/components/WalkthroughScene';
 
 
@@ -156,66 +157,11 @@ export default function WelcomeScreen() {
   useEffect(() => {
     mountedRef.current = true;
 
+    // The narration service (generate-welcome-audio) isn't deployed, so the tour plays silently
     const preloadAudio = async () => {
-      if (Platform.OS !== 'web') {
-        if (mountedRef.current) {
-          setAudioLoading(false);
-          setAudioError(true);
-        }
-        return;
-      }
-
-      try {
-        console.log('[Audio] Fetching audio from edge function...');
-        const response = await fetch(
-          `${supabaseUrl}/functions/v1/generate-welcome-audio`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseKey}`,
-            },
-            body: JSON.stringify({}),
-          }
-        );
-
-        console.log('[Audio] Response status:', response.status, 'Content-Type:', response.headers.get('Content-Type'));
-
-        if (!response.ok) {
-          throw new Error(`Audio fetch failed: ${response.status}`);
-        }
-
-        // Always try to get the response as a blob
-        const blob = await response.blob();
-        console.log('[Audio] Blob size:', blob.size, 'type:', blob.type);
-
-        if (blob.size < 1000) {
-          // Too small — might be an error response
-          const text = await blob.text();
-          console.error('[Audio] Response too small, content:', text);
-          throw new Error('Audio response too small: ' + text.substring(0, 200));
-        }
-
-        // Create a blob URL with explicit audio type
-        const audioBlob = new Blob([blob], { type: 'audio/mpeg' });
-        const blobUrl = URL.createObjectURL(audioBlob);
-        blobUrlRef.current = blobUrl;
-
-        console.log('[Audio] Blob URL created:', blobUrl);
-
-        if (mountedRef.current) {
-          setAudioReady(true);
-          setAudioLoading(false);
-          setAudioError(false);
-        }
-      } catch (error) {
-        console.error('[Audio] Preload error:', error);
-        if (mountedRef.current) {
-          setAudioError(true);
-          setAudioLoading(false);
-          setAudioReady(false);
-        }
-        trackEvent('audio_error', { metadata: { error: String(error) } });
+      if (mountedRef.current) {
+        setAudioLoading(false);
+        setAudioError(true);
       }
     };
 
@@ -519,7 +465,7 @@ export default function WelcomeScreen() {
 
     setIsPlaying(false);
     setAudioPlaying(false);
-    router.back();
+    goBack(router);
   }, [router, currentScene, trackEvent]);
 
   const goToScene = useCallback((index: number) => {
@@ -562,7 +508,7 @@ export default function WelcomeScreen() {
             if (audioRef.current) {
               try { audioRef.current.pause(); } catch (e) {}
             }
-            router.back();
+            goBack(router);
           }}
           accessibilityLabel="Go back"
         >
@@ -571,7 +517,7 @@ export default function WelcomeScreen() {
 
         <View style={styles.topRight}>
           {/* Audio toggle button — always visible during walkthrough */}
-          {hasStarted && (
+          {!!hasStarted && (
             <TouchableOpacity
               style={[
                 styles.audioToggle,
@@ -604,7 +550,7 @@ export default function WelcomeScreen() {
             </TouchableOpacity>
           )}
 
-          {hasStarted && (
+          {!!hasStarted && (
             <TouchableOpacity
               style={styles.skipButton}
               onPress={skipToEnd}
@@ -637,19 +583,19 @@ export default function WelcomeScreen() {
 
             {/* Audio loading status on start screen */}
             <View style={styles.audioPreloadStatus}>
-              {audioLoading && (
+              {!!audioLoading && (
                 <>
                   <ActivityIndicator size="small" color={Colors.primary} />
                   <Text style={styles.audioPreloadText}>Loading voiceover...</Text>
                 </>
               )}
-              {audioReady && !audioError && (
+              {!!audioReady && !audioError && (
                 <>
                   <MaterialIcons name="check-circle" size={16} color={Colors.success} />
                   <Text style={[styles.audioPreloadText, { color: Colors.success }]}>Audio ready</Text>
                 </>
               )}
-              {audioError && !audioLoading && (
+              {!!audioError && !audioLoading && (
                 <>
                   <MaterialIcons name="volume-off" size={16} color={Colors.textLight} />
                   <Text style={styles.audioPreloadText}>Audio unavailable — will play without sound</Text>
@@ -668,7 +614,7 @@ export default function WelcomeScreen() {
 
             <TouchableOpacity
               style={styles.skipStartButton}
-              onPress={() => router.back()}
+              onPress={() => goBack(router)}
               activeOpacity={0.7}
             >
               <Text style={styles.skipStartText}>Maybe later</Text>
@@ -684,14 +630,14 @@ export default function WelcomeScreen() {
       )}
 
       {/* Scene Content */}
-      {hasStarted && (
+      {!!hasStarted && (
         <View style={styles.sceneContainer}>
           <WalkthroughScene sceneIndex={currentScene} isActive={isPlaying || hasStarted} />
         </View>
       )}
 
       {/* Bottom Controls */}
-      {hasStarted && (
+      {!!hasStarted && (
         <View style={[styles.bottomControls, { paddingBottom: bottomPadding + 16 }]}>
           {/* Subtitle */}
           <Animated.View style={[styles.subtitleContainer, { opacity: subtitleFade }]}>
@@ -825,7 +771,7 @@ export default function WelcomeScreen() {
                     : 0;
                   trackEvent('complete', { sceneIndex: TOTAL_SCENES - 1, durationMs });
                 }
-                router.back();
+                goBack(router);
               }}
               activeOpacity={0.8}
             >
@@ -835,9 +781,9 @@ export default function WelcomeScreen() {
           )}
 
           {/* Audio status bar at bottom */}
-          {hasStarted && (
+          {!!hasStarted && (
             <View style={styles.audioStatusBar}>
-              {audioPlaying && !audioMuted && (
+              {!!audioPlaying && !audioMuted && (
                 <>
                   <View style={styles.audioWave}>
                     {[0, 1, 2, 3, 4].map(i => (
@@ -853,7 +799,7 @@ export default function WelcomeScreen() {
                   <Text style={styles.audioStatusText}>Playing voiceover</Text>
                 </>
               )}
-              {audioPlaying && audioMuted && (
+              {!!audioPlaying && audioMuted && (
                 <>
                   <MaterialIcons name="volume-off" size={12} color={Colors.textLight} />
                   <Text style={styles.audioStatusText}>Muted</Text>

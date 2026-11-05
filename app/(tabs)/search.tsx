@@ -3,10 +3,12 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platfo
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { CATEGORIES } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow, CategoryColors } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { CATEGORIES } from '@/lib/data';
 import NeedCard from '@/components/NeedCard';
+import NeedGrid from '@/components/NeedGrid';
+import { useResponsive } from '@/lib/responsive';
 import ContributeModal from '@/components/ContributeModal';
 
 type SortOption = 'newest' | 'closest' | 'ending';
@@ -19,12 +21,19 @@ export default function SearchScreen() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [showSort, setShowSort] = useState(false);
+  // Category tiles: 3 per row on phones, 4 on tablets, all 8 in one row on desktop
+  const { isWide, isDesktop } = useResponsive();
+  const categoryWidth = isDesktop ? '11.4%' : isWide ? '23.6%' : '31%';
+  const [statusTab, setStatusTab] = useState<'active' | 'funded'>('active');
+  const matchesStatus = (n: { status: string }) => statusTab === 'active'
+    ? n.status === 'Collecting'
+    : ['Goal Met', 'Payout Requested', 'Paid'].includes(n.status);
   const [contributeModal, setContributeModal] = useState<{ visible: boolean; needId: string; title: string; remaining: number }>({
     visible: false, needId: '', title: '', remaining: 0,
   });
 
   const filteredNeeds = useMemo(() => {
-    let result = needs.filter(n => n.status === 'Collecting');
+    let result = needs.filter(matchesStatus);
 
     if (activeCategory !== 'All') {
       result = result.filter(n => n.category === activeCategory);
@@ -53,16 +62,16 @@ export default function SearchScreen() {
     }
 
     return result;
-  }, [needs, activeCategory, query, sortBy]);
+  }, [needs, activeCategory, query, sortBy, statusTab]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { 'All': 0 };
-    needs.filter(n => n.status === 'Collecting').forEach(n => {
+    needs.filter(matchesStatus).forEach(n => {
       counts['All'] = (counts['All'] || 0) + 1;
       counts[n.category] = (counts[n.category] || 0) + 1;
     });
     return counts;
-  }, [needs]);
+  }, [needs, statusTab]);
 
   const handleQuickContribute = (needId: string, amount: number) => {
     const need = needs.find(n => n.id === needId);
@@ -127,7 +136,7 @@ export default function SearchScreen() {
       </View>
 
       {/* Sort Options */}
-      {showSort && (
+      {!!showSort && (
         <View style={styles.sortRow}>
           {SORT_OPTIONS.map(opt => (
             <TouchableOpacity
@@ -149,7 +158,7 @@ export default function SearchScreen() {
         </View>
       )}
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Category Grid */}
         <View style={styles.categoryGrid}>
           {CATEGORIES.map(cat => {
@@ -161,6 +170,7 @@ export default function SearchScreen() {
                 key={cat.name}
                 style={[
                   styles.categoryCard,
+                  { width: categoryWidth as any },
                   isActive && { borderColor: color, borderWidth: 2 },
                 ]}
                 onPress={() => setActiveCategory(cat.name)}
@@ -194,6 +204,22 @@ export default function SearchScreen() {
           <MaterialIcons name="arrow-forward-ios" size={16} color={Colors.primary} />
         </TouchableOpacity>
 
+        {/* Active / Funded */}
+        <View style={styles.statusTabs}>
+          {([['active', 'Active'], ['funded', 'Funded']] as const).map(([key, label]) => (
+            <TouchableOpacity
+              key={key}
+              style={[styles.statusTab, statusTab === key && styles.statusTabActive]}
+              onPress={() => setStatusTab(key)}
+              activeOpacity={0.8}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: statusTab === key }}
+            >
+              <Text style={[styles.statusTabText, statusTab === key && styles.statusTabTextActive]}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Results */}
         <View style={styles.resultsHeader}>
           <Text style={styles.resultsTitle}>
@@ -205,17 +231,28 @@ export default function SearchScreen() {
         {filteredNeeds.length === 0 ? (
           <View style={styles.emptyState}>
             <MaterialIcons name="search-off" size={56} color={Colors.borderLight} />
-            <Text style={styles.emptyTitle}>No results found</Text>
-            <Text style={styles.emptySubtitle}>Try different keywords or browse categories</Text>
+            <Text style={styles.emptyTitle}>{query || activeCategory !== 'All' ? 'No results found' : statusTab === 'active' ? 'No active needs right now' : 'No funded needs yet'}</Text>
+            <Text style={styles.emptySubtitle}>
+              {query || activeCategory !== 'All'
+                ? 'Try different keywords or browse categories'
+                : statusTab === 'active' ? 'Check back soon, or see needs the community already funded.' : 'Funded needs will show up here.'}
+            </Text>
+            {statusTab === 'active' && !query && activeCategory === 'All' && (
+              <TouchableOpacity onPress={() => setStatusTab('funded')} activeOpacity={0.7}>
+                <Text style={[styles.emptySubtitle, { color: Colors.primary, fontWeight: '700', marginTop: Spacing.sm }]}>See funded needs</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
-          filteredNeeds.map(need => (
-            <NeedCard
-              key={need.id}
-              need={need}
-              onContribute={handleQuickContribute}
-            />
-          ))
+          <NeedGrid>
+            {filteredNeeds.map(need => (
+              <NeedCard
+                key={need.id}
+                need={need}
+                onContribute={handleQuickContribute}
+              />
+            ))}
+          </NeedGrid>
         )}
 
         <View style={{ height: 40 }} />
@@ -432,4 +469,12 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.textLight,
   },
+  statusTabs: {
+    flexDirection: 'row', marginHorizontal: Spacing.lg, marginTop: Spacing.lg, padding: 4,
+    backgroundColor: Colors.surface, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: Colors.borderLight,
+  },
+  statusTab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: BorderRadius.full },
+  statusTabActive: { backgroundColor: Colors.primary },
+  statusTabText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textSecondary },
+  statusTabTextActive: { color: Colors.white },
 });

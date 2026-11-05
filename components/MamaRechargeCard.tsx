@@ -1,18 +1,21 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, StyleProp, ViewStyle } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { THURSDAY_SPOTLIGHT } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { getRechargeSpotlight } from '@/lib/data';
+import { useApp } from '@/lib/store';
 
-export default function MamaRechargeCard() {
+export default function MamaRechargeCard({ style }: { style?: StyleProp<ViewStyle> }) {
   const router = useRouter();
-  const spotlight = THURSDAY_SPOTLIGHT;
-  const progress = spotlight.currentMom.raisedAmount / spotlight.currentMom.goalAmount;
+  const { needs } = useApp();
+  const spotlight = useMemo(() => getRechargeSpotlight(needs), [needs]);
+  const mom = spotlight.currentMom;
+  const progress = mom ? Math.min(mom.raisedAmount / mom.goalAmount, 1) : 0;
 
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, style]}
       onPress={() => router.push('/mama-recharge')}
       activeOpacity={0.85}
       accessibilityLabel="Mama Recharge - Support moms with self-care"
@@ -43,12 +46,13 @@ export default function MamaRechargeCard() {
           </Text>
 
           {/* Spotlight preview */}
+          {!!mom && (
           <View style={styles.spotlightRow}>
-            <Image source={{ uri: spotlight.currentMom.avatar }} style={styles.spotlightAvatar} />
+            <Image source={{ uri: mom.avatar }} style={styles.spotlightAvatar} />
             <View style={styles.spotlightInfo}>
-              <Text style={styles.spotlightName}>{spotlight.currentMom.name}</Text>
+              <Text style={styles.spotlightName}>{mom.name}</Text>
               <Text style={styles.spotlightRequest} numberOfLines={1}>
-                {spotlight.currentMom.request}
+                {mom.request}
               </Text>
               {/* Mini progress bar */}
               <View style={styles.miniProgress}>
@@ -59,11 +63,16 @@ export default function MamaRechargeCard() {
               </View>
             </View>
           </View>
+          )}
 
           {/* CTA */}
           <View style={styles.ctaRow}>
             <View style={styles.statsRow}>
-              <Text style={styles.statText}>{spotlight.totalMomsSupported} moms supported</Text>
+              <Text style={styles.statText}>
+                {spotlight.totalMomsSupported > 0
+                  ? `${spotlight.totalMomsSupported} ${spotlight.totalMomsSupported === 1 ? 'mom' : 'moms'} supported`
+                  : 'Treat a mom this week'}
+              </Text>
             </View>
             <View style={styles.ctaButton}>
               <Text style={styles.ctaText}>Explore</Text>
@@ -85,6 +94,7 @@ const styles = StyleSheet.create({
     ...Shadow.lg,
   },
   gradient: {
+    flexGrow: 1,
     backgroundColor: Colors.selfCare,
     padding: Spacing.xl,
     position: 'relative',

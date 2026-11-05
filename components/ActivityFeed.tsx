@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 
 interface ActivityItem {
   id: string;
@@ -88,7 +88,7 @@ export default function ActivityFeed({ maxItems = 8, showHeader = true }: Activi
 
   return (
     <View style={styles.container}>
-      {showHeader && (
+      {!!showHeader && (
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <View style={styles.liveIndicator}>
@@ -177,7 +177,7 @@ export default function ActivityFeed({ maxItems = 8, showHeader = true }: Activi
               </View>
 
               {/* Arrow */}
-              {item.needId && (
+              {!!item.needId && (
                 <MaterialIcons name="chevron-right" size={16} color={Colors.textLight} />
               )}
             </TouchableOpacity>
@@ -192,7 +192,7 @@ export default function ActivityFeed({ maxItems = 8, showHeader = true }: Activi
         </TouchableOpacity>
       )}
 
-      {showAll && activities.length > maxItems && (
+      {!!showAll && activities.length > maxItems && (
         <TouchableOpacity style={styles.showMoreBtn} onPress={() => setShowAll(false)}>
           <Text style={styles.showMoreText}>Show less</Text>
           <MaterialIcons name="expand-less" size={18} color={Colors.primary} />

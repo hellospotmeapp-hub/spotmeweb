@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 
 interface StatusBadgeProps {
   status: string;

@@ -5,10 +5,10 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { Need } from '@/app/lib/data';
-import { pickAndUploadAvatar, prefetchUserPhotos } from '@/app/lib/imageUpload';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { Need } from '@/lib/data';
+import { pickAndUploadAvatar, prefetchUserPhotos } from '@/lib/imageUpload';
 import NeedCard from '@/components/NeedCard';
 import StatusBadge from '@/components/StatusBadge';
 import ThankYouCard from '@/components/ThankYouCard';
@@ -19,6 +19,7 @@ import EditNeedModal from '@/components/EditNeedModal';
 import ReceiptHistory from '@/components/ReceiptHistory';
 import GracefulImage, { prefetchImages } from '@/components/GracefulImage';
 import AvatarPicker from '@/components/AvatarPicker';
+import VerificationRequestModal from '@/components/VerificationRequestModal';
 
 
 export default function ProfileScreen() {
@@ -39,6 +40,7 @@ export default function ProfileScreen() {
   const [thankYouMsg, setThankYouMsg] = useState('');
   const [showShare, setShowShare] = useState(false);
   const [showRecordThankYou, setShowRecordThankYou] = useState(false);
+  const [showVerifyRequest, setShowVerifyRequest] = useState(false);
   const [recordThankYouNeedId, setRecordThankYouNeedId] = useState('');
   const [recordThankYouNeedTitle, setRecordThankYouNeedTitle] = useState('');
 
@@ -247,7 +249,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Header Actions */}
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.replace('/(tabs)')}>
@@ -298,7 +300,7 @@ export default function ProfileScreen() {
                 <MaterialIcons name="camera-alt" size={18} color={Colors.white} />
               )}
             </View>
-            {avatarSuccess && (
+            {!!avatarSuccess && (
               <View style={styles.avatarSuccessBadge}>
                 <MaterialIcons name="check-circle" size={24} color={Colors.success} />
               </View>
@@ -308,7 +310,7 @@ export default function ProfileScreen() {
 
           <View style={styles.nameContainer}>
             <Text style={styles.profileName}>{currentUser.name}</Text>
-            {currentUser.verified && <MaterialIcons name="verified" size={20} color={Colors.primary} />}
+            {!!currentUser.verified && <MaterialIcons name="verified" size={20} color={Colors.primary} />}
           </View>
           {editing ? (
             <View style={styles.editSection}>
@@ -368,13 +370,13 @@ export default function ProfileScreen() {
           ) : (
             <TouchableOpacity
               style={styles.getVerifiedBanner}
-              onPress={() => router.push('/settings')}
+              onPress={() => setShowVerifyRequest(true)}
               activeOpacity={0.8}
             >
               <MaterialIcons name="verified-user" size={18} color={Colors.primary} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.getVerifiedTitle}>Get SpotMe Verified</Text>
-                <Text style={styles.getVerifiedText}>Add a checkmark to build trust. Verify your phone + get reviewed.</Text>
+                <Text style={styles.getVerifiedText}>Add a checkmark to build trust. Send your details for review.</Text>
               </View>
               <MaterialIcons name="chevron-right" size={18} color={Colors.primary} />
             </TouchableOpacity>
@@ -420,10 +422,10 @@ export default function ProfileScreen() {
 
         {/* Tabs */}
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
+        <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
           {tabs.map(tab => (
             <TouchableOpacity key={tab.key} style={[styles.tab, activeTab === tab.key && styles.tabActive]} onPress={() => setActiveTab(tab.key)} activeOpacity={0.7}>
-              {tab.icon && <MaterialIcons name={tab.icon as any} size={14} color={activeTab === tab.key ? Colors.white : Colors.textSecondary} />}
+              {!!tab.icon && <MaterialIcons name={tab.icon as any} size={14} color={activeTab === tab.key ? Colors.white : Colors.textSecondary} />}
               <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
               {tab.count > 0 && <View style={[styles.tabBadge, activeTab === tab.key && styles.tabBadgeActive]}><Text style={[styles.tabBadgeText, activeTab === tab.key && styles.tabBadgeTextActive]}>{tab.count}</Text></View>}
             </TouchableOpacity>
@@ -450,7 +452,7 @@ export default function ProfileScreen() {
               return (
                 <View key={need.id} style={styles.completedCard}>
                   <TouchableOpacity style={styles.completedCardInner} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
-                    {need.photo && <GracefulImage uri={need.photo} type="photo" style={[styles.completedImage, displayStatus === 'Expired' && { opacity: 0.7 }]} category={need.category} />}
+                    {!!need.photo && <GracefulImage uri={need.photo} type="photo" style={displayStatus === 'Expired' ? { ...styles.completedImage, opacity: 0.7 } : styles.completedImage} category={need.category} />}
 
                     <View style={styles.completedContent}>
                       <Text style={styles.completedTitle}>{need.title}</Text>
@@ -459,7 +461,7 @@ export default function ProfileScreen() {
                     </View>
                   </TouchableOpacity>
                   {/* Payout message */}
-                  {payoutMsg && (
+                  {!!payoutMsg && (
                     <View style={[styles.completedActions, { paddingBottom: 0 }]}>
                       <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: payoutMsg.success ? '#E8F5E8' : '#FFF0F0', padding: 10, borderRadius: 10 }}>
                         <MaterialIcons name={payoutMsg.success ? 'check-circle' : 'error-outline'} size={16} color={payoutMsg.success ? Colors.success : Colors.error} />
@@ -468,7 +470,7 @@ export default function ProfileScreen() {
                     </View>
                   )}
                   <View style={styles.completedActions}>
-                    {showPayoutBtn && (
+                    {!!showPayoutBtn && (
                       <TouchableOpacity
                         style={[styles.payoutButton, isPayoutLoading && { opacity: 0.6 }]}
                         onPress={() => handleRequestPayoutForNeed(need.id)}
@@ -528,7 +530,7 @@ export default function ProfileScreen() {
 
             ) : givenNeeds.map(need => (
               <TouchableOpacity key={need.id} style={styles.givenCard} onPress={() => router.push(`/need/${need.id}`)} activeOpacity={0.8}>
-                {need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.givenImage} category={need.category} />}
+                {!!need.photo && <GracefulImage uri={need.photo} type="photo" style={styles.givenImage} category={need.category} />}
 
                 <View style={styles.givenContent}>
                   <Text style={styles.givenTitle} numberOfLines={1}>{need.title}</Text>
@@ -629,7 +631,7 @@ export default function ProfileScreen() {
       />
 
       {/* Edit Need Modal (from bulk manager) */}
-      {editingNeed && (
+      {!!editingNeed && (
         <EditNeedModal
           visible={showEditModal}
           onClose={() => { setShowEditModal(false); setEditingNeed(null); }}
@@ -664,6 +666,12 @@ export default function ProfileScreen() {
         uploading={avatarUploading}
       />
 
+      <VerificationRequestModal
+        visible={showVerifyRequest}
+        onClose={() => setShowVerifyRequest(false)}
+        defaultName={currentUser.name}
+        defaultCity={currentUser.city}
+      />
     </View>
   );
 }

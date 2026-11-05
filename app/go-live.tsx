@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
 
 type CheckStatus = 'pending' | 'checking' | 'pass' | 'fail' | 'warn' | 'skipped';
 
@@ -332,12 +333,12 @@ export default function GoLiveChecklist() {
     <View style={[s.container, { paddingTop: topPadding }]}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={s.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle}>Go-Live Checklist</Text>
-          {lastRunTime && (
+          {!!lastRunTime && (
             <Text style={s.headerSub}>Last run: {new Date(lastRunTime).toLocaleTimeString()}</Text>
           )}
         </View>
@@ -357,7 +358,7 @@ export default function GoLiveChecklist() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); runAllChecks(); }} tintColor={Colors.primary} />}
@@ -452,7 +453,7 @@ export default function GoLiveChecklist() {
                 <MaterialIcons name={isExpanded ? 'expand-less' : 'expand-more'} size={24} color={Colors.textLight} />
               </TouchableOpacity>
 
-              {isExpanded && (
+              {!!isExpanded && (
                 <View style={s.checkList}>
                   {categoryChecks.map(check => (
                     <TouchableOpacity
@@ -478,23 +479,23 @@ export default function GoLiveChecklist() {
                       <View style={s.checkInfo}>
                         <View style={s.checkTitleRow}>
                           <Text style={[s.checkTitle, check.status === 'pass' && s.checkTitlePass]}>{check.title}</Text>
-                          {check.critical && (
+                          {!!check.critical && (
                             <View style={s.criticalBadge}>
                               <Text style={s.criticalBadgeText}>CRITICAL</Text>
                             </View>
                           )}
-                          {check.manualOverride && (
+                          {!!check.manualOverride && (
                             <View style={s.manualBadge}>
                               <Text style={s.manualBadgeText}>MANUAL</Text>
                             </View>
                           )}
                         </View>
                         <Text style={s.checkDesc}>{check.description}</Text>
-                        {check.detail && (
+                        {!!check.detail && (
                           <Text style={[s.checkDetail, { color: getStatusColor(check.status) }]}>{check.detail}</Text>
                         )}
                       </View>
-                      {check.action && (
+                      {!!check.action && (
                         <TouchableOpacity
                           style={s.checkActionBtn}
                           onPress={() => check.actionRoute && router.push(check.actionRoute as any)}

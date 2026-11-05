@@ -7,10 +7,10 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
-import { Need } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
+import { Need, HERO_IMAGE } from '@/lib/data';
 import ProgressBar from '@/components/ProgressBar';
 import ContributeModal from '@/components/ContributeModal';
 import ShareSheet from '@/components/ShareSheet';
@@ -131,9 +131,8 @@ export default function ShareLandingPage() {
       const baseUrl = window.location.origin;
       const firstName = (need.userName || 'Someone').split(' ')[0];
 
-      // Dynamic OG image URL — edge function with storage caching
-      const dbUrl = 'https://wadkuixhehslrteepluf.databasepad.com';
-      const ogImageUrl = `${dbUrl}/functions/v1/generate-og-image?needId=${need.id}`;
+      // Preview image: the need's own photo, else the site image
+      const ogImageUrl = need.photo || HERO_IMAGE;
 
       // Page title
       document.title = `Help ${need.userName}: ${need.title} | SpotMe`;
@@ -273,6 +272,15 @@ export default function ShareLandingPage() {
   const progress = need.raisedAmount / need.goalAmount;
   const remaining = need.goalAmount - need.raisedAmount;
   const isComplete = need.status !== 'Collecting';
+  // A closed need only "reached its goal" if it was actually fully funded
+  const goalReached = need.raisedAmount >= need.goalAmount;
+  const closedMessage = need.status === 'Paid' ? 'Fully funded and paid out!'
+    : goalReached ? (need.status === 'Payout Requested' ? 'Goal reached! Payout in progress.' : 'Goal reached! Thank you!')
+    : need.raisedAmount > 0 ? `This need has closed. $${need.raisedAmount} was raised. Thank you!`
+    : 'This need is no longer accepting contributions.';
+  const closedColor = goalReached || need.status === 'Paid' ? Colors.success : Colors.textLight;
+  const closedIcon = goalReached || need.status === 'Paid' ? 'check-circle' : 'schedule';
+  const closedBg = goalReached || need.status === 'Paid' ? '#E8F5E8' : Colors.surfaceAlt;
   const progressPct = Math.round(progress * 100);
   const firstName = (need.userName || 'Someone').split(' ')[0];
   const recentContributors = need.contributions.slice(0, 5);
@@ -288,7 +296,7 @@ export default function ShareLandingPage() {
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         ref={scrollRef}
         showsVerticalScrollIndicator={false}
         bounces={false}
@@ -323,7 +331,7 @@ export default function ShareLandingPage() {
                 <View style={styles.heroUserInfo}>
                   <View style={styles.heroNameRow}>
                     <Text style={styles.heroName}>{need.userName}</Text>
-                    {need.userVerified && (
+                    {!!need.userVerified && (
                       <MaterialIcons name="verified" size={16} color="#FFF" />
                     )}
                   </View>
@@ -364,19 +372,15 @@ export default function ShareLandingPage() {
               </Animated.View>
             )}
 
-            {isComplete && (
-              <View style={styles.completeBadge}>
-                <MaterialIcons name="check-circle" size={24} color={Colors.success} />
-                <Text style={styles.completeText}>
-                  {need.status === 'Goal Met' ? 'Goal reached! Thank you!' : 
-                   need.status === 'Paid' ? 'Fully funded and paid out!' :
-                   'Goal reached! Payout in progress.'}
-                </Text>
+            {!!isComplete && (
+              <View style={[styles.completeBadge, { backgroundColor: closedBg }]}>
+                <MaterialIcons name={closedIcon} size={24} color={closedColor} />
+                <Text style={[styles.completeText, { color: closedColor }]}>{closedMessage}</Text>
               </View>
             )}
 
             {/* ===== THANK YOU VIDEO ===== */}
-            {thankYouVideo && (
+            {!!thankYouVideo && (
               <View style={styles.thankYouVideoSection}>
                 <View style={styles.thankYouVideoHeader}>
                   <MaterialIcons name="videocam" size={18} color={Colors.accent} />
@@ -479,7 +483,7 @@ export default function ShareLandingPage() {
                         <Text style={styles.supporterName}>{contrib.userName}</Text>
                         <Text style={styles.supporterAmount}>spotted ${contrib.amount}</Text>
                       </View>
-                      {contrib.note && (
+                      {!!contrib.note && (
                         <Text style={styles.supporterNote} numberOfLines={1}>"{contrib.note}"</Text>
                       )}
                     </View>
@@ -499,7 +503,7 @@ export default function ShareLandingPage() {
             )}
 
             {/* ===== LIVE FEED ===== */}
-            {need.contributions && need.contributions.length > 0 && (
+            {!!need.contributions && need.contributions.length > 0 && (
               <LiveDonationFeed contributions={need.contributions} totalSupporters={need.contributorCount} />
             )}
 
@@ -641,11 +645,11 @@ export default function ShareLandingPage() {
           </TouchableOpacity>
         </View>
       )}
-      {isComplete && (
+      {!!isComplete && (
         <View style={[styles.fixedCTA, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <View style={styles.fixedCompleteBanner}>
-            <MaterialIcons name="check-circle" size={20} color={Colors.success} />
-            <Text style={styles.fixedCompleteText}>Goal reached! Thank you!</Text>
+          <View style={[styles.fixedCompleteBanner, { backgroundColor: closedBg }]}>
+            <MaterialIcons name={closedIcon} size={20} color={closedColor} />
+            <Text style={[styles.fixedCompleteText, { color: closedColor }]} numberOfLines={2}>{closedMessage}</Text>
           </View>
           <TouchableOpacity style={styles.fixedShareBtn} onPress={() => setShowShare(true)} activeOpacity={0.7}>
             <MaterialIcons name="share" size={20} color={CTA_COLOR} />

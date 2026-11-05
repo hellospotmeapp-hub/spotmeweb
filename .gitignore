@@ -25,3 +25,7 @@ android
 .metro-health-check*
 
 expo-env.d.ts
+
+# local env (see .env.example)
+.env
+.env.local

@@ -2,8 +2,9 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 
 const SECTIONS = [
   { title: '1. Acceptance of Terms', body: 'By accessing or using SpotMe ("the Platform"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Platform. SpotMe reserves the right to update these terms at any time. Continued use after changes constitutes acceptance.' },
@@ -28,11 +29,11 @@ export default function TermsScreen() {
   return (
     <View style={[s.container, { paddingTop: insets.top }]}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><MaterialIcons name="arrow-back" size={24} color={Colors.text} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => goBack(router)} style={s.backBtn}><MaterialIcons name="arrow-back" size={24} color={Colors.text} /></TouchableOpacity>
         <Text style={s.headerTitle}>Terms of Service</Text>
         <View style={{ width: 40 }} />
       </View>
-      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <Text style={s.updated}>Last updated: February 19, 2026</Text>
         {SECTIONS.map((sec, i) => (
           <View key={i} style={s.section}>

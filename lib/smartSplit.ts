@@ -43,7 +43,7 @@ export function smartSplit(
   specificNeedIds?: string[],
 ): SplitResult {
   // Filter to only collecting needs
-  let eligibleNeeds = needs.filter(n => n.status === 'Collecting');
+  let eligibleNeeds = needs.filter(n => n.status === 'Collecting' && (!n.verificationStatus || n.verificationStatus === 'approved'));
 
   // Apply mode-specific filtering
   if (mode === 'category' && category) {

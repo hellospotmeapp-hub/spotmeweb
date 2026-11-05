@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ScrollView, Image, ActivityIndicator, Platform, Alert } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { Need } from '@/app/lib/data';
-import { pickNeedPhoto, uploadNeedPhoto } from '@/app/lib/imageUpload';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { Need } from '@/lib/data';
+import { pickNeedPhoto, uploadNeedPhoto } from '@/lib/imageUpload';
 
 interface EditNeedModalProps {
   visible: boolean;
@@ -202,7 +203,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
     if (Platform.OS === 'web') {
       setShowDeleteConfirm(true);
     } else {
-      Alert.alert(
+      showAlert(
         'Delete Need',
         `Are you sure you want to delete "${need.title}"? This action cannot be undone.`,
         [
@@ -245,7 +246,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.content} showsVerticalScrollIndicator={false}>
             {/* Title */}
             <Text style={styles.label}>Title</Text>
             <TextInput
@@ -278,12 +279,12 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
               {photo ? (
                 <View style={styles.photoPreviewWrap}>
                   <Image source={{ uri: photo }} style={styles.photoPreview} />
-                  {failedUpload && (
+                  {!!failedUpload && (
                     <View style={styles.photoWarningBadge}>
                       <MaterialIcons name="cloud-off" size={14} color={Colors.white} />
                     </View>
                   )}
-                  {retrySuccess && (
+                  {!!retrySuccess && (
                     <View style={styles.photoSuccessBadge}>
                       <MaterialIcons name="check-circle" size={14} color={Colors.white} />
                     </View>
@@ -311,7 +312,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
                     </>
                   )}
                 </TouchableOpacity>
-                {photo && !failedUpload && (
+                {!!photo && !failedUpload && (
                   <TouchableOpacity
                     style={[styles.photoBtn, styles.photoRemoveBtn]}
                     onPress={() => { setPhoto(''); setFailedUpload(null); }}
@@ -324,7 +325,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             </View>
 
             {/* Photo Upload Retry Banner */}
-            {failedUpload && (
+            {!!failedUpload && (
               <View style={styles.retryBanner}>
                 <View style={styles.retryBannerHeader}>
                   <View style={styles.retryBannerIconWrap}>
@@ -407,7 +408,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             )}
 
             {/* Retry Success */}
-            {retrySuccess && (
+            {!!retrySuccess && (
               <View style={styles.retrySuccessBanner}>
                 <MaterialIcons name="check-circle" size={16} color={Colors.success} />
                 <Text style={styles.retrySuccessText}>Photo uploaded successfully!</Text>
@@ -448,7 +449,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             )}
 
             {/* Info banner */}
-            {hasContributions && (
+            {!!hasContributions && (
               <View style={styles.infoBanner}>
                 <MaterialIcons name="info-outline" size={16} color="#5B8DEF" />
                 <Text style={styles.infoBannerText}>
@@ -458,7 +459,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             )}
 
             {/* Error */}
-            {error && (
+            {!!error && (
               <View style={styles.errorBanner}>
                 <MaterialIcons name="error-outline" size={16} color={Colors.error} />
                 <Text style={styles.errorText}>{error}</Text>
@@ -466,7 +467,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             )}
 
             {/* Success */}
-            {success && (
+            {!!success && (
               <View style={styles.successBanner}>
                 <MaterialIcons name="check-circle" size={16} color={Colors.success} />
                 <Text style={styles.successText}>Changes saved!</Text>
@@ -474,7 +475,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
             )}
 
             {/* Delete Section */}
-            {onDelete && (
+            {!!onDelete && (
               <View style={styles.deleteSection}>
                 <View style={styles.deleteDivider} />
                 <Text style={styles.deleteSectionTitle}>Danger Zone</Text>
@@ -488,7 +489,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
                   </View>
                 )}
 
-                {deleteError && (
+                {!!deleteError && (
                   <View style={styles.errorBanner}>
                     <MaterialIcons name="error-outline" size={16} color={Colors.error} />
                     <Text style={styles.errorText}>{deleteError}</Text>
@@ -546,7 +547,7 @@ export default function EditNeedModal({ visible, onClose, onSave, onDelete, need
                   </TouchableOpacity>
                 )}
 
-                {canDelete && !showDeleteConfirm && (
+                {!!canDelete && !showDeleteConfirm && (
                   <Text style={styles.deleteHint}>
                     This will permanently remove the need. This cannot be undone.
                   </Text>

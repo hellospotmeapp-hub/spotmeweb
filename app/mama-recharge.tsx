@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
-import { RECHARGE_CATEGORIES, THURSDAY_SPOTLIGHT } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
+import { RECHARGE_CATEGORIES, getRechargeSpotlight } from '@/lib/data';
 import NeedCard from '@/components/NeedCard';
 import ContributeModal from '@/components/ContributeModal';
 
@@ -18,7 +19,8 @@ export default function MamaRechargeScreen() {
     visible: false, needId: '', title: '', remaining: 0,
   });
 
-  const spotlight = THURSDAY_SPOTLIGHT;
+  const spotlight = useMemo(() => getRechargeSpotlight(needs), [needs]);
+  const mom = spotlight.currentMom;
 
   // Filter self-care needs
   const selfCareNeeds = useMemo(() => {
@@ -55,7 +57,7 @@ export default function MamaRechargeScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
           accessibilityLabel="Go back"
         >
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
@@ -73,7 +75,7 @@ export default function MamaRechargeScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {/* Hero Section */}
         <View style={styles.heroSection}>
           <View style={styles.heroGradient}>
@@ -136,43 +138,47 @@ export default function MamaRechargeScreen() {
             </Text>
 
             {/* Spotlight Mom */}
+            {mom ? (<>
             <View style={styles.spotlightCard}>
-              <Image source={{ uri: spotlight.currentMom.avatar }} style={styles.spotlightAvatar} />
+              <Image source={{ uri: mom.avatar }} style={styles.spotlightAvatar} />
               <View style={styles.spotlightInfo}>
-                <Text style={styles.spotlightName}>{spotlight.currentMom.name}</Text>
+                <Text style={styles.spotlightName}>{mom.name}</Text>
                 <View style={styles.spotlightCity}>
                   <MaterialIcons name="place" size={12} color={Colors.textLight} />
-                  <Text style={styles.spotlightCityText}>{spotlight.currentMom.city}</Text>
+                  <Text style={styles.spotlightCityText}>{mom.city}</Text>
                 </View>
               </View>
             </View>
 
-            <Text style={styles.spotlightRequest}>{spotlight.currentMom.request}</Text>
-            <Text style={styles.spotlightMessage}>{spotlight.currentMom.message}</Text>
+            <Text style={styles.spotlightRequest}>{mom.request}</Text>
+            <Text style={styles.spotlightMessage}>{mom.message}</Text>
 
             {/* Progress */}
             <View style={styles.spotlightProgress}>
               <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${(spotlight.currentMom.raisedAmount / spotlight.currentMom.goalAmount) * 100}%` }]} />
+                <View style={[styles.progressFill, { width: `${(mom.raisedAmount / mom.goalAmount) * 100}%` }]} />
               </View>
               <View style={styles.progressRow}>
                 <Text style={styles.progressAmount}>
-                  ${spotlight.currentMom.raisedAmount} of ${spotlight.currentMom.goalAmount}
+                  ${mom.raisedAmount} of ${mom.goalAmount}
                 </Text>
                 <Text style={styles.progressPercent}>
-                  {Math.round((spotlight.currentMom.raisedAmount / spotlight.currentMom.goalAmount) * 100)}%
+                  {Math.round((mom.raisedAmount / mom.goalAmount) * 100)}%
                 </Text>
               </View>
             </View>
 
             <TouchableOpacity
               style={styles.spotlightCTA}
-              onPress={() => router.push(`/need/${spotlight.currentMom.id}`)}
+              onPress={() => router.push(`/need/${mom.id}`)}
               activeOpacity={0.8}
             >
               <MaterialIcons name="favorite" size={18} color={Colors.white} />
-              <Text style={styles.spotlightCTAText}>Support {spotlight.currentMom.name.split(' ')[0]}</Text>
+              <Text style={styles.spotlightCTAText}>Support {mom.name.split(' ')[0]}</Text>
             </TouchableOpacity>
+            </>) : (
+              <Text style={styles.thursdayDescription}>No active self-care request this week. Post one to be featured!</Text>
+            )}
 
             {/* Thursday stats */}
             <View style={styles.thursdayStats}>
@@ -282,7 +288,7 @@ export default function MamaRechargeScreen() {
                 <MaterialIcons name="celebration" size={24} color={Colors.success} />
               </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.completedScroll}>
+            <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.completedScroll}>
               {completedRechargeNeeds.map(need => (
                 <TouchableOpacity
                   key={need.id}

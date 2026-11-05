@@ -13,8 +13,8 @@ import {
 
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { Need } from '@/app/lib/data';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { Need } from '@/lib/data';
 import GracefulImage from './GracefulImage';
 import ProgressBar from './ProgressBar';
 
@@ -22,7 +22,6 @@ interface HomeSearchBarProps {
   needs: Need[];
 }
 
-const DEFAULT_AVATAR = 'https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771037056297_f9a83069.png';
 
 export default function HomeSearchBar({ needs }: HomeSearchBarProps) {
   const router = useRouter();
@@ -145,7 +144,7 @@ export default function HomeSearchBar({ needs }: HomeSearchBarProps) {
       </View>
 
       {/* Results Dropdown */}
-      {showResults && (
+      {!!showResults && (
         <>
           {/* Backdrop to dismiss */}
           {Platform.OS !== 'web' && (
@@ -177,7 +176,7 @@ export default function HomeSearchBar({ needs }: HomeSearchBarProps) {
                       activeOpacity={0.7}
                     >
                       <GracefulImage
-                        uri={group.userAvatar || DEFAULT_AVATAR}
+                        uri={group.userAvatar}
                         type="avatar"
                         style={styles.userAvatar}
                       />

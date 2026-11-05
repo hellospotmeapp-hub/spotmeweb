@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Animated } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 
 interface DonationEntry {
   id: string;
@@ -107,7 +107,7 @@ export default function LiveDonationFeed({ contributions, totalSupporters, compa
               </View>
               <View style={styles.feedMeta}>
                 <Text style={styles.feedTime}>{timeAgo(entry.timestamp)}</Text>
-                {entry.note && (
+                {!!entry.note && (
                   <Text style={styles.feedNote} numberOfLines={1}>"{entry.note}"</Text>
                 )}
               </View>

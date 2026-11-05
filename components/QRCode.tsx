@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Image, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import { Colors, BorderRadius, Spacing, FontSize } from '@/app/lib/theme';
+import { Colors, BorderRadius, Spacing, FontSize } from '@/lib/theme';
 
 interface QRCodeProps {
   value: string;
@@ -20,7 +20,7 @@ export default function QRCode({ value, size = 180, color = '2D2926', bgColor = 
   return (
     <View style={styles.container}>
       <View style={[styles.qrWrapper, { width: size + 24, height: size + 24 }]}>
-        {loading && !error && (
+        {!!loading && !error && (
           <View style={[styles.loadingOverlay, { width: size, height: size }]}>
             <ActivityIndicator size="small" color={Colors.primary} />
           </View>
@@ -40,7 +40,7 @@ export default function QRCode({ value, size = 180, color = '2D2926', bgColor = 
           />
         )}
       </View>
-      {label && <Text style={styles.label}>{label}</Text>}
+      {!!label && <Text style={styles.label}>{label}</Text>}
     </View>
   );
 }

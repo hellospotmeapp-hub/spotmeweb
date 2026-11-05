@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, FlatList, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { useApp } from '@/app/lib/store';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { useApp } from '@/lib/store';
 
 interface ReceiptItem {
   id: string;
@@ -140,11 +140,11 @@ export default function ReceiptHistory() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.needTitle} numberOfLines={1}>{item.needTitle}</Text>
-              {item.recipientEmail && (
+              {!!item.recipientEmail && (
                 <Text style={styles.emailText} numberOfLines={1}>{item.recipientEmail}</Text>
               )}
             </View>
-            {item.needId && <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />}
+            {!!item.needId && <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />}
           </TouchableOpacity>
         ) : null}
 
@@ -181,7 +181,7 @@ export default function ReceiptHistory() {
         ) : null}
 
         {/* Resend Result */}
-        {resendResult && (
+        {!!resendResult && (
           <View style={[styles.resendResultRow, { backgroundColor: resendResult.success ? '#E8F5E9' : '#FFF3E0' }]}>
             <MaterialIcons
               name={resendResult.success ? 'check-circle' : 'warning'}

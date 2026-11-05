@@ -4,8 +4,8 @@ import {
   Platform, ActivityIndicator, Animated, ScrollView,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { supabase, supabaseUrl, supabaseKey } from '@/app/lib/supabase';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase, supabaseUrl, supabaseKey } from '@/lib/supabase';
 
 
 interface RecordThankYouModalProps {
@@ -314,7 +314,7 @@ export default function RecordThankYouModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} bounces={false}>
             {/* Need Info */}
             <View style={styles.needInfo}>
               <MaterialIcons name="auto-awesome" size={16} color={Colors.accent} />
@@ -442,7 +442,7 @@ export default function RecordThankYouModal({
             {step === 'message' && (
               <View style={styles.messageSection}>
                 {/* Video Preview */}
-                {videoPreviewUrl && Platform.OS === 'web' && (
+                {!!videoPreviewUrl && Platform.OS === 'web' && (
                   <View style={styles.previewContainer}>
                     <video
                       ref={videoPreviewRef as any}
@@ -492,7 +492,7 @@ export default function RecordThankYouModal({
                 <Text style={styles.charCount}>{message.length}/300</Text>
 
                 {/* Upload Progress */}
-                {isUploading && (
+                {!!isUploading && (
                   <View style={styles.uploadProgressSection}>
                     <View style={styles.uploadProgressBar}>
                       <Animated.View

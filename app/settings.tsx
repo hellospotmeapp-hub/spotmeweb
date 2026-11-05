@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Modal, ActivityIndicator, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput, Modal, ActivityIndicator, Platform, Image, Alert, Linking } from 'react-native';
+import { showAlert } from '@/lib/alert';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/app/lib/theme';
-import { FAQ_ITEMS } from '@/app/lib/data';
-import { useApp } from '@/app/lib/store';
-import { supabase } from '@/app/lib/supabase';
-import { pickImage, uploadAvatar, ImagePickResult } from '@/app/lib/imageUpload';
+import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { FAQ_ITEMS } from '@/lib/data';
+import { useApp } from '@/lib/store';
+import { supabase } from '@/lib/supabase';
+import VerificationRequestModal from '@/components/VerificationRequestModal';
+import { pickImage, uploadAvatar, ImagePickResult } from '@/lib/imageUpload';
 
 
 interface SettingRowProps {
@@ -39,7 +42,7 @@ function SettingRow({ icon, label, value, onPress, toggle, toggleValue, onToggle
       <View style={styles.settingContent}>
         <View style={styles.settingLabelRow}>
           <Text style={[styles.settingLabel, danger && { color: Colors.error }]}>{label}</Text>
-          {badge && (
+          {!!badge && (
             <View style={[styles.settingBadge, { backgroundColor: (badgeColor || Colors.primary) + '20' }]}>
               <Text style={[styles.settingBadgeText, { color: badgeColor || Colors.primary }]}>{badge}</Text>
             </View>
@@ -65,9 +68,53 @@ export default function SettingsScreen() {
     currentUser, isLoggedIn, logout, pushEnabled, subscribeToPush, unsubscribeFromPush,
     payoutStatus, setupPayouts, checkPayoutStatus, completePayoutOnboarding, updateProfile,
   } = useApp();
-  const [pushNotifs, setPushNotifs] = useState(pushEnabled);
-  const [emailNotifs, setEmailNotifs] = useState(false);
-  const [privateProfile, setPrivateProfile] = useState(false);
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  useEffect(() => {
+    if (!isLoggedIn) { setIsAdmin(false); return; }
+    supabase.functions.invoke('stripe-checkout', { body: { action: 'admin_check' } })
+      .then(({ data }) => setIsAdmin(!!data?.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, [isLoggedIn, currentUser.id]);
+
+  const emailSupport = (subject: string) => {
+    Linking.openURL(`mailto:hellospotme.app@gmail.com?subject=${encodeURIComponent(subject)}`).catch(() => {
+      showAlert('Contact SpotMe', 'Email us at hellospotme.app@gmail.com');
+    });
+  };
+
+  const goHomeAfterSignOut = () => {
+    if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); }
+  };
+
+  const deleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('process-contribution', { body: { action: 'delete_account' } });
+      if (error || !data?.success) throw new Error(data?.error || error?.message || 'Could not delete your account.');
+      await logout();
+      goHomeAfterSignOut();
+    } catch (err: any) {
+      const msg = err?.message || 'Could not delete your account.';
+      if (Platform.OS === 'web') window.alert(msg); else showAlert('Account not deleted', msg);
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const confirmDeleteAccount = () => {
+    const message = 'This permanently deletes your account, profile and needs that have no donations. Donation records are kept anonymously. This cannot be undone.';
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Delete your SpotMe account?\n\n${message}`)) deleteAccount();
+    } else {
+      showAlert('Delete your SpotMe account?', message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: deleteAccount },
+      ]);
+    }
+  };
 
   const [showFAQ, setShowFAQ] = useState(false);
   const [expandedFAQ, setExpandedFAQ] = useState<number | null>(null);
@@ -84,6 +131,7 @@ export default function SettingsScreen() {
 
   // Payout setup state
   const [showPayoutSetup, setShowPayoutSetup] = useState(false);
+  const [showVerifyRequest, setShowVerifyRequest] = useState(false);
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutError, setPayoutError] = useState('');
   const [payoutSummary, setPayoutSummary] = useState<any>(null);
@@ -236,15 +284,21 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBack(router)}>
           <MaterialIcons name="close" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <Text style={styles.sectionTitle}>Account</Text>
+        {!isLoggedIn ? (
+          <View style={styles.section}>
+            <SettingRow icon="login" label="Sign in or create an account" value="Post needs, track donations and get paid out" onPress={() => router.push('/auth')} />
+          </View>
+        ) : (
+        <>
         <View style={styles.section}>
           {/* Change Profile Photo Row */}
           <TouchableOpacity style={styles.settingRow} onPress={handlePickAvatar} activeOpacity={0.7} disabled={avatarUploading}>
@@ -287,7 +341,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* Save / Discard buttons shown when a photo is pending */}
-          {pendingAvatar && !avatarUploading && (
+          {!!pendingAvatar && !avatarUploading && (
             <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingBottom: 12 }}>
               <TouchableOpacity
                 onPress={() => { setPendingAvatar(null); setAvatarSaveError(''); }}
@@ -309,12 +363,11 @@ export default function SettingsScreen() {
           <SettingRow
             icon="verified-user"
             label={currentUser.verified ? 'SpotMe Verified' : 'Get Verified'}
-            value={currentUser.verified ? 'Checkmark active on your posts' : 'Phone verify + manual review'}
+            value={currentUser.verified ? 'Checkmark active on your posts' : 'Reviewed by the SpotMe team'}
             badge={currentUser.verified ? 'Verified' : 'Get Checkmark'}
             badgeColor={currentUser.verified ? Colors.success : Colors.primary}
-            onPress={() => router.push('/(tabs)/profile')}
+            onPress={() => { if (!currentUser.verified) setShowVerifyRequest(true); }}
           />
-          <SettingRow icon="credit-card" label="Payment Methods" value={paymentMethods.length > 0 ? `${paymentMethods.length} card(s)` : 'Add a card'} onPress={() => setShowPaymentMethods(true)} />
           <SettingRow
             icon="account-balance-wallet"
             label="Payout Settings"
@@ -334,38 +387,18 @@ export default function SettingsScreen() {
           <View style={styles.connectInfoContent}>
             <Text style={styles.connectInfoTitle}>Stripe Connect</Text>
             <Text style={styles.connectInfoText}>
-              When you set up payouts, contributions go directly to your bank account. SpotMe takes no platform fee — 100% goes to you. Tips from contributors support SpotMe.
+              Set up payouts so you can withdraw your donations once your need reaches its goal. SpotMe takes no platform fee — 100% goes to you. Tips from contributors support SpotMe.
             </Text>
 
           </View>
         </View>
-
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <View style={styles.section}>
-          <SettingRow
-            icon="notifications"
-            label="Push Notifications"
-            toggle
-            toggleValue={pushNotifs}
-            onToggle={async (val) => {
-              setPushNotifs(val);
-              if (val) {
-                const success = await subscribeToPush();
-                if (!success) setPushNotifs(false);
-              } else {
-                await unsubscribeFromPush();
-              }
-            }}
-          />
-          <SettingRow icon="email" label="Email Notifications" toggle toggleValue={emailNotifs} onToggle={setEmailNotifs} />
-        </View>
+        </>
+        )}
 
         <Text style={styles.sectionTitle}>Privacy & Safety</Text>
         <View style={styles.section}>
-          <SettingRow icon="lock" label="Private Profile" toggle toggleValue={privateProfile} onToggle={setPrivateProfile} />
-          <SettingRow icon="block" label="Blocked Users" value="0 blocked" onPress={() => {}} />
           <SettingRow icon="gavel" label="Community Guidelines" onPress={() => router.push('/guidelines')} />
-          <SettingRow icon="flag" label="Report a Problem" onPress={() => {}} />
+          <SettingRow icon="flag" label="Report a Problem" onPress={() => emailSupport('SpotMe: Report a problem')} />
         </View>
 
         <Text style={styles.sectionTitle}>Help Center</Text>
@@ -375,7 +408,7 @@ export default function SettingsScreen() {
             <View style={styles.settingContent}><Text style={styles.settingLabel}>FAQs</Text></View>
             <MaterialIcons name={showFAQ ? 'expand-less' : 'expand-more'} size={22} color={Colors.textLight} />
           </TouchableOpacity>
-          {showFAQ && (
+          {!!showFAQ && (
             <View style={styles.faqSection}>
               {FAQ_ITEMS.map((item, index) => (
                 <TouchableOpacity key={index} style={styles.faqItem} onPress={() => setExpandedFAQ(expandedFAQ === index ? null : index)} activeOpacity={0.7}>
@@ -388,22 +421,29 @@ export default function SettingsScreen() {
               ))}
             </View>
           )}
-          <SettingRow icon="chat" label="Contact Support" value="hellospotme.app@gmail.com" onPress={() => {
-            if (Platform.OS === 'web') {
-              window.open('mailto:hellospotme.app@gmail.com?subject=SpotMe Support Request', '_blank');
-            }
-          }} />
+          <SettingRow icon="chat" label="Contact Support" value="hellospotme.app@gmail.com" onPress={() => emailSupport('SpotMe Support Request')} />
           <SettingRow icon="info" label="About SpotMe" value="v1.1.0" onPress={() => router.push('/about')} />
           <SettingRow icon="description" label="Terms of Service" onPress={() => router.push('/terms')} />
-          <SettingRow icon="admin-panel-settings" label="Admin Dashboard" value="Manage app" onPress={() => router.push('/admin')} />
+          <SettingRow icon="privacy-tip" label="Privacy Policy" onPress={() => router.push('/privacy')} />
+          {!!isAdmin && (
+            <SettingRow icon="admin-panel-settings" label="Admin Dashboard" value="Manage app" onPress={() => router.push('/admin')} />
+          )}
         </View>
 
-        <Text style={styles.sectionTitle}>Account</Text>
-        <View style={styles.section}>
-        <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); if (Platform.OS === 'web') { try { window.location.href = '/'; } catch {} } else { router.replace('/(tabs)'); } }} />
-
-          <SettingRow icon="delete-forever" label="Delete Account" danger onPress={() => {}} />
-        </View>
+        {!!isLoggedIn && (
+          <>
+            <Text style={styles.sectionTitle}>Account</Text>
+            <View style={styles.section}>
+              <SettingRow icon="logout" label="Sign Out" danger onPress={async () => { await logout(); goHomeAfterSignOut(); }} />
+              <SettingRow
+                icon="delete-forever"
+                label={deletingAccount ? 'Deleting account...' : 'Delete Account'}
+                danger
+                onPress={deletingAccount ? () => {} : confirmDeleteAccount}
+              />
+            </View>
+          </>
+        )}
 
         <View style={styles.footer}>
           <Text style={styles.footerLogo}>SpotMe</Text>
@@ -412,7 +452,7 @@ export default function SettingsScreen() {
           <View style={styles.footerLinks}>
             <TouchableOpacity onPress={() => router.push('/terms')}><Text style={styles.footerLink}>Terms of Service</Text></TouchableOpacity>
             <Text style={styles.footerDot}>·</Text>
-            <TouchableOpacity><Text style={styles.footerLink}>Privacy Policy</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/privacy')}><Text style={styles.footerLink}>Privacy Policy</Text></TouchableOpacity>
             <Text style={styles.footerDot}>·</Text>
             <TouchableOpacity onPress={() => router.push('/guidelines')}><Text style={styles.footerLink}>Guidelines</Text></TouchableOpacity>
           </View>
@@ -422,7 +462,7 @@ export default function SettingsScreen() {
       </ScrollView>
 
       {/* Payment Methods Modal */}
-      <Modal visible={showPaymentMethods} animationType="slide" transparent={Platform.OS === 'web'} onRequestClose={() => setShowPaymentMethods(false)}>
+      <Modal visible={showPaymentMethods} animationType="slide" transparent={Platform.OS === 'web'} statusBarTranslucent navigationBarTranslucent onRequestClose={() => setShowPaymentMethods(false)}>
         <View style={[styles.modalContainer, { paddingTop: topPadding + 10 }]}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowPaymentMethods(false)}>
@@ -431,7 +471,7 @@ export default function SettingsScreen() {
             <Text style={styles.modalTitle}>Payment Methods</Text>
             <View style={{ width: 24 }} />
           </View>
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.modalContent} showsVerticalScrollIndicator={false}>
             <View style={styles.secureNotice}>
               <MaterialIcons name="lock" size={18} color={Colors.secondary} />
               <Text style={styles.secureNoticeText}>Your payment information is encrypted and secure.</Text>
@@ -451,7 +491,7 @@ export default function SettingsScreen() {
                   <View style={styles.cardInfo}>
                     <Text style={styles.cardBrand}>{method.brand}</Text>
                     <Text style={styles.cardLast4}>**** **** **** {method.last4}</Text>
-                    {method.isDefault && <View style={styles.defaultBadge}><Text style={styles.defaultBadgeText}>Default</Text></View>}
+                    {!!method.isDefault && <View style={styles.defaultBadge}><Text style={styles.defaultBadgeText}>Default</Text></View>}
                   </View>
                   <TouchableOpacity style={styles.removeCardBtn} onPress={() => handleRemoveCard(method.id)} disabled={removingId === method.id}>
                     {removingId === method.id ? <ActivityIndicator size="small" color={Colors.error} /> : <MaterialIcons name="delete-outline" size={22} color={Colors.error} />}
@@ -503,7 +543,7 @@ export default function SettingsScreen() {
       </Modal>
 
       {/* Payout Setup Modal */}
-      <Modal visible={showPayoutSetup} animationType="slide" transparent={Platform.OS === 'web'} onRequestClose={() => setShowPayoutSetup(false)}>
+      <Modal visible={showPayoutSetup} animationType="slide" transparent={Platform.OS === 'web'} statusBarTranslucent navigationBarTranslucent onRequestClose={() => setShowPayoutSetup(false)}>
         <View style={[styles.modalContainer, { paddingTop: topPadding + 10 }]}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowPayoutSetup(false)}>
@@ -512,7 +552,7 @@ export default function SettingsScreen() {
             <Text style={styles.modalTitle}>Payout Settings</Text>
             <View style={{ width: 24 }} />
           </View>
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.modalContent} showsVerticalScrollIndicator={false}>
             {/* Status Banner */}
             {payoutsEnabled ? (
               <View style={styles.payoutStatusActive}>
@@ -521,7 +561,7 @@ export default function SettingsScreen() {
                 </View>
                 <Text style={styles.payoutStatusTitle}>Payouts Active</Text>
                 <Text style={styles.payoutStatusText}>
-                  Your Stripe Connect account is set up. 100% of contributions to your needs are sent directly to you — no platform fees.
+                  Your Stripe Connect account is set up. Once a need reaches its goal, you can withdraw 100% of its contributions — no platform fees.
                 </Text>
               </View>
             ) : hasPayoutAccount ? (
@@ -539,9 +579,9 @@ export default function SettingsScreen() {
                 <View style={styles.payoutStatusIcon}>
                   <MaterialIcons name="account-balance-wallet" size={32} color={Colors.accent} />
                 </View>
-                <Text style={styles.payoutStatusTitle}>Set Up Direct Payouts</Text>
+                <Text style={styles.payoutStatusTitle}>Set Up Payouts</Text>
                 <Text style={styles.payoutStatusText}>
-                  Connect your bank account via Stripe to receive 100% of contributions directly. No platform fees — SpotMe is supported by optional tips.
+                  Connect your bank account via Stripe so you can withdraw 100% of your donations once your need reaches its goal. No platform fees — SpotMe is supported by optional tips.
                 </Text>
               </View>
             )}
@@ -564,8 +604,8 @@ export default function SettingsScreen() {
                   <Text style={[styles.stepNumberText, { color: Colors.secondaryDark }]}>2</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>Stripe routes the payment</Text>
-                  <Text style={styles.stepDesc}>100% of the donation goes to you. Optional tips support SpotMe separately.</Text>
+                  <Text style={styles.stepTitle}>SpotMe holds the funds</Text>
+                  <Text style={styles.stepDesc}>Donations are held safely by Stripe until your goal is met. Optional tips support SpotMe separately.</Text>
                 </View>
               </View>
               <View style={styles.stepConnector} />
@@ -574,8 +614,8 @@ export default function SettingsScreen() {
                   <Text style={[styles.stepNumberText, { color: '#8B7000' }]}>3</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>You receive funds</Text>
-                  <Text style={styles.stepDesc}>Money arrives in your bank account within 2-3 business days</Text>
+                  <Text style={styles.stepTitle}>You withdraw</Text>
+                  <Text style={styles.stepDesc}>Once your goal is met, request a payout. Money arrives in 2-3 business days.</Text>
                 </View>
               </View>
             </View>
@@ -690,6 +730,13 @@ export default function SettingsScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      <VerificationRequestModal
+        visible={showVerifyRequest}
+        onClose={() => setShowVerifyRequest(false)}
+        defaultName={currentUser.name}
+        defaultCity={currentUser.city}
+      />
     </View>
   );
 }
