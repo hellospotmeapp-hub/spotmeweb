@@ -225,77 +225,60 @@ export async function pickImageFromCamera(): Promise<ImagePickResult | null> {
 // WEB PICKERS
 // ============================================================
 function pickImageWeb(): Promise<ImagePickResult | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif';
-    input.style.display = 'none';
-    document.body.appendChild(input);
-
-    let resolved = false;
-    const cleanup = () => { if (input.parentNode) try { document.body.removeChild(input); } catch {} };
-
-    input.onchange = async (e: any) => {
-      if (resolved) return;
-      resolved = true;
-      const file = e.target?.files?.[0];
-      cleanup();
-      if (!file) { resolve(null); return; }
-      try {
-        resolve(await compressImage(file, 400, 0.7));
-      } catch (err) {
-        console.error('[ImageUpload] Avatar compression failed:', err);
-        try {
-          resolve(await rawFileToBase64(file));
-        } catch { resolve(null); }
-      }
-    };
-
-    input.oncancel = () => { if (resolved) return; resolved = true; cleanup(); resolve(null); };
-
-    const handleFocus = () => {
-      setTimeout(() => {
-        if (!resolved) { resolved = true; cleanup(); resolve(null); }
-        window.removeEventListener('focus', handleFocus);
-      }, 2000);
-    };
-    window.addEventListener('focus', handleFocus);
-    input.click();
-  });
+  return pickWebFile(400, 0.7, 'Avatar');
 }
 
 function pickNeedPhotoWeb(): Promise<ImagePickResult | null> {
+  // Compress to 1200px max, 80% JPEG quality
+  return pickWebFile(1200, 0.8, 'Need photo');
+}
+
+// iOS Safari hands the file over seconds after the picker closes (it converts
+// HEIC to JPEG first), so a returning focus event is not a cancel. Browsers
+// fire `cancel` when the picker is dismissed; the long focus timeout only
+// covers older ones that don't.
+const WEB_PICK_CANCEL_FALLBACK_MS = 30000;
+
+function pickWebFile(maxSize: number, quality: number, label: string): Promise<ImagePickResult | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/jpeg,image/png,image/webp,image/gif';
     input.style.display = 'none';
     document.body.appendChild(input);
+
     let resolved = false;
-    const cleanup = () => { if (input.parentNode) try { document.body.removeChild(input); } catch {} };
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const finish = (result: ImagePickResult | null) => {
+      if (resolved) return;
+      resolved = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      window.removeEventListener('focus', handleFocus);
+      if (input.parentNode) try { document.body.removeChild(input); } catch {}
+      resolve(result);
+    };
 
     input.onchange = async (e: any) => {
-      if (resolved) return; resolved = true;
-      const file = e.target?.files?.[0]; cleanup();
-      if (!file) { resolve(null); return; }
+      if (resolved) return;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      const file = e.target?.files?.[0];
+      if (!file) { finish(null); return; }
       try {
-        // Compress to 1200px max, 80% JPEG quality
-        resolve(await compressImage(file, 1200, 0.8));
+        finish(await compressImage(file, maxSize, quality));
       } catch (err) {
-        console.error('[ImageUpload] Need photo compression failed:', err);
+        console.error(`[ImageUpload] ${label} compression failed:`, err);
         try {
-          resolve(await rawFileToBase64(file));
-        } catch { resolve(null); }
+          finish(await rawFileToBase64(file));
+        } catch { finish(null); }
       }
     };
-    input.oncancel = () => { if (resolved) return; resolved = true; cleanup(); resolve(null); };
 
-    const handleFocus = () => {
-      setTimeout(() => {
-        if (!resolved) { resolved = true; cleanup(); resolve(null); }
-        window.removeEventListener('focus', handleFocus);
-      }, 2000);
-    };
+    input.oncancel = () => finish(null);
+
+    function handleFocus() {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(() => { if (!input.files?.length) finish(null); }, WEB_PICK_CANCEL_FALLBACK_MS);
+    }
     window.addEventListener('focus', handleFocus);
     input.click();
   });

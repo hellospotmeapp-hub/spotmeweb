@@ -66,7 +66,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {
     currentUser, isLoggedIn, logout, pushEnabled, subscribeToPush, unsubscribeFromPush,
-    payoutStatus, setupPayouts, checkPayoutStatus, completePayoutOnboarding, updateProfile,
+    payoutStatus, setupPayouts, checkPayoutStatus, completePayoutOnboarding, updateProfile, refreshProfile,
   } = useApp();
 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -163,7 +163,10 @@ export default function SettingsScreen() {
     try {
       const result = await uploadAvatar(currentUser.id, pendingAvatar.base64, pendingAvatar.mimeType);
       if (result.success && result.avatarUrl) {
-        updateProfile({ avatar: result.avatarUrl });
+        if (!(await updateProfile({ avatar: result.avatarUrl }))) {
+          setAvatarSaveError('Photo uploaded but not saved to your profile. Please try again.');
+          return;
+        }
         setPendingAvatar(null);
         setAvatarSaved(true);
         setTimeout(() => setAvatarSaved(false), 3000);
@@ -363,10 +366,10 @@ export default function SettingsScreen() {
           <SettingRow
             icon="verified-user"
             label={currentUser.verified ? 'SpotMe Verified' : 'Get Verified'}
-            value={currentUser.verified ? 'Checkmark active on your posts' : 'Reviewed by the SpotMe team'}
-            badge={currentUser.verified ? 'Verified' : 'Get Checkmark'}
+            value={currentUser.verified ? 'Checkmark active on your posts' : currentUser.verificationRequest === 'pending' ? 'Request under review' : 'Reviewed by the SpotMe team'}
+            badge={currentUser.verified ? 'Verified' : currentUser.verificationRequest === 'pending' ? 'Pending' : 'Get Checkmark'}
             badgeColor={currentUser.verified ? Colors.success : Colors.primary}
-            onPress={() => { if (!currentUser.verified) setShowVerifyRequest(true); }}
+            onPress={() => { if (!currentUser.verified && currentUser.verificationRequest !== 'pending') setShowVerifyRequest(true); }}
           />
           <SettingRow
             icon="account-balance-wallet"
@@ -733,7 +736,7 @@ export default function SettingsScreen() {
 
       <VerificationRequestModal
         visible={showVerifyRequest}
-        onClose={() => setShowVerifyRequest(false)}
+        onClose={() => { setShowVerifyRequest(false); refreshProfile(); }}
         defaultName={currentUser.name}
         defaultCity={currentUser.city}
       />
