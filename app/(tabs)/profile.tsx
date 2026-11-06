@@ -379,6 +379,14 @@ export default function ProfileScreen() {
                 <Text style={styles.verifiedBannerText}>Phone verified + manually reviewed. Your checkmark shows on every post.</Text>
               </View>
             </View>
+          ) : currentUser.verificationRequest === 'pending' ? (
+            <View style={styles.getVerifiedBanner}>
+              <MaterialIcons name="hourglass-top" size={18} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.getVerifiedTitle}>Verification under review</Text>
+                <Text style={styles.getVerifiedText}>We got your request. Your checkmark appears here once the SpotMe team approves it.</Text>
+              </View>
+            </View>
           ) : (
             <TouchableOpacity
               style={styles.getVerifiedBanner}
@@ -678,7 +686,7 @@ export default function ProfileScreen() {
 
       <VerificationRequestModal
         visible={showVerifyRequest}
-        onClose={() => setShowVerifyRequest(false)}
+        onClose={() => { setShowVerifyRequest(false); refreshProfile(); }}
         defaultName={currentUser.name}
         defaultCity={currentUser.city}
       />

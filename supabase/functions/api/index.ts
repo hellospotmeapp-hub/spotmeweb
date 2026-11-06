@@ -117,7 +117,8 @@ function mapNeed(need: any, profile: any = {}, contributions: any[] = []) {
     id: need.id,
     userId: need.user_id,
     userName: need.user_name?.trim() ? need.user_name : (profile.name || "SpotMe User"),
-    userAvatar: need.user_avatar?.trim() ? need.user_avatar : (profile.avatar || ""),
+    // The poster's current profile photo wins over the copy stored on the need
+    userAvatar: profile.id ? (profile.avatar || "") : (need.user_avatar || ""),
     userCity: need.user_city?.trim() ? need.user_city : (profile.city || ""),
     userVerified: profile.verified || false,
     userTrustScore: profile.trust_score || 0,
@@ -1212,6 +1213,15 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       if (Object.keys(needSync).length) await db.from("needs").update(needSync).eq("user_id", uid);
       if (updates.avatar !== undefined) await db.from("contributions").update({ user_avatar: updates.avatar }).eq("user_id", uid).eq("is_anonymous", false);
       if (updates.name) await db.from("contributions").update({ user_name: updates.name }).eq("user_id", uid).eq("is_anonymous", false);
+      // Comments, activity, payments and thank-you videos also carry a copy, so the new photo shows everywhere
+      if (updates.avatar !== undefined) {
+        await Promise.all([
+          db.from("need_comments").update({ user_avatar: updates.avatar }).eq("user_id", uid),
+          db.from("activity_feed").update({ user_avatar: updates.avatar }).eq("user_id", uid),
+          db.from("thankyou_videos").update({ user_avatar: updates.avatar }).eq("user_id", uid),
+          db.from("payments").update({ contributor_avatar: updates.avatar }).eq("contributor_id", uid).eq("is_anonymous", false),
+        ]);
+      }
       const profile = await getProfile(uid);
       return { success: true, profile: profile ? profileToUser(profile) : null };
     }
@@ -1280,7 +1290,10 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       const uid = requireUser(ctx);
       const profile = await getProfile(uid);
       if (!profile) return { success: false, error: "Profile not found" };
-      return { success: true, profile: profileToUser(profile) };
+      // Lets the profile show "under review" after the user sends a verification request
+      const { data: vreq } = profile.verified ? { data: null } : await db.from("verification_requests")
+        .select("status").eq("user_id", uid).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      return { success: true, profile: { ...profileToUser(profile), verificationRequest: vreq?.status || null } };
     }
 
     case "fetch_receipts": {
@@ -1563,7 +1576,10 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       const { data: req } = await db.from("verification_requests").update({
         status: approve ? "approved" : "rejected", notes: sanitize(body.notes, 500), reviewed_at: new Date().toISOString(),
       }).eq("id", body.requestId).select("user_id").maybeSingle();
-      if (approve && req?.user_id) await db.from("profiles").update({ verified: true }).eq("id", req.user_id);
+      if (approve && req?.user_id) {
+        await db.from("profiles").update({ verified: true }).eq("id", req.user_id);
+        await notify(req.user_id, { type: "milestone", title: "You're SpotMe Verified!", message: "Your checkmark now shows on your profile and every post." });
+      }
       return { success: true };
     }
 

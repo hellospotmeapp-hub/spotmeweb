@@ -8,6 +8,8 @@ export interface User {
   totalRaised: number;
   totalGiven: number;
   verified: boolean;
+  // Status of the latest verification request, while not yet verified
+  verificationRequest?: 'pending' | 'approved' | 'rejected' | null;
   trustScore?: number;
   trustLevel?: 'new' | 'active' | 'verified' | 'trusted' | 'champion';
 }
