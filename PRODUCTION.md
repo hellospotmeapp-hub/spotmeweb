@@ -64,6 +64,7 @@ supabase db query --linked -f supabase/migrations/<file>.sql   # one migration a
 | `20261103000004_lockdown.sql` | **run after the new frontend is live** (the old frontend depends on what it removes) |
 | `20261103000005_backfill_profile_totals.sql` | applied 2026-11-03 |
 | `20261104000006_need_verification.sql` | run before deploying the `api` that hides unapproved needs |
+| `20261107000007_connected_accounts_mode.sql` | run before deploying the `api` that keeps live and test payout accounts apart |
 
 ## Go-live checklist
 
