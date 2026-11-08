@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { supabase, safeInvoke } from './supabase';
 import { Need, Notification, User, Contribution, Receipt, TrustScoreDetails, ThankYouUpdate } from './data';
 import { offlineManager, QueuedAction } from './offlineManager';
+import { payWithPaymentSheet } from './nativePayment';
 
 
 // In-memory fallback for when localStorage is unavailable
@@ -362,6 +363,16 @@ interface PaymentResult {
   error?: string;
   stripeNotConfigured?: boolean;
   stripeSetupError?: string;
+}
+
+// iOS/Android: collect payment in Stripe's PaymentSheet, then have the server confirm it
+async function completeNativePayment(data: any): Promise<PaymentResult> {
+  const r = await payWithPaymentSheet(data.clientSecret);
+  if (!r.paid) return { success: false, error: r.canceled ? 'Payment canceled.' : (r.error || 'Payment failed. Please try again.') };
+  try {
+    await supabase.functions.invoke('stripe-checkout', { body: { action: 'verify_payment', paymentId: data.paymentId } });
+  } catch {}
+  return { success: true, paymentId: data.paymentId, mode: 'stripe' };
 }
 
 interface PayoutResult {
@@ -1114,6 +1125,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (data.clientSecret && data.mode === 'stripe') {
+          if (Platform.OS !== 'web') {
+            const paid = await completeNativePayment(data);
+            if (paid.success) fetchNeedsSilent();
+            return paid;
+          }
 
           if (Platform.OS === 'web') {
             const resolvedTip = data.tipAmount ?? data.applicationFee ?? tipAmount ?? 0;
@@ -1251,6 +1267,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (data?.success) {
         if (data.clientSecret && data.mode === 'stripe') {
+          if (Platform.OS !== 'web') {
+            const paid = await completeNativePayment(data);
+            if (paid.success) fetchNeedsSilent();
+            return paid;
+          }
           if (Platform.OS === 'web') {
             const checkoutParams = new URLSearchParams({
               client_secret: data.clientSecret,
@@ -1358,7 +1379,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         body: {
           action: 'create_onboarding_link',
           userId: currentUser.id,
-          returnUrl: returnUrl + '/settings',
+          // setup_payout=true tells Settings to finish onboarding when Stripe sends the user back
+          returnUrl: returnUrl + '/settings?setup_payout=true',
           refreshUrl: returnUrl + '/settings',
         },
       });
@@ -2035,6 +2057,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!data?.success) throw new Error(data?.error || 'Retry failed');
 
       if (data.clientSecret && data.mode === 'stripe') {
+        if (Platform.OS !== 'web') {
+          const paid = await completeNativePayment(data);
+          if (paid.success) fetchNeedsSilent();
+          return paid;
+        }
         if (Platform.OS === 'web') {
           const fp = failedPayments.find(p => p.id === failedPaymentId);
           const checkoutParams = new URLSearchParams({

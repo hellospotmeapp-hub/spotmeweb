@@ -67,6 +67,7 @@
         "npm:@react-navigation/bottom-tabs@^7.3.10",
         "npm:@react-navigation/elements@^2.3.8",
         "npm:@react-navigation/native@^7.1.6",
+        "npm:@stripe/stripe-react-native@0.50.3",
         "npm:@supabase/supabase-js@^2.49.4",
         "npm:@types/react@~19.1.10",
         "npm:babel-preset-expo@~54.0.10",

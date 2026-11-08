@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, TextInput
 import { showAlert } from '@/lib/alert';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
@@ -262,6 +263,10 @@ export default function SettingsScreen() {
           // Redirect to onboarding
           if (Platform.OS === 'web') {
             window.location.href = result.onboardingUrl;
+          } else {
+            // Native: onboard in an in-app browser, then ask the server whether Stripe is done
+            await WebBrowser.openBrowserAsync(result.onboardingUrl);
+            if (!(await completePayoutOnboarding())) await checkPayoutStatus();
           }
         } else {
           // Already onboarded

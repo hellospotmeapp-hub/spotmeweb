@@ -86,10 +86,10 @@ export default function SpreadTheLoveScreen() {
       const isAnonymous = privacyMode === 'anonymous';
 
       // Charged through Stripe; the server records each allocation once the payment succeeds.
-      // On web this redirects to the checkout page.
+      // On web this redirects to the checkout page; native pays in the PaymentSheet.
       const result = await spreadWithPayment(splitResult.allocations, splitResult.totalAmount, spreadMode, isAnonymous);
       if (!result.success) throw new Error(result.error || 'Spread failed');
-      if (Platform.OS !== 'web') throw new Error('Spread the Love checkout is available on the web app.');
+      if (Platform.OS !== 'web') { setStep('success'); animateSuccess(); }
     } catch (err: any) {
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
       setStep('preview');

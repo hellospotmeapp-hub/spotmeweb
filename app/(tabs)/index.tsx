@@ -180,7 +180,8 @@ function HomeScreenContent() {
 
   let totalNeeds = 0, totalRaised = 0, totalSpots = 0;
   try {
-    totalNeeds = activeNeeds.length;
+    // The viewer's own needs still under review aren't public, so don't count them
+    totalNeeds = activeNeeds.filter((n: any) => n?.verificationStatus !== 'pending').length;
     totalRaised = safeNeeds.reduce((sum: number, n: any) => sum + (n?.raisedAmount || 0), 0);
     totalSpots = safeNeeds.reduce((sum: number, n: any) => sum + (n?.contributorCount || 0), 0);
   } catch {}

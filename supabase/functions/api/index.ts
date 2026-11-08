@@ -7,6 +7,9 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { stripe, stripeMode, stripeKeyKind } from "../_shared/stripe.ts";
+
+// Payout accounts are per Stripe mode; only the ones matching the server key are usable
+const LIVEMODE = stripeKeyKind.endsWith("_live");
 import { onPaymentCompleted } from "../_shared/payments.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -349,13 +352,24 @@ async function transferPendingFunds(uid: string, needIds: string[], accountId: s
   return { transferred, failed, totalDollars: money(totalDollars) };
 }
 
+// Stripe's answer when an account id doesn't exist under (or isn't connected to) our platform key
+function isMissingAccount(err: unknown): boolean {
+  return /does not have access to account|No such account|account_invalid|resource_missing/i.test((err as Error)?.message || "");
+}
+
 async function syncConnectedAccount(uid: string) {
-  const { data: account } = await db.from("connected_accounts").select("*").eq("user_id", uid).maybeSingle();
+  const { data: account } = await db.from("connected_accounts").select("*").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
   if (!account?.stripe_account_id) return { account, live: null };
   let live: any;
   try {
     live = await stripe("GET", `accounts/${account.stripe_account_id}`);
   } catch (err) {
+    if (isMissingAccount(err)) {
+      // Not usable with this Stripe key: show it as unfinished so the user sets payouts up again
+      const reset = { payouts_enabled: false, charges_enabled: false, details_submitted: false, onboarding_complete: false };
+      await db.from("connected_accounts").update(reset).eq("user_id", uid).eq("livemode", LIVEMODE);
+      return { account: { ...account, ...reset }, live: null };
+    }
     // Stripe unreachable: report the last known status instead of failing the screen
     console.warn(`[connect] Stripe account lookup failed for ${uid}:`, (err as Error).message);
     return { account, live: null };
@@ -366,7 +380,7 @@ async function syncConnectedAccount(uid: string) {
     details_submitted: !!live.details_submitted,
     onboarding_complete: !!(live.details_submitted && live.charges_enabled),
   };
-  await db.from("connected_accounts").update(updates).eq("user_id", uid);
+  await db.from("connected_accounts").update(updates).eq("user_id", uid).eq("livemode", LIVEMODE);
   return { account: { ...account, ...updates }, live };
 }
 
@@ -480,7 +494,7 @@ async function stripeCheckout(action: string, body: any, ctx: Ctx): Promise<any>
 
     case "fetch_payout_dashboard": {
       const uid = requireUser(ctx);
-      const { data: account } = await db.from("connected_accounts").select("*").eq("user_id", uid).maybeSingle();
+      const { data: account } = await db.from("connected_accounts").select("*").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
       const { data: userNeeds } = await db.from("needs").select("*").eq("user_id", uid).order("created_at", { ascending: false });
       const needIds = (userNeeds || []).map((n) => n.id);
       const { data: paymentData } = needIds.length
@@ -933,27 +947,39 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
 
     case "create_account": {
       const uid = requireUser(ctx);
-      const { data: existing } = await db.from("connected_accounts").select("*").eq("user_id", uid).maybeSingle();
+      const { data: existing } = await db.from("connected_accounts").select("*").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
       if (existing?.stripe_account_id) {
-        return { success: true, accountId: existing.stripe_account_id, onboardingComplete: existing.onboarding_complete || false, alreadyExists: true };
+        // Accounts made under a different Stripe platform account can't be used; replace those with a new one
+        const usable = await stripe("GET", `accounts/${existing.stripe_account_id}`).then(() => true, (err) => !isMissingAccount(err));
+        if (usable) {
+          return { success: true, accountId: existing.stripe_account_id, onboardingComplete: existing.onboarding_complete || false, alreadyExists: true };
+        }
+        console.warn(`[connect] replacing unreachable payout account ${existing.stripe_account_id} for ${uid}`);
       }
       const profile = await getProfile(uid);
-      const acct = await stripe("POST", "accounts", {
-        type: "express",
-        email: ctx.email || undefined,
-        metadata: { user_id: uid, name: profile?.name || "" },
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-      }, `acct-${uid}`);
+      let acct: any;
+      try {
+        acct = await stripe("POST", "accounts", {
+          type: "express",
+          email: ctx.email || undefined,
+          metadata: { user_id: uid, name: profile?.name || "" },
+          capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+        }, `acct-${uid}-${LIVEMODE ? "live" : "test"}`);
+      } catch (err) {
+        console.error(`[connect] create_account failed for ${uid}:`, (err as Error).message);
+        // Admins see Stripe's reason (e.g. Connect not enabled on the platform account)
+        return { success: false, error: ctx.isAdmin ? `Stripe: ${(err as Error).message}` : "Payout setup isn't available right now. Please contact SpotMe support." };
+      }
       await db.from("connected_accounts").upsert({
-        user_id: uid, stripe_account_id: acct.id, onboarding_complete: false,
+        user_id: uid, livemode: LIVEMODE, stripe_account_id: acct.id, onboarding_complete: false,
         payouts_enabled: false, charges_enabled: false, details_submitted: false,
-      }, { onConflict: "user_id" });
+      }, { onConflict: "user_id,livemode" });
       return { success: true, accountId: acct.id, onboardingComplete: false };
     }
 
     case "create_onboarding_link": {
       const uid = requireUser(ctx);
-      const { data: account } = await db.from("connected_accounts").select("stripe_account_id").eq("user_id", uid).maybeSingle();
+      const { data: account } = await db.from("connected_accounts").select("stripe_account_id").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
       if (!account?.stripe_account_id) {
         return { success: false, needsAccount: true, error: "No Stripe account found. Please tap Set Up to create your payout account first." };
       }
@@ -984,7 +1010,7 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
 
     case "create_login_link": {
       const uid = requireUser(ctx);
-      const { data: account } = await db.from("connected_accounts").select("stripe_account_id, onboarding_complete").eq("user_id", uid).maybeSingle();
+      const { data: account } = await db.from("connected_accounts").select("stripe_account_id, onboarding_complete").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
       if (!account?.stripe_account_id || !account.onboarding_complete) return { success: false, error: "Finish payout setup first." };
       const link = await stripe("POST", `accounts/${account.stripe_account_id}/login_links`);
       return { success: true, url: link.url, loginUrl: link.url };
@@ -1019,7 +1045,7 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
 
     case "get_bank_info": {
       const uid = requireUser(ctx);
-      const { data: account } = await db.from("connected_accounts").select("stripe_account_id").eq("user_id", uid).maybeSingle();
+      const { data: account } = await db.from("connected_accounts").select("stripe_account_id").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
       if (!account?.stripe_account_id) return { success: true, bankInfo: null };
       const list = await stripe("GET", `accounts/${account.stripe_account_id}/external_accounts`, { object: "bank_account", limit: 1 });
       const bank = list?.data?.[0];
@@ -1049,7 +1075,7 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
       const { data: need } = await db.from("needs").select("user_id").eq("id", body.needId).maybeSingle();
       if (!need) return { success: true, needNotFound: true };
       const { data: acct } = await db.from("connected_accounts")
-        .select("stripe_account_id, onboarding_complete, payouts_enabled").eq("user_id", need.user_id).maybeSingle();
+        .select("stripe_account_id, onboarding_complete, payouts_enabled").eq("user_id", need.user_id).eq("livemode", LIVEMODE).maybeSingle();
       return {
         success: true, hasAccount: !!acct?.stripe_account_id, onboardingComplete: acct?.onboarding_complete || false,
         payoutsEnabled: acct?.payouts_enabled || false,
@@ -1496,7 +1522,7 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       } catch (err) {
         return { success: false, error: `The key (${stripeKeyKind}) works, but Stripe won't say which account it belongs to: ${(err as Error).message}` };
       }
-      const { data: accounts } = await db.from("connected_accounts").select("user_id, stripe_account_id, onboarding_complete");
+      const { data: accounts } = await db.from("connected_accounts").select("user_id, stripe_account_id, onboarding_complete").eq("livemode", LIVEMODE);
       const results = await Promise.all((accounts || []).filter((a) => a.stripe_account_id).map(async (a) => {
         try {
           const acct = await stripe("GET", `accounts/${a.stripe_account_id}`);
@@ -1526,7 +1552,7 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       const [{ data: profiles }, { data: accounts }] = userIds.length
         ? await Promise.all([
           db.from("profiles").select("id, name, avatar, city, email").in("id", userIds),
-          db.from("connected_accounts").select("user_id, onboarding_complete").in("user_id", userIds),
+          db.from("connected_accounts").select("user_id, onboarding_complete").in("user_id", userIds).eq("livemode", LIVEMODE),
         ])
         : [{ data: [] as any[] }, { data: [] as any[] }];
       const pMap = new Map((profiles || []).map((p) => [p.id, p]));
