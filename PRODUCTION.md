@@ -22,6 +22,44 @@ Backend: Supabase project `wjhxrpwobnyntokegrtx`. Frontend: Expo web build on Ve
   collected by the platform and transferred when they finish onboarding or
   request a payout (idempotent per payment).
 
+## Environments
+
+| Build | Supabase | Stripe |
+|---|---|---|
+| Debug (`npx expo start`, Xcode Debug, Android debug) | staging project | test keys |
+| Release (Xcode Release/Archive, `./gradlew bundleRelease`) and spotmeone.com | production `wjhxrpwobnyntokegrtx` | live keys |
+
+Chosen in `lib/config.ts` by `__DEV__`. Publishable keys live in `.env`; secret keys in
+`.env.secrets` (gitignored, never loaded by Expo). Vercel needs
+`EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...` in its Production environment.
+
+Push the secret keys: `scripts/push-stripe-secrets.sh prod` / `scripts/push-stripe-secrets.sh staging`.
+
+### Creating the staging project
+
+1. Supabase dashboard → New project (free tier). Put its ref in `.env.secrets` as `STAGING_PROJECT_REF`,
+   and its URL / anon key in `.env` as `EXPO_PUBLIC_SUPABASE_URL_DEV` / `EXPO_PUBLIC_SUPABASE_ANON_KEY_DEV`.
+2. Copy the schema (no data) from production:
+   ```sh
+   supabase link --project-ref wjhxrpwobnyntokegrtx
+   supabase db dump --linked -f /tmp/spotme_schema.sql
+   supabase link --project-ref <staging-ref>
+   supabase db query --linked -f /tmp/spotme_schema.sql
+   supabase link --project-ref wjhxrpwobnyntokegrtx   # link back to production
+   ```
+3. Deploy the functions: `supabase functions deploy api --project-ref <staging-ref>` and
+   `supabase functions deploy stripe-webhook --no-verify-jwt --project-ref <staging-ref>`.
+4. `scripts/push-stripe-secrets.sh staging`, then add a Stripe **test-mode** webhook to
+   `https://<staging-ref>.supabase.co/functions/v1/stripe-webhook` and set its signing secret
+   as `STRIPE_WEBHOOK_SECRET_2` on staging.
+5. Sign up in a debug build, then add yourself to `admin_users` on staging.
+
+## Native release builds
+
+`npx expo prebuild --clean` generates `ios/` and `android/` (both gitignored), then build Release in
+Xcode / `cd android && ./gradlew bundleRelease`. Stripe Connect must be enabled on the Stripe account
+(dashboard.stripe.com/connect) in both test and live mode, or payout setup fails.
+
 ## Secrets
 
 Supabase → Edge Functions → Secrets (or `supabase secrets set NAME=value`):

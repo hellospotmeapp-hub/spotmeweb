@@ -6,10 +6,11 @@ import { goBack } from '@/lib/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 import { supabase } from '@/lib/supabase';
+import { stripePublishableKey } from '@/lib/config';
 
 // Platform Stripe publishable key. Must be the same mode (test/live) as the
 // STRIPE_SECRET_KEY secret on the Supabase `api` function — set it in .env.
-const STRIPE_PK = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
+const STRIPE_PK = stripePublishableKey;
 const DEFAULT_STRIPE_ACCOUNT = '';
 
 // ============================================================

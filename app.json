@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SpotMe: Everyday Support",
+    "name": "SpotMeOne",
     "slug": "support-contribute-community",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,29 +12,31 @@
       "bundleIdentifier": "com.spotmeone.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "SpotMe needs camera access to take photos for your needs and profile.",
-        "NSPhotoLibraryUsageDescription": "SpotMe needs photo library access to attach images to your needs and update your profile picture.",
-        "NSPhotoLibraryAddUsageDescription": "SpotMe needs permission to save receipt images to your photo library.",
+        "NSCameraUsageDescription": "SpotMeOne needs camera access to take photos for your needs and profile.",
+        "NSPhotoLibraryUsageDescription": "SpotMeOne needs photo library access to attach images to your needs and update your profile picture.",
+        "NSPhotoLibraryAddUsageDescription": "SpotMeOne needs permission to save receipt images to your photo library.",
         "LSApplicationQueriesSchemes": [
           "spotme",
           "stripe"
         ],
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": []
-      }
+      },
+      "buildNumber": "26"
     },
     "android": {
       "package": "com.spotmeone.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FFAD00"
+        "backgroundColor": "#FFA900"
       },
       "edgeToEdgeEnabled": true,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+      ],
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",
@@ -46,22 +48,28 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-logo.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#FFA900"
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "SpotMe needs access to your photos to attach images to needs.",
-          "cameraPermission": "SpotMe needs camera access to take photos for your needs.",
+          "photosPermission": "SpotMeOne needs access to your photos to attach images to needs.",
+          "cameraPermission": "SpotMeOne needs camera access to take photos for your needs.",
           "microphonePermission": false
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "enableGooglePay": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

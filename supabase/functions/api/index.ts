@@ -352,6 +352,11 @@ async function transferPendingFunds(uid: string, needIds: string[], accountId: s
   return { transferred, failed, totalDollars: money(totalDollars) };
 }
 
+// Stripe's answer when an account id doesn't exist under (or isn't connected to) our platform key
+function isMissingAccount(err: unknown): boolean {
+  return /does not have access to account|No such account|account_invalid|resource_missing/i.test((err as Error)?.message || "");
+}
+
 async function syncConnectedAccount(uid: string) {
   const { data: account } = await db.from("connected_accounts").select("*").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
   if (!account?.stripe_account_id) return { account, live: null };
@@ -359,6 +364,12 @@ async function syncConnectedAccount(uid: string) {
   try {
     live = await stripe("GET", `accounts/${account.stripe_account_id}`);
   } catch (err) {
+    if (isMissingAccount(err)) {
+      // Not usable with this Stripe key: show it as unfinished so the user sets payouts up again
+      const reset = { payouts_enabled: false, charges_enabled: false, details_submitted: false, onboarding_complete: false };
+      await db.from("connected_accounts").update(reset).eq("user_id", uid).eq("livemode", LIVEMODE);
+      return { account: { ...account, ...reset }, live: null };
+    }
     // Stripe unreachable: report the last known status instead of failing the screen
     console.warn(`[connect] Stripe account lookup failed for ${uid}:`, (err as Error).message);
     return { account, live: null };
@@ -938,15 +949,27 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
       const uid = requireUser(ctx);
       const { data: existing } = await db.from("connected_accounts").select("*").eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
       if (existing?.stripe_account_id) {
-        return { success: true, accountId: existing.stripe_account_id, onboardingComplete: existing.onboarding_complete || false, alreadyExists: true };
+        // Accounts made under a different Stripe platform account can't be used; replace those with a new one
+        const usable = await stripe("GET", `accounts/${existing.stripe_account_id}`).then(() => true, (err) => !isMissingAccount(err));
+        if (usable) {
+          return { success: true, accountId: existing.stripe_account_id, onboardingComplete: existing.onboarding_complete || false, alreadyExists: true };
+        }
+        console.warn(`[connect] replacing unreachable payout account ${existing.stripe_account_id} for ${uid}`);
       }
       const profile = await getProfile(uid);
-      const acct = await stripe("POST", "accounts", {
-        type: "express",
-        email: ctx.email || undefined,
-        metadata: { user_id: uid, name: profile?.name || "" },
-        capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-      }, `acct-${uid}`);
+      let acct: any;
+      try {
+        acct = await stripe("POST", "accounts", {
+          type: "express",
+          email: ctx.email || undefined,
+          metadata: { user_id: uid, name: profile?.name || "" },
+          capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
+        }, `acct-${uid}-${LIVEMODE ? "live" : "test"}`);
+      } catch (err) {
+        console.error(`[connect] create_account failed for ${uid}:`, (err as Error).message);
+        // Admins see Stripe's reason (e.g. Connect not enabled on the platform account)
+        return { success: false, error: ctx.isAdmin ? `Stripe: ${(err as Error).message}` : "Payout setup isn't available right now. Please contact SpotMe support." };
+      }
       await db.from("connected_accounts").upsert({
         user_id: uid, livemode: LIVEMODE, stripe_account_id: acct.id, onboarding_complete: false,
         payouts_enabled: false, charges_enabled: false, details_submitted: false,
