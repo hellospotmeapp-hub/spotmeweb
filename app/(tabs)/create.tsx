@@ -86,7 +86,7 @@ export default function CreateScreen() {
   const bannerAnim = useRef(new Animated.Value(0)).current;
   const bannerShown = useRef(false);
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
 
 
   // Slide transition animation
@@ -1922,7 +1922,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   photoOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 16,
     justifyContent: 'center' as const,

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, ActivityIndicator, Platform, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
+import { supabase } from '@/lib/supabase';
 
 // Pre-made avatar options. The 320px files live in public/avatars, so the web
 // deploy serves them at AVATAR_HOST; the picker shows the bundled copies instantly.
@@ -47,6 +48,22 @@ export default function AvatarPicker({
 }: AvatarPickerProps) {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [myPhotos, setMyPhotos] = useState<string[]>([]);
+
+  // Photos this user uploaded before, so one can be picked again without re-uploading
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    supabase.functions.invoke('process-contribution', { body: { action: 'list_my_photos' } })
+      .then(({ data }) => { if (!cancelled && Array.isArray(data?.photos)) setMyPhotos(data.photos); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [visible]);
+
+  const isPremade = (url?: string) => !!url && AVATAR_OPTIONS.some(o => o.url === url || o.legacyUrl === url);
+  const uploadedPhotos = currentAvatar && /^https:\/\//i.test(currentAvatar) && !isPremade(currentAvatar) && !myPhotos.includes(currentAvatar)
+    ? [currentAvatar, ...myPhotos]
+    : myPhotos;
 
   const handleSelect = (url: string) => {
     setSelectedUrl(url);
@@ -106,6 +123,38 @@ export default function AvatarPicker({
             </Text>
             <MaterialIcons name="chevron-right" size={20} color={Colors.textLight} />
           </TouchableOpacity>
+
+          {uploadedPhotos.length > 0 && (
+            <View style={styles.myPhotosSection}>
+              <Text style={styles.sectionLabel}>Your photos</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.myPhotosRow}>
+                {uploadedPhotos.map((url) => {
+                  const isSelected = selectedUrl === url;
+                  const isCurrent = currentAvatar === url && !selectedUrl;
+                  return (
+                    <TouchableOpacity
+                      key={url}
+                      style={[styles.avatarOption, isSelected && styles.avatarOptionSelected, isCurrent && styles.avatarOptionCurrent]}
+                      onPress={() => handleSelect(url)}
+                      activeOpacity={0.7}
+                    >
+                      <Image source={{ uri: url }} style={styles.avatarImage} />
+                      {!!isSelected && (
+                        <View style={styles.selectedBadge}>
+                          <MaterialIcons name="check-circle" size={22} color={Colors.primary} />
+                        </View>
+                      )}
+                      {!!isCurrent && !isSelected && (
+                        <View style={styles.currentBadge}>
+                          <Text style={styles.currentBadgeText}>Current</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Divider */}
           <View style={styles.dividerRow}>
@@ -167,7 +216,7 @@ export default function AvatarPicker({
               <>
                 <MaterialIcons name="check" size={20} color={Colors.white} />
                 <Text style={styles.confirmBtnText}>
-                  {selectedUrl ? 'Use This Avatar' : 'Select an Avatar'}
+                  {selectedUrl ? (isPremade(selectedUrl) ? 'Use This Avatar' : 'Use This Photo') : 'Select a Photo or Avatar'}
                 </Text>
               </>
             )}
@@ -234,6 +283,21 @@ const styles = StyleSheet.create({
     fontSize: FontSize.md,
     fontWeight: '700',
     color: Colors.primary,
+  },
+  myPhotosSection: {
+    marginBottom: Spacing.md,
+  },
+  sectionLabel: {
+    fontSize: FontSize.xs,
+    color: Colors.textLight,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
+  },
+  myPhotosRow: {
+    gap: Spacing.md,
+    paddingVertical: 2,
   },
   dividerRow: {
     flexDirection: 'row',

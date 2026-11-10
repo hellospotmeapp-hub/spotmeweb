@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   bgGradient: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
   },
   bgCircle: {
@@ -920,7 +920,7 @@ const styles = StyleSheet.create({
 
   // Start screen
   startScreen: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 20,
     backgroundColor: Colors.background,
     alignItems: 'center',

@@ -105,7 +105,7 @@ export default function VerificationRequestModal({ visible, onClose, defaultName
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: Colors.overlay },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: Colors.overlay },
   sheet: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: BorderRadius.xxl,

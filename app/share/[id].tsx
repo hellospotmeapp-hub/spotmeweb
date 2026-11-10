@@ -40,7 +40,7 @@ export default function ShareLandingPage() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { needs, currentUser, contribute, isLoggedIn, isLoading } = useApp();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
 
   const [showContribute, setShowContribute] = useState(false);
   const [showShare, setShowShare] = useState(false);

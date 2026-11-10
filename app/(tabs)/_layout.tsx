@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform, type ColorValue } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, FontSize, Spacing, Shadow } from '@/lib/theme';
@@ -9,19 +9,19 @@ import { useResponsive, PAGE_MAX_WIDTH } from '@/lib/responsive';
 import WebTopNav from '@/components/WebTopNav';
 
 // Memoize tab icons to prevent re-renders on every tab switch
-const TabIcon = React.memo(function TabIcon({ name, color, focused }: { name: string; color: string; focused: boolean }) {
+const TabIcon = React.memo(function TabIcon({ name, color, focused }: { name: string; color: ColorValue; focused: boolean }) {
   return (
     <View style={[styles.tabIconContainer, focused && styles.tabIconFocused]}>
-      <MaterialIcons name={name as any} size={24} color={color} />
+      <MaterialIcons name={name as any} size={24} color={color as string} />
     </View>
   );
 });
 
-const NotificationTabIcon = React.memo(function NotificationTabIcon({ color, focused }: { color: string; focused: boolean }) {
+const NotificationTabIcon = React.memo(function NotificationTabIcon({ color, focused }: { color: ColorValue; focused: boolean }) {
   const { unreadNotificationCount } = useApp();
   return (
     <View style={[styles.tabIconContainer, focused && styles.tabIconFocused]}>
-      <MaterialIcons name="notifications" size={24} color={color} />
+      <MaterialIcons name="notifications" size={24} color={color as string} />
       {unreadNotificationCount > 0 && (
         <View style={styles.badge}>
           <Text style={styles.badgeText}>

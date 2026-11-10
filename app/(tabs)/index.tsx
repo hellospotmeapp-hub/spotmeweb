@@ -590,7 +590,7 @@ const styles = StyleSheet.create({
   // ---- Website layout ----
   heroWide: { marginHorizontal: Spacing.lg, marginTop: Spacing.xl, borderRadius: 24, overflow: 'hidden', height: 380 },
   heroWideOverlay: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(30, 24, 20, 0.5)',
+    ...StyleSheet.absoluteFill, backgroundColor: 'rgba(30, 24, 20, 0.5)',
     paddingHorizontal: 56, paddingVertical: 48, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32,
   },
   heroWideOverlayStacked: { flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', paddingHorizontal: 36, paddingVertical: 32, gap: 20 },
@@ -616,7 +616,7 @@ const styles = StyleSheet.create({
   sidebarStacked: { marginTop: Spacing.sm },
   categoriesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   heroImage: { width: '100%', height: '100%' },
-  heroOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(45, 41, 38, 0.55)', padding: Spacing.xxl, justifyContent: 'flex-end' },
+  heroOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(45, 41, 38, 0.55)', padding: Spacing.xxl, justifyContent: 'flex-end' },
   heroTitle: { fontSize: FontSize.xxxl, fontWeight: '900', color: Colors.white, lineHeight: 36, marginBottom: Spacing.xs },
   heroSubtitle: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.85)', lineHeight: 20, marginBottom: Spacing.lg },
   heroCTA: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.primary, paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, borderRadius: BorderRadius.full, alignSelf: 'flex-start', ...Shadow.md },

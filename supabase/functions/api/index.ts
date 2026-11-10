@@ -964,9 +964,16 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
           email: ctx.email || undefined,
           metadata: { user_id: uid, name: profile?.name || "" },
           capabilities: { card_payments: { requested: true }, transfers: { requested: true } },
-        }, `acct-${uid}-${LIVEMODE ? "live" : "test"}`);
+        // Stripe replays a key's first response, errors included, for 24h. A per-minute key still
+        // blocks double-taps but lets a retry succeed once the platform's Connect setup is fixed.
+        }, `acct-${uid}-${LIVEMODE ? "live" : "test"}-${Math.floor(Date.now() / 60000)}`);
       } catch (err) {
         console.error(`[connect] create_account failed for ${uid}:`, (err as Error).message);
+        // Keep Stripe's reason in the admin error log; users only see the generic message
+        await db.from("error_logs").insert({
+          error_type: "stripe_connect", message: `create_account (${LIVEMODE ? "live" : "test"}): ${(err as Error).message}`.slice(0, 1000),
+          user_id: uid, metadata: { severity: "error", source: "create_account" },
+        });
         // Admins see Stripe's reason (e.g. Connect not enabled on the platform account)
         return { success: false, error: ctx.isAdmin ? `Stripe: ${(err as Error).message}` : "Payout setup isn't available right now. Please contact SpotMe support." };
       }
@@ -983,12 +990,27 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
       if (!account?.stripe_account_id) {
         return { success: false, needsAccount: true, error: "No Stripe account found. Please tap Set Up to create your payout account first." };
       }
-      const link = await stripe("POST", "account_links", {
-        account: account.stripe_account_id,
-        return_url: safeUrl(body.returnUrl, "/settings"),
-        refresh_url: safeUrl(body.refreshUrl, "/settings"),
-        type: "account_onboarding",
-      });
+      // Live mode only redirects to HTTPS, so a local http:// app returns to the website instead
+      const returnTo = (url: unknown, path: string) => {
+        const safe = safeUrl(url, path);
+        return LIVEMODE && !safe.startsWith("https://") ? `${DEFAULT_ORIGIN}${new URL(safe).pathname}${new URL(safe).search}` : safe;
+      };
+      let link: any;
+      try {
+        link = await stripe("POST", "account_links", {
+          account: account.stripe_account_id,
+          return_url: returnTo(body.returnUrl, "/settings"),
+          refresh_url: returnTo(body.refreshUrl, "/settings"),
+          type: "account_onboarding",
+        });
+      } catch (err) {
+        console.error(`[connect] create_onboarding_link failed for ${uid}:`, (err as Error).message);
+        await db.from("error_logs").insert({
+          error_type: "stripe_connect", message: `create_onboarding_link (${LIVEMODE ? "live" : "test"}): ${(err as Error).message}`.slice(0, 1000),
+          user_id: uid, metadata: { severity: "error", source: "create_onboarding_link" },
+        });
+        return { success: false, error: ctx.isAdmin ? `Stripe: ${(err as Error).message}` : "Couldn't open Stripe setup right now. Please try again in a minute." };
+      }
       return { success: true, onboardingUrl: link.url };
     }
 
@@ -1227,7 +1249,12 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       if (typeof u.name === "string" && u.name.trim()) updates.name = sanitize(u.name, 80);
       if (u.bio !== undefined) updates.bio = sanitize(u.bio, 500);
       if (u.city !== undefined) updates.city = sanitize(u.city, 100);
-      if (u.avatar !== undefined) updates.avatar = String(u.avatar).slice(0, 1000);
+      if (u.avatar !== undefined) {
+        // Only a web URL (or "" to remove it); device-only blob:/file: URIs never load for anyone
+        const avatar = String(u.avatar).trim().slice(0, 1000);
+        if (avatar && !/^https:\/\//i.test(avatar)) return { success: false, error: "That photo couldn't be saved. Please upload it again." };
+        updates.avatar = avatar;
+      }
       if (Object.keys(updates).length === 0) return { success: true };
       const { error } = await db.from("profiles").update(updates).eq("id", uid);
       if (error) return { success: false, error: error.message };
@@ -1320,6 +1347,16 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       const { data: vreq } = profile.verified ? { data: null } : await db.from("verification_requests")
         .select("status").eq("user_id", uid).order("created_at", { ascending: false }).limit(1).maybeSingle();
       return { success: true, profile: { ...profileToUser(profile), verificationRequest: vreq?.status || null } };
+    }
+
+    case "list_my_photos": {
+      // Photos the user uploaded before, newest first, so the picker can offer them again
+      const uid = requireUser(ctx);
+      const { data: files } = await db.storage.from("avatars").list(uid, { limit: 12, sortBy: { column: "created_at", order: "desc" } });
+      const photos = (files || [])
+        .filter((f) => f.id && /\.(jpe?g|png|webp|gif)$/i.test(f.name))
+        .map((f) => db.storage.from("avatars").getPublicUrl(`${uid}/${f.name}`).data.publicUrl);
+      return { success: true, photos };
     }
 
     case "fetch_receipts": {

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from 'expo-router/tabs';
 import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 import { PAGE_MAX_WIDTH } from '@/lib/responsive';
 import { useApp } from '@/lib/store';
@@ -16,14 +16,14 @@ const NAV_ICONS: Record<string, string> = {
 };
 
 // Website header used instead of the bottom tab bar on wide screens
-export default function WebTopNav({ state, descriptors, navigation }: BottomTabBarProps) {
+export default function WebTopNav({ state, descriptors, navigateToTab }: BottomTabBarProps) {
   const router = useRouter();
   const { isLoggedIn, currentUser, unreadNotificationCount } = useApp();
   const activeName = state.routes[state.index]?.name;
 
   const go = (name: string) => {
     const route = state.routes.find((r) => r.name === name);
-    if (route) navigation.navigate(route.name, route.params);
+    if (route) navigateToTab(route.key);
   };
 
   return (
