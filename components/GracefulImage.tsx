@@ -38,8 +38,9 @@ export async function prefetchImages(urls: (string | null | undefined)[]): Promi
   await Promise.allSettled(
     validUrls.map(async (url) => {
       try {
+        // Native resolves true/false; web resolves with no value on success and rejects on failure
         const ok = await Image.prefetch(url);
-        if (ok) {
+        if (ok !== false) {
           successCount++;
           _loadedUrls.add(url);
         } else {

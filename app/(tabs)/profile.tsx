@@ -32,6 +32,7 @@ export default function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'updates' | 'given' | 'receipts'>('active');
 
   const [editing, setEditing] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [editName, setEditName] = useState(currentUser.name);
   const [editBio, setEditBio] = useState(currentUser.bio);
   const [editCity, setEditCity] = useState(currentUser.city);
@@ -190,7 +191,8 @@ export default function ProfileScreen() {
 
 
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
+    if (savingProfile) return;
     if (!editCity.trim()) {
       setProfileError('City is required — please add your city before saving.');
       return;
@@ -200,7 +202,14 @@ export default function ProfileScreen() {
       return;
     }
     setProfileError('');
-    updateProfile({ name: editName.trim(), bio: editBio.trim(), city: editCity.trim() });
+    setSavingProfile(true);
+    const saved = await updateProfile({ name: editName.trim(), bio: editBio.trim(), city: editCity.trim() });
+    setSavingProfile(false);
+    if (!saved) {
+      setProfileError('Your changes weren\'t saved. Please check your connection and try again.');
+      refreshProfile();
+      return;
+    }
     setEditing(false);
   };
 
@@ -276,16 +285,12 @@ export default function ProfileScreen() {
               <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} onPress={() => {
-              if (editing) {
-                // Cancel — discard changes
-                setEditName(currentUser.name);
-                setEditBio(currentUser.bio);
-                setEditCity(currentUser.city);
-                setProfileError('');
-                setEditing(false);
-              } else {
-                setEditing(true);
-              }
+              // Start from the current profile; on cancel this discards changes
+              setEditName(currentUser.name);
+              setEditBio(currentUser.bio);
+              setEditCity(currentUser.city);
+              setProfileError('');
+              setEditing(!editing);
             }}>
               <MaterialIcons name={editing ? 'close' : 'edit'} size={22} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -344,10 +349,11 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={{ backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', marginTop: 12, marginBottom: 4, flexDirection: 'row', gap: 6 }}
                 onPress={handleSaveProfile}
+                disabled={savingProfile}
                 activeOpacity={0.8}
               >
-                <MaterialIcons name="check" size={18} color="#fff" />
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Save Profile</Text>
+                {savingProfile ? <ActivityIndicator size="small" color="#fff" /> : <MaterialIcons name="check" size={18} color="#fff" />}
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{savingProfile ? 'Saving...' : 'Save Profile'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.changePhotoBtn} onPress={() => setShowAvatarPicker(true)} disabled={avatarUploading} activeOpacity={0.7}>
                 {avatarUploading ? (

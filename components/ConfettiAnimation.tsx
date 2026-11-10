@@ -120,7 +120,7 @@ export default function ConfettiAnimation({ active, duration = 3000 }: ConfettiA
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 999,
     overflow: 'hidden',
   },

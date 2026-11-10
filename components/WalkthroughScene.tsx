@@ -451,14 +451,14 @@ export default function WalkthroughScene({ sceneIndex, isActive }: SceneProps) {
   }, [isActive, sceneIndex]);
 
   const scenes = [
-    <WelcomeScene fadeAnim={fadeAnim} scaleAnim={scaleAnim} />,
-    <HomeFeedScene fadeAnim={fadeAnim} scrollAnim={scrollAnim} />,
-    <PostRequestScene fadeAnim={fadeAnim} pulseAnim={pulseAnim} />,
-    <CategoriesScene fadeAnim={fadeAnim} staggerAnims={staggerAnims} />,
-    <SupportScene fadeAnim={fadeAnim} tapAnim={tapAnim} />,
-    <SmartSplitScene fadeAnim={fadeAnim} splitAnims={splitAnims} />,
-    <CommunityScene fadeAnim={fadeAnim} />,
-    <ClosingScene fadeAnim={fadeAnim} scaleAnim={scaleAnim} />,
+    <WelcomeScene key="welcome" fadeAnim={fadeAnim} scaleAnim={scaleAnim} />,
+    <HomeFeedScene key="homefeed" fadeAnim={fadeAnim} scrollAnim={scrollAnim} />,
+    <PostRequestScene key="postrequest" fadeAnim={fadeAnim} pulseAnim={pulseAnim} />,
+    <CategoriesScene key="categories" fadeAnim={fadeAnim} staggerAnims={staggerAnims} />,
+    <SupportScene key="support" fadeAnim={fadeAnim} tapAnim={tapAnim} />,
+    <SmartSplitScene key="smartsplit" fadeAnim={fadeAnim} splitAnims={splitAnims} />,
+    <CommunityScene key="community" fadeAnim={fadeAnim} />,
+    <ClosingScene key="closing" fadeAnim={fadeAnim} scaleAnim={scaleAnim} />,
   ];
 
   return (

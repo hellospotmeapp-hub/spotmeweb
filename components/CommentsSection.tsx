@@ -99,7 +99,7 @@ export default function CommentsSection({
   const [collapsedThreads, setCollapsedThreads] = useState<Set<string>>(new Set());
 
   const offsetRef = useRef(0);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
   // ── Fetch Comments ──
   const fetchComments = useCallback(async (reset = false) => {

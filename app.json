@@ -7,7 +7,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "support-contribute-community",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.spotmeone.app",
       "supportsTablet": true,
@@ -30,7 +29,6 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFA900"
       },
-      "edgeToEdgeEnabled": true,
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.SYSTEM_ALERT_WINDOW",
@@ -68,6 +66,14 @@
         "@stripe/stripe-react-native",
         {
           "enableGooglePay": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "dynamic"
+          }
         }
       ]
     ],

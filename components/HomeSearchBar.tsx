@@ -27,7 +27,7 @@ export default function HomeSearchBar({ needs }: HomeSearchBarProps) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
   const searchResults = useMemo(() => {
     if (!query.trim()) return [];

@@ -1,9 +1,12 @@
-import { ScrollViewStyleReset } from 'expo-router/html';
+import { ScrollViewStyleReset, useServerDocumentContext } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
 export default function Root({ children }: PropsWithChildren) {
+  // SDK 58+: the app's bundle scripts, CSS, and fonts arrive as nodes we must render
+  const { htmlAttributes, headNodes, bodyAttributes, bodyNodes } = useServerDocumentContext();
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning {...htmlAttributes}>
 
       <head>
         <meta charSet="utf-8" />
@@ -419,9 +422,11 @@ export default function Root({ children }: PropsWithChildren) {
             }, false);
           })();
         `}} />
+        {headNodes}
       </head>
-      <body>
+      <body {...bodyAttributes}>
         {children}
+        {bodyNodes}
       </body>
     </html>
   );
