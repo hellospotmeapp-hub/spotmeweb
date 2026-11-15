@@ -1,5 +1,5 @@
 /**
- * Offline Manager for SpotMe
+ * Offline Manager for SpotMeOne
  * 
  * Handles:
  * - Network status detection (online/offline)
@@ -86,12 +86,12 @@ class OfflineManager {
       // Listen for online/offline events
       if (typeof window !== 'undefined') {
         window.addEventListener('online', () => {
-          console.log('[SpotMe Offline] Network: online');
+          console.log('[SpotMeOne Offline] Network: online');
           this._status = 'online';
           this._notifyListeners();
         });
         window.addEventListener('offline', () => {
-          console.log('[SpotMe Offline] Network: offline');
+          console.log('[SpotMeOne Offline] Network: offline');
           this._status = 'offline';
           this._notifyListeners();
         });
@@ -101,7 +101,7 @@ class OfflineManager {
       this._status = 'online';
     }
 
-    console.log('[SpotMe Offline] Initialized, status:', this._status);
+    console.log('[SpotMeOne Offline] Initialized, status:', this._status);
   }
 
   // ---- Network Status ----
@@ -116,7 +116,7 @@ class OfflineManager {
   // Mark as offline (called when a request fails with network error)
   markOffline() {
     if (this._status !== 'offline') {
-      console.log('[SpotMe Offline] Marked offline due to request failure');
+      console.log('[SpotMeOne Offline] Marked offline due to request failure');
       this._status = 'offline';
       this._notifyListeners();
     }
@@ -125,7 +125,7 @@ class OfflineManager {
   // Mark as online (called when a request succeeds)
   markOnline() {
     if (this._status !== 'online') {
-      console.log('[SpotMe Offline] Marked online - request succeeded');
+      console.log('[SpotMeOne Offline] Marked online - request succeeded');
       this._status = 'online';
       this._notifyListeners();
     }
@@ -150,9 +150,9 @@ class OfflineManager {
     try {
       offlineStorage.set(CACHE_KEYS.NEEDS, JSON.stringify(needs));
       offlineStorage.set(CACHE_KEYS.NEEDS_TIMESTAMP, Date.now().toString());
-      console.log(`[SpotMe Offline] Cached ${needs.length} needs`);
+      console.log(`[SpotMeOne Offline] Cached ${needs.length} needs`);
     } catch (e) {
-      console.log('[SpotMe Offline] Failed to cache needs:', e);
+      console.log('[SpotMeOne Offline] Failed to cache needs:', e);
     }
   }
 
@@ -243,7 +243,7 @@ class OfflineManager {
     queue.push(queued);
     this._saveQueue(queue);
 
-    console.log(`[SpotMe Offline] Queued ${action.type} action (${queue.length} total in queue)`);
+    console.log(`[SpotMeOne Offline] Queued ${action.type} action (${queue.length} total in queue)`);
     return queued;
   }
 
@@ -266,7 +266,7 @@ class OfflineManager {
     executor: (action: QueuedAction) => Promise<boolean>
   ): Promise<{ synced: number; failed: number }> {
     if (this._syncInProgress) {
-      console.log('[SpotMe Offline] Sync already in progress, skipping');
+      console.log('[SpotMeOne Offline] Sync already in progress, skipping');
       return { synced: 0, failed: 0 };
     }
 
@@ -274,7 +274,7 @@ class OfflineManager {
     if (queue.length === 0) return { synced: 0, failed: 0 };
 
     this._syncInProgress = true;
-    console.log(`[SpotMe Offline] Starting sync of ${queue.length} queued actions`);
+    console.log(`[SpotMeOne Offline] Starting sync of ${queue.length} queued actions`);
 
     let synced = 0;
     let failed = 0;
@@ -285,7 +285,7 @@ class OfflineManager {
         const success = await executor(action);
         if (success) {
           synced++;
-          console.log(`[SpotMe Offline] Synced: ${action.type} (${action.id})`);
+          console.log(`[SpotMeOne Offline] Synced: ${action.type} (${action.id})`);
         } else {
           action.retryCount++;
           action.lastError = 'Sync returned false';
@@ -301,14 +301,14 @@ class OfflineManager {
           remaining.push(action);
         }
         failed++;
-        console.log(`[SpotMe Offline] Sync failed for ${action.type}: ${err?.message}`);
+        console.log(`[SpotMeOne Offline] Sync failed for ${action.type}: ${err?.message}`);
       }
     }
 
     this._saveQueue(remaining);
     this._syncInProgress = false;
 
-    console.log(`[SpotMe Offline] Sync complete: ${synced} synced, ${failed} failed, ${remaining.length} remaining`);
+    console.log(`[SpotMeOne Offline] Sync complete: ${synced} synced, ${failed} failed, ${remaining.length} remaining`);
     return { synced, failed };
   }
 

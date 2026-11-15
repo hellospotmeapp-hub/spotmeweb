@@ -1,4 +1,4 @@
-// SpotMe Service Worker - v3.0.0
+// SpotMeOne Service Worker - v3.0.0
 // Handles caching, push notifications, offline support, and SPA navigation fallback
 const CACHE_NAME = 'spotme-v3';
 const STATIC_ASSETS = [
@@ -68,7 +68,7 @@ self.addEventListener('fetch', (event) => {
             if (cachedRoot) return cachedRoot;
             // Last resort: return a basic offline page
             return new Response(
-              '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpotMe - Offline</title><style>body{font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#FAFAF8;color:#2C2925;text-align:center;padding:20px}h1{color:#F2785C;font-size:32px}p{color:#A9A29B;margin-top:8px}button{background:#F2785C;color:white;border:none;padding:12px 32px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin-top:24px}</style></head><body><div><h1>SpotMe</h1><p>You appear to be offline.</p><p>Check your connection and try again.</p><button onclick="location.reload()">Retry</button></div></body></html>',
+              '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SpotMeOne - Offline</title><style>body{font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#FAFAF8;color:#2C2925;text-align:center;padding:20px}h1{color:#F2785C;font-size:32px}p{color:#A9A29B;margin-top:8px}button{background:#F2785C;color:white;border:none;padding:12px 32px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;margin-top:24px}</style></head><body><div><h1>SpotMeOne</h1><p>You appear to be offline.</p><p>Check your connection and try again.</p><button onclick="location.reload()">Retry</button></div></body></html>',
               {
                 status: 200,
                 headers: { 'Content-Type': 'text/html' },
@@ -105,7 +105,7 @@ self.addEventListener('fetch', (event) => {
 // Handle incoming push notifications
 self.addEventListener('push', (event) => {
   let data = {
-    title: 'SpotMe',
+    title: 'SpotMeOne',
     body: 'You have a new notification',
     icon: '/icon-192.png',
     badge: '/badge-72.png',

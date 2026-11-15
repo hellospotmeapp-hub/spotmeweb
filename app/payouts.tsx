@@ -336,7 +336,7 @@ export default function PayoutDashboard() {
             <StatBox icon="send" label="Transferred" value={`$${(db.summary.totalTransferred || 0).toFixed(2)}`} color={Colors.secondary} subtitle={`${db.summary.completedTransfers || 0} transfers`} />
             <StatBox icon="hourglass-empty" label="Pending" value={`$${(db.summary.pendingAmount || 0).toFixed(2)}`} color={Colors.accent} subtitle={db.summary.pendingTransfers ? `${db.summary.pendingTransfers} awaiting` : undefined} />
             <StatBox icon="savings" label="Paid Out" value={`$${(db.summary.paidAmount || 0).toFixed(2)}`} color="#7B9ED9" />
-            <StatBox icon="volunteer-activism" label="Tips to SpotMe" value={`$${(db.summary.totalFees || 0).toFixed(2)}`} color={Colors.textLight} subtitle="Optional tips" />
+            <StatBox icon="volunteer-activism" label="Tips to SpotMeOne" value={`$${(db.summary.totalFees || 0).toFixed(2)}`} color={Colors.textLight} subtitle="Optional tips" />
           </View>
         )}
 
@@ -517,7 +517,7 @@ export default function PayoutDashboard() {
         <View style={s.securityFooter}>
           <MaterialIcons name="verified-user" size={16} color={Colors.textLight} />
           <Text style={s.securityText}>
-            All transfers are handled securely by Stripe. SpotMe never stores your banking information.
+            All transfers are handled securely by Stripe. SpotMeOne never stores your banking information.
           </Text>
         </View>
 

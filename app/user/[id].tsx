@@ -58,7 +58,7 @@ export default function PublicProfilePage() {
         if (!cancelled) {
           setFetchedUser(data ? {
             id: data.id,
-            name: data.name || 'SpotMe User',
+            name: data.name || 'SpotMeOne User',
             avatar: data.avatar || '',
             bio: data.bio || '',
             city: data.city || '',
@@ -113,14 +113,14 @@ export default function PublicProfilePage() {
       };
 
       const baseUrl = window.location.origin;
-      document.title = `${user.name} on SpotMe`;
-      setMeta('og:title', `${user.name} on SpotMe`);
+      document.title = `${user.name} on SpotMeOne`;
+      setMeta('og:title', `${user.name} on SpotMeOne`);
       setMeta('og:description', user.bio || `Check out ${user.name}'s profile. Help your neighbors with everyday needs.`);
       setMeta('og:url', `${baseUrl}/user/${id}`);
-      setMeta('og:site_name', 'SpotMe');
+      setMeta('og:site_name', 'SpotMeOne');
       if (user.avatar) setMeta('og:image', user.avatar);
       setMeta('twitter:card', 'summary');
-      setMeta('twitter:title', `${user.name} on SpotMe`);
+      setMeta('twitter:title', `${user.name} on SpotMeOne`);
     }
   }, [user, id]);
 
@@ -165,7 +165,7 @@ export default function PublicProfilePage() {
             <MaterialIcons name="arrow-back" size={22} color={Colors.textSecondary} />
           </TouchableOpacity>
           <View style={styles.headerBrand}>
-            <Text style={styles.headerLogo}>SpotMe</Text>
+            <Text style={styles.headerLogo}>SpotMeOne</Text>
           </View>
           <TouchableOpacity style={styles.headerBtn} onPress={() => setShowShare(true)}>
             <MaterialIcons name="share" size={22} color={Colors.textSecondary} />
@@ -377,7 +377,7 @@ export default function PublicProfilePage() {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.footerLogo}>SpotMe</Text>
+          <Text style={styles.footerLogo}>SpotMeOne</Text>
           <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
           <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
 

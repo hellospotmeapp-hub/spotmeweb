@@ -150,7 +150,7 @@ export default function PaymentCheckoutScreen() {
     // Fire-and-forget check — don't block the Stripe Elements load
     (async () => {
       try {
-        console.log(`[SpotMe Recovery] Checking PI ${piId} — expected ${expectedTotalCents} cents`);
+        console.log(`[SpotMeOne Recovery] Checking PI ${piId} — expected ${expectedTotalCents} cents`);
         const { data, error: fnError } = await supabase.functions.invoke('recover-payment', {
           body: {
             action: 'check_amount',
@@ -160,23 +160,23 @@ export default function PaymentCheckoutScreen() {
         });
 
         if (fnError && !data) {
-          console.warn('[SpotMe Recovery] Check failed (non-critical):', fnError.message);
+          console.warn('[SpotMeOne Recovery] Check failed (non-critical):', fnError.message);
           return;
         }
 
         if (data?.expired) {
-          console.log('[SpotMe Recovery] PI is expired/canceled');
+          console.log('[SpotMeOne Recovery] PI is expired/canceled');
           setSessionExpired(true);
           return;
         }
 
         if (data?.alreadySucceeded) {
-          console.log('[SpotMe Recovery] PI already succeeded');
+          console.log('[SpotMeOne Recovery] PI already succeeded');
           return;
         }
 
         if (data?.mismatch) {
-          console.log(`[SpotMe Recovery] MISMATCH DETECTED: Stripe=$${data.stripeAmountDollars}, Expected=$${data.expectedAmountDollars}`);
+          console.log(`[SpotMeOne Recovery] MISMATCH DETECTED: Stripe=$${data.stripeAmountDollars}, Expected=$${data.expectedAmountDollars}`);
           setAmountMismatch(true);
           setMismatchInfo({
             stripeAmountDollars: data.stripeAmountDollars,
@@ -185,10 +185,10 @@ export default function PaymentCheckoutScreen() {
             expectedAmountCents: data.expectedAmountCents,
           });
         } else {
-          console.log('[SpotMe Recovery] Amounts match — no recovery needed');
+          console.log('[SpotMeOne Recovery] Amounts match — no recovery needed');
         }
       } catch (err) {
-        console.warn('[SpotMe Recovery] Check error (non-critical):', err);
+        console.warn('[SpotMeOne Recovery] Check error (non-critical):', err);
       }
     })();
   }, [params.clientSecret, params.amount, params.tipAmount, params.applicationFee]);
@@ -219,7 +219,7 @@ export default function PaymentCheckoutScreen() {
       const piId = params.clientSecret.split('_secret_')[0];
       if (!piId) return 'unknown';
 
-      console.log('[SpotMe Checkout] Checking PI status server-side:', piId);
+      console.log('[SpotMeOne Checkout] Checking PI status server-side:', piId);
 
       const { data, error: fnError } = await supabase.functions.invoke('stripe-checkout', {
         body: {
@@ -231,11 +231,11 @@ export default function PaymentCheckoutScreen() {
       });
 
       if (fnError && !data) {
-        console.warn('[SpotMe Checkout] Status check failed:', fnError.message);
+        console.warn('[SpotMeOne Checkout] Status check failed:', fnError.message);
         return 'unknown';
       }
 
-      console.log('[SpotMe Checkout] PI status result:', {
+      console.log('[SpotMeOne Checkout] PI status result:', {
         success: data?.success,
         verified: data?.verified,
         already_processed: data?.already_processed,
@@ -257,7 +257,7 @@ export default function PaymentCheckoutScreen() {
 
       return 'unknown';
     } catch (err) {
-      console.error('[SpotMe Checkout] Status check error:', err);
+      console.error('[SpotMeOne Checkout] Status check error:', err);
       return 'unknown';
     } finally {
       setCheckingStatus(false);
@@ -336,7 +336,7 @@ export default function PaymentCheckoutScreen() {
       const contributionAmount = parseFloat(params.amount) || 0;
       const tipAmount = parseFloat(params.tipAmount) || parseFloat(params.applicationFee) || 0;
 
-      console.log(`[SpotMe Recovery] Recovering payment: old PI=${piId}, new amount=$${contributionAmount}+$${tipAmount}`);
+      console.log(`[SpotMeOne Recovery] Recovering payment: old PI=${piId}, new amount=$${contributionAmount}+$${tipAmount}`);
 
       const { data, error: fnError } = await supabase.functions.invoke('recover-payment', {
         body: {
@@ -364,7 +364,7 @@ export default function PaymentCheckoutScreen() {
         throw new Error(data?.error || 'Could not create new payment');
       }
 
-      console.log(`[SpotMe Recovery] Success! New PI=${data.paymentIntentId}, new payment=${data.paymentId}`);
+      console.log(`[SpotMeOne Recovery] Success! New PI=${data.paymentIntentId}, new payment=${data.paymentId}`);
 
       // Update params with new clientSecret and paymentId
       // This will trigger Stripe Elements to remount via the useEffect
@@ -401,7 +401,7 @@ export default function PaymentCheckoutScreen() {
       setTimeout(() => setRecoverySuccess(false), 4000);
 
     } catch (err: any) {
-      console.error('[SpotMe Recovery] Error:', err);
+      console.error('[SpotMeOne Recovery] Error:', err);
       setError(err.message || 'Could not create new payment. Please go back and try again.');
     } finally {
       setRecovering(false);
@@ -457,7 +457,7 @@ export default function PaymentCheckoutScreen() {
             await document.requestStorageAccess();
           }
         } catch {
-          console.log('[SpotMe Checkout] Storage access request failed (non-critical)');
+          console.log('[SpotMeOne Checkout] Storage access request failed (non-critical)');
         }
       }
 
@@ -494,7 +494,7 @@ export default function PaymentCheckoutScreen() {
         try {
           stripe = (window as any).Stripe(STRIPE_PK, { stripeAccount: stripeAccountId });
         } catch (e: any) {
-          console.warn('[SpotMe Checkout] Stripe init with stripeAccount failed:', e.message);
+          console.warn('[SpotMeOne Checkout] Stripe init with stripeAccount failed:', e.message);
         }
       }
 
@@ -596,7 +596,7 @@ export default function PaymentCheckoutScreen() {
       // Fallback timeout - if ready event never fires, still allow interaction
       setTimeout(() => {
         if (attempt === mountAttemptRef.current && loading) {
-          console.log('[SpotMe Checkout] Fallback: marking as ready after timeout');
+          console.log('[SpotMeOne Checkout] Fallback: marking as ready after timeout');
           setStripeReady(true);
           setElementMounted(true);
           setLoading(false);
@@ -638,7 +638,7 @@ export default function PaymentCheckoutScreen() {
 
     // If payment was EVER submitted, check status instead
     if (paymentEverSubmittedRef.current) {
-      console.log('[SpotMe Checkout] Payment was already submitted. Checking status instead...');
+      console.log('[SpotMeOne Checkout] Payment was already submitted. Checking status instead...');
       handleCheckStatus();
       return;
     }
@@ -653,7 +653,7 @@ export default function PaymentCheckoutScreen() {
     // ============================================================
     if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
     processingTimerRef.current = setTimeout(async () => {
-      console.log('[SpotMe Checkout] Processing timeout reached. Force-checking status...');
+      console.log('[SpotMeOne Checkout] Processing timeout reached. Force-checking status...');
       setProcessing(false);
       
       // Check if payment actually went through
@@ -683,7 +683,7 @@ export default function PaymentCheckoutScreen() {
       if (params.stripeAccount) returnParams.set('stripe_account', params.stripeAccount);
       const returnUrl = `${window.location.origin}/payment-success?${returnParams.toString()}`;
 
-      console.log('[SpotMe Checkout] Confirming payment with redirect: if_required...');
+      console.log('[SpotMeOne Checkout] Confirming payment with redirect: if_required...');
 
       const result = await stripeRef.current.confirmPayment({
         elements: elementsRef.current,
@@ -701,7 +701,7 @@ export default function PaymentCheckoutScreen() {
 
       // Handle inline result
       if (result.error) {
-        console.error('[SpotMe Checkout] confirmPayment error:', result.error);
+        console.error('[SpotMeOne Checkout] confirmPayment error:', result.error);
 
         // Card/validation errors - safe to retry
         if (result.error.type === 'card_error' || result.error.type === 'validation_error') {
@@ -722,11 +722,11 @@ export default function PaymentCheckoutScreen() {
         }
 
         // For other errors, check server-side status
-        console.log('[SpotMe Checkout] Non-card error. Checking if payment went through...');
+        console.log('[SpotMeOne Checkout] Non-card error. Checking if payment went through...');
         const actualStatus = await checkPaymentStatusServerSide();
 
         if (actualStatus === 'succeeded') {
-          console.log('[SpotMe Checkout] Payment ACTUALLY SUCCEEDED despite client error!');
+          console.log('[SpotMeOne Checkout] Payment ACTUALLY SUCCEEDED despite client error!');
           setPaymentSucceeded(true);
           setError('');
           setProcessing(false);
@@ -750,10 +750,10 @@ export default function PaymentCheckoutScreen() {
       // Payment succeeded inline
       if (result.paymentIntent) {
         const piStatus = result.paymentIntent.status;
-        console.log('[SpotMe Checkout] PaymentIntent status:', piStatus);
+        console.log('[SpotMeOne Checkout] PaymentIntent status:', piStatus);
 
         if (piStatus === 'succeeded') {
-          console.log('[SpotMe Checkout] Payment succeeded inline!');
+          console.log('[SpotMeOne Checkout] Payment succeeded inline!');
           
           // Verify server-side
           try {
@@ -766,7 +766,7 @@ export default function PaymentCheckoutScreen() {
               },
             });
           } catch (verifyErr) {
-            console.warn('[SpotMe Checkout] Server verification call failed (non-critical):', verifyErr);
+            console.warn('[SpotMeOne Checkout] Server verification call failed (non-critical):', verifyErr);
           }
 
           setPaymentSucceeded(true);
@@ -777,7 +777,7 @@ export default function PaymentCheckoutScreen() {
         }
 
         if (piStatus === 'requires_action' || piStatus === 'processing') {
-          console.log('[SpotMe Checkout] Payment requires action or processing...');
+          console.log('[SpotMeOne Checkout] Payment requires action or processing...');
           setError('Payment is being processed. Please wait...');
           setProcessing(false);
           
@@ -799,13 +799,13 @@ export default function PaymentCheckoutScreen() {
         }
 
         // Unexpected status
-        console.warn('[SpotMe Checkout] Unexpected PI status:', piStatus);
+        console.warn('[SpotMeOne Checkout] Unexpected PI status:', piStatus);
         setError('Payment status unclear. Please check the status below.');
         setProcessing(false);
         return;
       }
 
-      console.log('[SpotMe Checkout] No error and no paymentIntent - redirect may have occurred.');
+      console.log('[SpotMeOne Checkout] No error and no paymentIntent - redirect may have occurred.');
       
     } catch (err: any) {
       // Clear the safety timeout
@@ -814,11 +814,11 @@ export default function PaymentCheckoutScreen() {
         processingTimerRef.current = null;
       }
 
-      console.error('[SpotMe Checkout] Payment exception:', err);
+      console.error('[SpotMeOne Checkout] Payment exception:', err);
 
       // SecurityError handling
       if (err.name === 'SecurityError' || (err.message && err.message.includes('insecure'))) {
-        console.log('[SpotMe Checkout] SecurityError caught. Checking payment status...');
+        console.log('[SpotMeOne Checkout] SecurityError caught. Checking payment status...');
         
         await new Promise(resolve => setTimeout(resolve, 2000));
         
@@ -879,7 +879,7 @@ export default function PaymentCheckoutScreen() {
   useEffect(() => {
     if (error && !elementMounted && loadRetries === 0 && params.clientSecret && !paymentEverSubmittedRef.current) {
       const timer = setTimeout(() => {
-        console.log('[SpotMe Checkout] Auto-retrying Stripe load...');
+        console.log('[SpotMeOne Checkout] Auto-retrying Stripe load...');
         handleRetry();
       }, 2000);
       return () => clearTimeout(timer);
@@ -1056,7 +1056,7 @@ export default function PaymentCheckoutScreen() {
             <View style={styles.summaryRow}>
               <View style={styles.tipRow}>
                 <MaterialIcons name="favorite" size={12} color={Colors.primary} />
-                <Text style={[styles.summaryLabel, { color: Colors.primary }]}>SpotMe tip</Text>
+                <Text style={[styles.summaryLabel, { color: Colors.primary }]}>SpotMeOne tip</Text>
               </View>
               <Text style={[styles.summaryValue, { color: Colors.primary }]}>${tipAmount.toFixed(2)}</Text>
             </View>
@@ -1085,7 +1085,7 @@ export default function PaymentCheckoutScreen() {
           {!isDestinationCharge && (
             <View style={styles.platformBadge}>
               <MaterialIcons name="account-balance" size={16} color={Colors.accent} />
-              <Text style={styles.platformBadgeText}>Funds held by SpotMe until recipient sets up payouts</Text>
+              <Text style={styles.platformBadgeText}>Funds held by SpotMeOne until recipient sets up payouts</Text>
             </View>
           )}
 

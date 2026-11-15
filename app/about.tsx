@@ -16,20 +16,20 @@ export default function AboutScreen() {
         <TouchableOpacity onPress={() => goBack(router)} style={styles.backBtn}>
           <MaterialIcons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>About SpotMe</Text>
+        <Text style={styles.headerTitle}>About SpotMeOne</Text>
         <View style={{ width: 40 }} />
       </View>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.logoSection}>
           <View style={styles.logoCircle}><MaterialIcons name="volunteer-activism" size={48} color={Colors.primary} /></View>
-          <Text style={styles.appName}>SpotMe</Text>
+          <Text style={styles.appName}>SpotMeOne</Text>
           <Text style={styles.tagline}>No tragedy. Just life.</Text>
           <Text style={styles.version}>Version 1.1.0</Text>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Our Mission</Text>
-          <Text style={styles.cardText}>SpotMe is a micro-giving platform designed for everyday needs — not emergencies or large fundraisers. We believe everyone deserves a little help sometimes, whether it's groceries, a bus pass, school supplies, or a utility bill. SpotMe connects people who need a small spot with people who want to give one.</Text>
+          <Text style={styles.cardText}>SpotMeOne is a micro-giving platform designed for everyday needs — not emergencies or large fundraisers. We believe everyone deserves a little help sometimes, whether it's groceries, a bus pass, school supplies, or a utility bill. SpotMeOne connects people who need a small spot with people who want to give one.</Text>
         </View>
 
         <View style={styles.card}>
@@ -57,7 +57,7 @@ export default function AboutScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.copyright}>© 2026 SpotMe. All rights reserved.</Text>
+        <Text style={styles.copyright}>© 2026 SpotMeOne. All rights reserved.</Text>
       </ScrollView>
     </View>
   );

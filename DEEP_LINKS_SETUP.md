@@ -1,6 +1,6 @@
 # Deep Links Setup — iOS Universal Links & Android App Links
 
-This document explains how to complete the deep linking configuration so that share URLs (e.g., `https://spotmeone.com/share/abc123`) open in the native SpotMe app when installed, and fall back to the web page when not installed.
+This document explains how to complete the deep linking configuration so that share URLs (e.g., `https://spotmeone.com/share/abc123`) open in the native SpotMeOne app when installed, and fall back to the web page when not installed.
 
 ---
 
@@ -89,12 +89,12 @@ If using **Google Play App Signing** (recommended):
 
 ## How It Works
 
-### When a user taps a SpotMe link (e.g., from a text message, social media, or email):
+### When a user taps a SpotMeOne link (e.g., from a text message, social media, or email):
 
 **If the app IS installed:**
 1. iOS/Android checks the `.well-known` verification files on `spotmeone.com`
 2. The OS confirms the app (`com.spotmeone.app`) is authorized to handle these URLs
-3. The link opens directly in the SpotMe app
+3. The link opens directly in the SpotMeOne app
 4. expo-router handles the URL and navigates to the correct screen (e.g., `/share/abc123`)
 
 **If the app is NOT installed:**
@@ -122,8 +122,8 @@ If using **Google Play App Signing** (recommended):
 1. Deploy the updated `.well-known` files to `spotmeone.com`
 2. Build and install the app on a device (simulator won't work for Universal Links)
 3. Open Notes or Messages and type a link like `https://spotmeone.com/share/test123`
-4. Tap the link — it should open in the SpotMe app
-5. Long-press the link — you should see "Open in SpotMe" option
+4. Tap the link — it should open in the SpotMeOne app
+5. Long-press the link — you should see "Open in SpotMeOne" option
 
 **Apple's validation tool:**
 ```
@@ -138,7 +138,7 @@ https://app-site-association.cdn-apple.com/a/v1/spotmeone.com
    adb shell pm get-app-links com.spotmeone.app
    ```
 4. Open a link in Chrome: `https://spotmeone.com/share/test123`
-5. It should open directly in the SpotMe app without a disambiguation dialog
+5. It should open directly in the SpotMeOne app without a disambiguation dialog
 
 **Google's validation tool:**
 ```
@@ -178,7 +178,7 @@ curl https://spotmeone.com/.well-known/assetlinks.json | python3 -m json.tool
 - **autoVerify must be true** — Already set in `app.json` intent filters
 - **SHA-256 must match** — The fingerprint must match your signing certificate exactly
 - **Google Play App Signing** — If using Play App Signing, use Google's fingerprint, not your upload key
-- **Clear app defaults** — Go to Settings → Apps → SpotMe → Open by default → Clear defaults, then try again
+- **Clear app defaults** — Go to Settings → Apps → SpotMeOne → Open by default → Clear defaults, then try again
 - **Verification delay** — Android verifies links when the app is installed. Reinstall after updating assetlinks.json
 
 ### Links opening in browser instead of app?

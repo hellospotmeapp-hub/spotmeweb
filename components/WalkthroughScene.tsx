@@ -30,7 +30,7 @@ const WelcomeScene: React.FC<{ fadeAnim: Animated.Value; scaleAnim: Animated.Val
     <View style={sceneStyles.logoCircle}>
       <MaterialIcons name="favorite" size={48} color={Colors.white} />
     </View>
-    <Text style={sceneStyles.logoText}>SpotMe</Text>
+    <Text style={sceneStyles.logoText}>SpotMeOne</Text>
     <Text style={sceneStyles.logoTagline}>Let me show you{'\n'}how it works.</Text>
     <View style={sceneStyles.welcomeDots}>
       <View style={[sceneStyles.dot, { backgroundColor: Colors.primary }]} />
@@ -47,7 +47,7 @@ const HomeFeedScene: React.FC<{ fadeAnim: Animated.Value; scrollAnim: Animated.V
       <Animated.View style={{ transform: [{ translateY: scrollAnim }] }}>
         {/* Mini top bar */}
         <View style={miniStyles.topBar}>
-          <Text style={miniStyles.logo}>SpotMe</Text>
+          <Text style={miniStyles.logo}>SpotMeOne</Text>
           <View style={miniStyles.avatar} />
         </View>
         {/* Mini hero */}
@@ -91,7 +91,7 @@ const PostRequestScene: React.FC<{ fadeAnim: Animated.Value; pulseAnim: Animated
   <Animated.View style={[sceneStyles.phoneContainer, { opacity: fadeAnim }]}>
     <PhoneFrame>
       <View style={miniStyles.topBar}>
-        <Text style={miniStyles.logo}>SpotMe</Text>
+        <Text style={miniStyles.logo}>SpotMeOne</Text>
         <View style={miniStyles.avatar} />
       </View>
       <View style={{ padding: 12, gap: 8 }}>
@@ -149,7 +149,7 @@ const CategoriesScene: React.FC<{ fadeAnim: Animated.Value; staggerAnims: Animat
     <Animated.View style={[sceneStyles.phoneContainer, { opacity: fadeAnim }]}>
       <PhoneFrame>
         <View style={miniStyles.topBar}>
-          <Text style={miniStyles.logo}>SpotMe</Text>
+          <Text style={miniStyles.logo}>SpotMeOne</Text>
           <View style={miniStyles.avatar} />
         </View>
         <View style={{ padding: 12 }}>
@@ -297,7 +297,7 @@ const CommunityScene: React.FC<{ fadeAnim: Animated.Value }> = ({ fadeAnim }) =>
   <Animated.View style={[sceneStyles.phoneContainer, { opacity: fadeAnim }]}>
     <PhoneFrame>
       <View style={miniStyles.topBar}>
-        <Text style={miniStyles.logo}>SpotMe</Text>
+        <Text style={miniStyles.logo}>SpotMeOne</Text>
         <View style={miniStyles.avatar} />
       </View>
       <View style={{ padding: 10, gap: 6 }}>
@@ -364,7 +364,7 @@ const ClosingScene: React.FC<{ fadeAnim: Animated.Value; scaleAnim: Animated.Val
       </View>
     </View>
     <View style={sceneStyles.closingDivider} />
-    <Text style={sceneStyles.closingLogo}>SpotMe</Text>
+    <Text style={sceneStyles.closingLogo}>SpotMeOne</Text>
   </Animated.View>
 );
 

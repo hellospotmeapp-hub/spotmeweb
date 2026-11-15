@@ -51,28 +51,28 @@ export default function ShareSheet({
 
   const getShareText = useCallback(() => {
     if (type === 'profile' && userName) {
-      return `Check out ${userName}'s profile on SpotMe! Help your neighbors with everyday needs. No tragedy, just life.`;
+      return `Check out ${userName}'s profile on SpotMeOne! Help your neighbors with everyday needs. No tragedy, just life.`;
     }
     if (needTitle && userName) {
       const progress = (needRaised != null && needGoal) ? ` (${Math.round((needRaised / needGoal) * 100)}% funded)` : '';
       return `${userName} needs help: "${needTitle}"${progress}. Can you spot them? No tragedy, just life.`;
     }
-    return 'SpotMe - Help your neighbors with everyday needs. No tragedy, just life.';
+    return 'SpotMeOne - Help your neighbors with everyday needs. No tragedy, just life.';
   }, [type, userName, needTitle, needRaised, needGoal]);
 
   const getSMSText = useCallback(() => {
     if (needTitle && userName) {
       const remaining = (needGoal != null && needRaised != null) ? needGoal - needRaised : (needGoal || 0);
-      return `Hey! ${userName} needs help with "${needTitle}" on SpotMe. $${remaining} still needed. Every dollar goes directly to them. Can you help?\n\n${getShareUrl()}`;
+      return `Hey! ${userName} needs help with "${needTitle}" on SpotMeOne. $${remaining} still needed. Every dollar goes directly to them. Can you help?\n\n${getShareUrl()}`;
     }
-    return `Check out SpotMe - help your neighbors with everyday needs!\n\n${getShareUrl()}`;
+    return `Check out SpotMeOne - help your neighbors with everyday needs!\n\n${getShareUrl()}`;
   }, [needTitle, userName, needGoal, needRaised, getShareUrl]);
 
   const getEmailSubject = useCallback(() => {
     if (needTitle && userName) {
-      return `Help ${userName}: ${needTitle} on SpotMe`;
+      return `Help ${userName}: ${needTitle} on SpotMeOne`;
     }
-    return 'Check out SpotMe - Help Your Neighbors';
+    return 'Check out SpotMeOne - Help Your Neighbors';
   }, [needTitle, userName]);
 
   const getEmailBody = useCallback(() => {
@@ -80,17 +80,17 @@ export default function ShareSheet({
     if (needTitle && userName) {
       const remaining = (needGoal != null && needRaised != null) ? needGoal - needRaised : (needGoal || 0);
       const pct = (needRaised != null && needGoal) ? Math.round((needRaised / needGoal) * 100) : 0;
-      return `Hey!\n\n${userName} needs help with "${needTitle}" on SpotMe.\n\n$${remaining} is still needed (${pct}% funded so far).\n\nEvery dollar goes directly to them — SpotMe takes 0% platform fees.\n\nCheck it out: ${url}\n\n— Sent via SpotMe\nNo tragedy. Just life.`;
+      return `Hey!\n\n${userName} needs help with "${needTitle}" on SpotMeOne.\n\n$${remaining} is still needed (${pct}% funded so far).\n\nEvery dollar goes directly to them — SpotMeOne takes 0% platform fees.\n\nCheck it out: ${url}\n\n— Sent via SpotMeOne\nNo tragedy. Just life.`;
     }
-    return `Hey!\n\nCheck out SpotMe — a community where neighbors help each other with everyday needs.\n\n${url}\n\nNo tragedy. Just life.`;
+    return `Hey!\n\nCheck out SpotMeOne — a community where neighbors help each other with everyday needs.\n\n${url}\n\nNo tragedy. Just life.`;
   }, [needTitle, userName, needGoal, needRaised, getShareUrl]);
 
   const getTikTokCaption = useCallback(() => {
     if (needTitle && userName) {
       const remaining = (needGoal != null && needRaised != null) ? needGoal - needRaised : (needGoal || 0);
-      return `${userName} needs $${remaining} for "${needTitle}" - Can you help? Link in bio! #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove #NoTragedyJustLife`;
+      return `${userName} needs $${remaining} for "${needTitle}" - Can you help? Link in bio! #SpotMeOne #MutualAid #HelpYourNeighbor #CommunityLove #NoTragedyJustLife`;
     }
-    return 'Help your neighbors with everyday needs on SpotMe #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove';
+    return 'Help your neighbors with everyday needs on SpotMeOne #SpotMeOne #MutualAid #HelpYourNeighbor #CommunityLove';
   }, [needTitle, userName, needGoal, needRaised]);
 
 
@@ -200,7 +200,7 @@ export default function ShareSheet({
       case 'native':
         try {
           if (Platform.OS === 'web' && navigator.share) {
-            await navigator.share({ title: needTitle || 'SpotMe', text, url });
+            await navigator.share({ title: needTitle || 'SpotMeOne', text, url });
           } else {
             await Share.share({ message: `${text}\n${url}` });
           }
@@ -404,7 +404,7 @@ export default function ShareSheet({
               <View style={styles.qrSection}>
                 <View style={styles.qrCard}>
                   <View style={styles.qrBranding}>
-                    <Text style={styles.qrLogo}>SpotMe</Text>
+                    <Text style={styles.qrLogo}>SpotMeOne</Text>
                     <Text style={styles.qrTagline}>No tragedy. Just life.</Text>
                   </View>
 
@@ -471,7 +471,7 @@ export default function ShareSheet({
                 <View style={styles.imessagePreview}>
                   <View style={styles.imessageBubble}>
                     <Text style={styles.imessageText}>
-                      Hey! {userName} needs help with "{needTitle}" on SpotMe. ${remaining} still needed. Can you help?
+                      Hey! {userName} needs help with "{needTitle}" on SpotMeOne. ${remaining} still needed. Can you help?
                     </Text>
                     <View style={styles.imessageLinkPreview}>
                       {!!needPhoto && (
@@ -504,7 +504,7 @@ export default function ShareSheet({
             <View style={styles.hashtagBox}>
               <MaterialIcons name="trending-up" size={16} color={Colors.secondary} />
               <Text style={styles.hashtagText}>
-                Top hashtags: #SpotMe #MutualAid #HelpYourNeighbor #CommunityLove #NoTragedyJustLife #PayItForward #SmallActs
+                Top hashtags: #SpotMeOne #MutualAid #HelpYourNeighbor #CommunityLove #NoTragedyJustLife #PayItForward #SmallActs
               </Text>
             </View>
 

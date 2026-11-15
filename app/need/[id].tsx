@@ -647,7 +647,7 @@ export default function NeedDetailScreen() {
           <View style={styles.feeCard}>
             <MaterialIcons name="verified-user" size={18} color={Colors.success} />
             <Text style={styles.feeText}>
-              Protected by SpotMe. 0% platform fee — 100% of your contribution goes directly to the person in need. Stripe processing (2.9% + $0.30) applies. You can leave an optional tip at checkout to support SpotMe.
+              Protected by SpotMeOne. 0% platform fee — 100% of your contribution goes directly to the person in need. Stripe processing (2.9% + $0.30) applies. You can leave an optional tip at checkout to support SpotMeOne.
             </Text>
           </View>
 

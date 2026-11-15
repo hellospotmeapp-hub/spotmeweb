@@ -135,7 +135,7 @@ export default function ShareLandingPage() {
       const ogImageUrl = need.photo || HERO_IMAGE;
 
       // Page title
-      document.title = `Help ${need.userName}: ${need.title} | SpotMe`;
+      document.title = `Help ${need.userName}: ${need.title} | SpotMeOne`;
 
       // Standard meta
       setMeta('description', `${need.message.substring(0, 150)}... $${remaining} still needed.`);
@@ -145,7 +145,7 @@ export default function ShareLandingPage() {
       setMeta('og:title', `Help ${need.userName}: ${need.title}`);
       setMeta('og:description', `$${remaining} still needed (${progress}% funded). Can you spot ${firstName}? Every dollar goes directly to them.`);
       setMeta('og:url', `${baseUrl}/share/${need.id}`);
-      setMeta('og:site_name', 'SpotMe');
+      setMeta('og:site_name', 'SpotMeOne');
       setMeta('og:type', 'article');
       setMeta('og:locale', 'en_US');
       
@@ -165,7 +165,7 @@ export default function ShareLandingPage() {
       // Article meta
       setMeta('article:published_time', need.createdAt);
       setMeta('article:section', need.category);
-      setMeta('article:tag', 'SpotMe,MutualAid,HelpYourNeighbor');
+      setMeta('article:tag', 'SpotMeOne,MutualAid,HelpYourNeighbor');
 
       // Canonical URL
       let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement;
@@ -250,7 +250,7 @@ export default function ShareLandingPage() {
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.replace('/(tabs)')} style={styles.homeLink}>
             <MaterialIcons name="home" size={16} color={Colors.primary} />
-            <Text style={styles.homeLinkText}>Go to SpotMe Home</Text>
+            <Text style={styles.homeLinkText}>Go to SpotMeOne Home</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -321,7 +321,7 @@ export default function ShareLandingPage() {
                 <MaterialIcons name="home" size={18} color="#FFF" />
               </TouchableOpacity>
               <View style={styles.topLogoContainer}>
-                <Text style={styles.topLogo}>SpotMe</Text>
+                <Text style={styles.topLogo}>SpotMeOne</Text>
               </View>
               <TouchableOpacity style={styles.topBtn} onPress={() => setShowShare(true)}>
                 <MaterialIcons name="share" size={18} color="#FFF" />
@@ -511,9 +511,9 @@ export default function ShareLandingPage() {
               <LiveDonationFeed contributions={need.contributions} totalSupporters={need.contributorCount} />
             )}
 
-            {/* ===== HOW SPOTME WORKS ===== */}
+            {/* ===== HOW SPOTMEONE WORKS ===== */}
             <View style={styles.howItWorksSection}>
-              <Text style={styles.howItWorksTitle}>How SpotMe Works</Text>
+              <Text style={styles.howItWorksTitle}>How SpotMeOne Works</Text>
               <View style={styles.howItWorksSteps}>
                 <View style={styles.howStep}>
                   <View style={[styles.howStepIcon, { backgroundColor: Colors.primaryLight }]}>
@@ -561,7 +561,7 @@ export default function ShareLandingPage() {
                 </View>
               </View>
               <Text style={styles.trustNote}>
-                Protected by SpotMe. 100% of every dollar goes directly to {firstName}. Payments processed securely by Stripe.
+                Protected by SpotMeOne. 100% of every dollar goes directly to {firstName}. Payments processed securely by Stripe.
               </Text>
             </View>
 
@@ -594,8 +594,8 @@ export default function ShareLandingPage() {
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.shareActionBtn} onPress={() => {
                   const baseUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://spotmeone.com';
-                  const subject = `Help ${need.userName}: ${need.title} on SpotMe`;
-                  const body = `Hey!\n\n${need.userName} needs help with "${need.title}" on SpotMe.\n\n$${remaining} is still needed (${progressPct}% funded so far).\n\nEvery dollar goes directly to them — no platform fees.\n\nCheck it out: ${baseUrl}/share/${need.id}`;
+                  const subject = `Help ${need.userName}: ${need.title} on SpotMeOne`;
+                  const body = `Hey!\n\n${need.userName} needs help with "${need.title}" on SpotMeOne.\n\n$${remaining} is still needed (${progressPct}% funded so far).\n\nEvery dollar goes directly to them — no platform fees.\n\nCheck it out: ${baseUrl}/share/${need.id}`;
                   if (Platform.OS === 'web') {
                     window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
                   }
@@ -608,7 +608,7 @@ export default function ShareLandingPage() {
 
             {/* ===== FOOTER ===== */}
             <View style={styles.footer}>
-              <Text style={styles.footerLogo}>SpotMe</Text>
+              <Text style={styles.footerLogo}>SpotMeOne</Text>
               <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
               <Text style={styles.footerDescription}>
                 Help your neighbors with everyday needs. Small acts, big impact.

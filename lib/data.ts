@@ -193,7 +193,7 @@ export function getRechargeSpotlight(needs: Need[]) {
   return {
     currentMom: pick ? {
       id: pick.id,
-      name: pick.userName || 'SpotMe Mom',
+      name: pick.userName || 'SpotMeOne Mom',
       avatar: pick.userAvatar || AVATARS[0],
       city: pick.userCity || '',
       request: pick.title,
@@ -211,7 +211,7 @@ export function getRechargeSpotlight(needs: Need[]) {
 export const COMMUNITY_GUIDELINES = [
   { title: 'Be Honest', description: 'Only post Needs that are genuine. Describe your situation truthfully and use funds as described.' },
   { title: 'Be Kind', description: 'Treat every member with respect. Leave supportive notes and encourage others in the community.' },
-  { title: 'Keep It Small', description: 'SpotMe is for everyday needs, not emergencies or large fundraising. Maximum goal is $300.' },
+  { title: 'Keep It Small', description: 'SpotMeOne is for everyday needs, not emergencies or large fundraising. Maximum goal is $300.' },
   { title: 'Stay Reasonable', description: 'You can have up to 4 active needs at a time. Wait for one to be resolved before posting more if you\'ve reached the limit.' },
   { title: 'Protect Privacy', description: 'Don\'t share personal information about others. Respect everyone\'s privacy and boundaries.' },
   { title: 'Report Concerns', description: 'If something doesn\'t feel right, use the report feature. Our team reviews every report within 24 hours.' },
@@ -220,8 +220,8 @@ export const COMMUNITY_GUIDELINES = [
 ];
 
 export const FAQ_ITEMS = [
-  { q: 'How does SpotMe work?', a: 'Post a Need with a title, category, and goal amount ($25-$300). Other community members can contribute small amounts to help you reach your goal.' },
-  { q: 'Is there a fee?', a: 'SpotMe takes no platform fee — 100% of your contribution goes to the recipient. Stripe charges a standard processing fee (2.9% + $0.30). At checkout, you can leave an optional tip to support SpotMe.' },
+  { q: 'How does SpotMeOne work?', a: 'Post a Need with a title, category, and goal amount ($25-$300). Other community members can contribute small amounts to help you reach your goal.' },
+  { q: 'Is there a fee?', a: 'SpotMeOne takes no platform fee — 100% of your contribution goes to the recipient. Stripe charges a standard processing fee (2.9% + $0.30). At checkout, you can leave an optional tip to support SpotMeOne.' },
 
   { q: 'How do I get my money?', a: 'Once your goal is met, tap "Request Payout" on your Need. Payouts are processed within 2-3 business days to your linked payment method.' },
   { q: 'Can I contribute anonymously?', a: 'Yes! When contributing, you can choose to hide your name. Your contribution will show as "A kind stranger."' },

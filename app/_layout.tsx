@@ -44,13 +44,13 @@ export default function RootLayout() {
     // Global error handler to prevent full page reloads on web
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const handleError = (event: ErrorEvent) => {
-        console.error('[SpotMe] Global error caught:', event.message);
+        console.error('[SpotMeOne] Global error caught:', event.message);
         event.preventDefault();
         return true;
       };
 
       const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-        console.error('[SpotMe] Unhandled promise rejection:', event.reason);
+        console.error('[SpotMeOne] Unhandled promise rejection:', event.reason);
         event.preventDefault();
         return true;
       };
@@ -73,7 +73,7 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary
-      fallbackTitle="SpotMe hit a snag"
+      fallbackTitle="SpotMeOne hit a snag"
       fallbackMessage="Something went wrong, but your data is safe. Tap below to reload."
     >
       <AppProvider>

@@ -22,15 +22,15 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="SpotMe" />
-        <meta name="application-name" content="SpotMe" />
+        <meta name="apple-mobile-web-app-title" content="SpotMeOne" />
+        <meta name="application-name" content="SpotMeOne" />
 
         {/* Theme color for browser chrome */}
         <meta name="theme-color" content="#F2785C" />
         <meta name="msapplication-TileColor" content="#F2785C" />
 
         {/* SEO & Social Sharing (TikTok, Instagram, Twitter) */}
-        <title>SpotMe - No Tragedy. Just Life.</title>
+        <title>SpotMeOne - No Tragedy. Just Life.</title>
         <meta name="description" content="Help your neighbors with everyday needs. Small acts, big impact. Post a need or spot someone today." />
 
         {/* Canonical URL */}
@@ -39,9 +39,9 @@ export default function Root({ children }: PropsWithChildren) {
         {/* Open Graph for social sharing - default tags that get overridden per-page */}
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://spotmeone.com" />
-        <meta property="og:title" content="SpotMe - No Tragedy. Just Life." />
+        <meta property="og:title" content="SpotMeOne - No Tragedy. Just Life." />
         <meta property="og:description" content="Help your neighbors with everyday needs. Small acts, big impact. One payment can help multiple people." />
-        <meta property="og:site_name" content="SpotMe" />
+        <meta property="og:site_name" content="SpotMeOne" />
         <meta property="og:image" content="https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771036966816_3239ff44.png" />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
@@ -49,7 +49,7 @@ export default function Root({ children }: PropsWithChildren) {
 
         {/* Twitter Card */}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="SpotMe - No Tragedy. Just Life." />
+        <meta name="twitter:title" content="SpotMeOne - No Tragedy. Just Life." />
         <meta name="twitter:description" content="Help your neighbors with everyday needs. Small acts, big impact." />
         <meta name="twitter:url" content="https://spotmeone.com" />
         <meta name="twitter:image" content="https://d64gsuwffb70l.cloudfront.net/698fe0b37fe9438e65b48d58_1771036966816_3239ff44.png" />
@@ -281,18 +281,18 @@ export default function Root({ children }: PropsWithChildren) {
                 
                 // Set URL-specific OG tags immediately
                 setOG('og:url', shareUrl);
-                setOG('og:title', 'Someone needs your help on SpotMe');
+                setOG('og:title', 'Someone needs your help on SpotMeOne');
                 setOG('og:description', 'Can you spot them? Every dollar goes directly to the person in need. No tragedy, just life.');
                 setOG('og:type', 'article');
                 setOG('og:image', ogImageUrl);
                 setOG('og:image:width', '1200');
                 setOG('og:image:height', '630');
                 setMeta('twitter:url', shareUrl);
-                setMeta('twitter:title', 'Someone needs your help on SpotMe');
+                setMeta('twitter:title', 'Someone needs your help on SpotMeOne');
                 setMeta('twitter:description', 'Can you spot them? Every dollar goes directly to the person in need.');
                 setMeta('twitter:image', ogImageUrl);
                 setMeta('twitter:card', 'summary_large_image');
-                document.title = 'Help Someone on SpotMe';
+                document.title = 'Help Someone on SpotMeOne';
                 
                 // Attempt to fetch real need data for proper OG tags
                 var dbKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqaHhycHdvYm55bnRva2VncnR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NzU2MzUsImV4cCI6MjA4NzA1MTYzNX0.g48dLZoH6ZNbmSv9emGuvYvLgFIQm33xjCbtwvEZB_0';
@@ -314,7 +314,7 @@ export default function Root({ children }: PropsWithChildren) {
                       var n = data.need;
                       var remaining = n.goalAmount - n.raisedAmount;
                       var pct = Math.round((n.raisedAmount / n.goalAmount) * 100);
-                      var title = 'Help ' + n.userName + ': ' + n.title + ' | SpotMe';
+                      var title = 'Help ' + n.userName + ': ' + n.title + ' | SpotMeOne';
                       var desc = '$' + remaining + ' still needed (' + pct + '% funded). Can you spot them?';
                       
                       document.title = title;
@@ -348,7 +348,7 @@ export default function Root({ children }: PropsWithChildren) {
                   }
                 }
                 setOGN('og:url', needUrl);
-                setOGN('og:title', 'Help someone on SpotMe');
+                setOGN('og:title', 'Help someone on SpotMeOne');
                 setOGN('og:description', 'Every dollar goes directly to the person in need. No tragedy, just life.');
                 setOGN('og:image', needOgImage);
               }
@@ -362,8 +362,8 @@ export default function Root({ children }: PropsWithChildren) {
                   if (el) el.setAttribute('content', content);
                 }
                 setOGU('og:url', uUrl);
-                setOGU('og:title', 'SpotMe Profile');
-                setOGU('og:description', 'See how this community member is helping neighbors on SpotMe.');
+                setOGU('og:title', 'SpotMeOne Profile');
+                setOGU('og:description', 'See how this community member is helping neighbors on SpotMeOne.');
               }
             } catch(e) {}
           })();
@@ -380,7 +380,7 @@ export default function Root({ children }: PropsWithChildren) {
             // Create splash screen dynamically (outside React's DOM tree)
             var splash = document.createElement('div');
             splash.id = 'splash-screen';
-            splash.innerHTML = '<div id="splash-logo">SpotMe</div><div id="splash-tagline">No tragedy. Just life.</div><div id="splash-loading"></div>';
+            splash.innerHTML = '<div id="splash-logo">SpotMeOne</div><div id="splash-tagline">No tragedy. Just life.</div><div id="splash-loading"></div>';
             document.addEventListener('DOMContentLoaded', function() {
               if (document.body) {
                 document.body.appendChild(splash);

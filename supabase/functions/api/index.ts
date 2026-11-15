@@ -1,4 +1,4 @@
-// SpotMe API — the server-side backend.
+// SpotMeOne API — the server-side backend.
 //
 // The app calls supabase.functions.invoke(<name>, { body }) exactly as before;
 // the client wrapper forwards every call here as { fn: <name>, body }.
@@ -97,7 +97,7 @@ async function getProfile(uid: string) {
 function profileToUser(p: any) {
   return {
     id: p.id,
-    name: p.name || "SpotMe User",
+    name: p.name || "SpotMeOne User",
     avatar: p.avatar || "",
     bio: p.bio || "",
     city: p.city || "",
@@ -119,7 +119,7 @@ function mapNeed(need: any, profile: any = {}, contributions: any[] = []) {
   return {
     id: need.id,
     userId: need.user_id,
-    userName: need.user_name?.trim() ? need.user_name : (profile.name || "SpotMe User"),
+    userName: need.user_name?.trim() ? need.user_name : (profile.name || "SpotMeOne User"),
     // The poster's current profile photo wins over the copy stored on the need
     userAvatar: profile.id ? (profile.avatar || "") : (need.user_avatar || ""),
     userCity: need.user_city?.trim() ? need.user_city : (profile.city || ""),
@@ -561,7 +561,7 @@ async function stripeCheckout(action: string, body: any, ctx: Ctx): Promise<any>
       return { success: true, isAdmin: ctx.isAdmin };
 
     case "admin_register":
-      return { success: false, error: "Admin access is granted by the SpotMe team." };
+      return { success: false, error: "Admin access is granted by the SpotMeOne team." };
 
     case "admin_stats":
       requireAdmin(ctx);
@@ -846,7 +846,7 @@ async function adminStats() {
         timestamp: p.created_at, isAnonymous: p.is_anonymous || false,
       })),
       users: (profiles || []).map((u) => ({
-        id: u.id, name: u.name || "SpotMe User", avatar: u.avatar || "", city: u.city || "", verified: u.verified || false,
+        id: u.id, name: u.name || "SpotMeOne User", avatar: u.avatar || "", city: u.city || "", verified: u.verified || false,
         totalRaised: Number(u.total_raised || 0), totalGiven: Number(u.total_given || 0), joinedDate: u.created_at,
       })),
       needs: (needs || []).map((n) => ({
@@ -975,7 +975,7 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
           user_id: uid, metadata: { severity: "error", source: "create_account" },
         });
         // Admins see Stripe's reason (e.g. Connect not enabled on the platform account)
-        return { success: false, error: ctx.isAdmin ? `Stripe: ${(err as Error).message}` : "Payout setup isn't available right now. Please contact SpotMe support." };
+        return { success: false, error: ctx.isAdmin ? `Stripe: ${(err as Error).message}` : "Payout setup isn't available right now. Please contact SpotMeOne support." };
       }
       await db.from("connected_accounts").upsert({
         user_id: uid, livemode: LIVEMODE, stripe_account_id: acct.id, onboarding_complete: false,
@@ -1454,7 +1454,7 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
         if (!parent || parent.need_id !== need.id) return { success: false, error: "Parent comment not found" };
       }
       const profile = await getProfile(uid);
-      const name = profile?.name || "SpotMe User";
+      const name = profile?.name || "SpotMeOne User";
       const avatar = profile?.avatar || "";
       const { data: comment, error } = await db.from("need_comments").insert({
         need_id: need.id, user_id: uid, user_name: name, user_avatar: avatar, message,
@@ -1539,7 +1539,7 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       const { data: need } = await db.from("needs").update(updates).eq("id", body.needId).select("user_id, title").maybeSingle();
       if (need?.user_id) {
         await notify(need.user_id, approve
-          ? { type: "milestone", title: "Your need is live!", message: `"${need.title}" was verified and is now on SpotMe.`, need_id: body.needId }
+          ? { type: "milestone", title: "Your need is live!", message: `"${need.title}" was verified and is now on SpotMeOne.`, need_id: body.needId }
           : { type: "welcome", title: "Need not approved", message: `"${need.title}" wasn't approved. Reply to our email or contact support for details.`, need_id: body.needId });
       }
       return { success: true, newStatus: updates.verification_status };
@@ -1641,7 +1641,7 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       }).eq("id", body.requestId).select("user_id").maybeSingle();
       if (approve && req?.user_id) {
         await db.from("profiles").update({ verified: true }).eq("id", req.user_id);
-        await notify(req.user_id, { type: "milestone", title: "You're SpotMe Verified!", message: "Your checkmark now shows on your profile and every post." });
+        await notify(req.user_id, { type: "milestone", title: "You're SpotMeOne Verified!", message: "Your checkmark now shows on your profile and every post." });
       }
       return { success: true };
     }
@@ -1661,7 +1661,7 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       return { success: true, paymentMethods: [] };
     case "add_payment_method":
     case "remove_payment_method":
-      return { success: false, error: "Cards are entered securely at checkout and aren't stored by SpotMe." };
+      return { success: false, error: "Cards are entered securely at checkout and aren't stored by SpotMeOne." };
   }
   return { success: false, error: `Unknown action: ${action}` };
 }

@@ -20,13 +20,13 @@ const PRESET_AMOUNTS = [1, 5, 10, 25, 50];
 // Smart tip suggestions based on donation amount
 function getSmartTipSuggestions(donationAmount: number): { presets: number[]; defaultTip: number; message: string; highlight: number } {
   if (donationAmount <= 0) {
-    return { presets: [0, 1, 2, 5], defaultTip: 1, message: 'An optional tip helps keep SpotMe free for everyone', highlight: 1 };
+    return { presets: [0, 1, 2, 5], defaultTip: 1, message: 'An optional tip helps keep SpotMeOne free for everyone', highlight: 1 };
   }
   if (donationAmount <= 3) {
     return {
       presets: [0, 0.50, 1, 2],
       defaultTip: 0.50,
-      message: 'Even $0.50 helps us keep SpotMe running',
+      message: 'Even $0.50 helps us keep SpotMeOne running',
       highlight: 0.50,
     };
   }
@@ -34,7 +34,7 @@ function getSmartTipSuggestions(donationAmount: number): { presets: number[]; de
     return {
       presets: [0, 1, 2, 3],
       defaultTip: 1,
-      message: '$1 keeps SpotMe free for everyone',
+      message: '$1 keeps SpotMeOne free for everyone',
       highlight: 1,
     };
   }
@@ -232,7 +232,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
     
     // Prevent double-click / double-submission
     if (paymentInProgressRef.current || processing) {
-      console.log('[SpotMe] Payment already in progress, ignoring click');
+      console.log('[SpotMeOne] Payment already in progress, ignoring click');
       return;
     }
 
@@ -383,7 +383,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 </View>
                 {successTip > 0 && (
                   <View style={styles.receiptRow}>
-                    <Text style={styles.receiptLabel}>Support SpotMe tip</Text>
+                    <Text style={styles.receiptLabel}>Support SpotMeOne tip</Text>
                     <Text style={styles.receiptValue}>${successTip.toFixed(2)}</Text>
                   </View>
                 )}
@@ -400,7 +400,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                       color={Colors.secondary}
                     />
                     <Text style={styles.paymentMethodText}>
-                      {paymentMode === 'stripe_connect' ? 'Stripe Connect' : paymentMode === 'stripe' ? 'Stripe' : 'SpotMe Direct'}
+                      {paymentMode === 'stripe_connect' ? 'Stripe Connect' : paymentMode === 'stripe' ? 'Stripe' : 'SpotMeOne Direct'}
                     </Text>
                   </View>
                 </View>
@@ -448,13 +448,13 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 </View>
               )}
 
-              {/* SpotMe Trust Banner */}
+              {/* SpotMeOne Trust Banner */}
               <View style={styles.trustBanner}>
                 <View style={styles.trustBannerLeft}>
                   <MaterialIcons name="verified-user" size={20} color="#5CB85C" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.trustBannerTitle}>SpotMe Verified Process</Text>
+                  <Text style={styles.trustBannerTitle}>SpotMeOne Verified Process</Text>
                   <Text style={styles.trustBannerText}>
                     Every recipient goes through phone verification + manual review before receiving funds. Real people. Real needs.
                   </Text>
@@ -550,7 +550,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                     <View style={styles.tipHeader}>
                       <MaterialIcons name="favorite" size={18} color={Colors.primary} />
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.tipTitle}>Support SpotMe</Text>
+                        <Text style={styles.tipTitle}>Support SpotMeOne</Text>
                         <Text style={styles.tipSubtitle}>{smartTip.message}</Text>
                       </View>
                     </View>
@@ -620,7 +620,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <View style={styles.feeRow}>
                     <View style={styles.recipientRow}>
                       <MaterialIcons name="favorite" size={12} color={Colors.primary} />
-                      <Text style={[styles.feeLabel, { color: Colors.primary }]}>Support SpotMe tip</Text>
+                      <Text style={[styles.feeLabel, { color: Colors.primary }]}>Support SpotMeOne tip</Text>
                     </View>
                     <Text style={[styles.feeValue, { color: Colors.primary }]}>${tip.toFixed(2)}</Text>
                   </View>

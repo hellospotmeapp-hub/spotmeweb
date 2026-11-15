@@ -381,7 +381,7 @@ export default function ProfileScreen() {
             <View style={styles.verifiedBanner}>
               <MaterialIcons name="verified" size={18} color="#5CB85C" />
               <View style={{ flex: 1 }}>
-                <Text style={styles.verifiedBannerTitle}>SpotMe Verified</Text>
+                <Text style={styles.verifiedBannerTitle}>SpotMeOne Verified</Text>
                 <Text style={styles.verifiedBannerText}>Phone verified + manually reviewed. Your checkmark shows on every post.</Text>
               </View>
             </View>
@@ -390,7 +390,7 @@ export default function ProfileScreen() {
               <MaterialIcons name="hourglass-top" size={18} color={Colors.primary} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.getVerifiedTitle}>Verification under review</Text>
-                <Text style={styles.getVerifiedText}>We got your request. Your checkmark appears here once the SpotMe team approves it.</Text>
+                <Text style={styles.getVerifiedText}>We got your request. Your checkmark appears here once the SpotMeOne team approves it.</Text>
               </View>
             </View>
           ) : (
@@ -401,7 +401,7 @@ export default function ProfileScreen() {
             >
               <MaterialIcons name="verified-user" size={18} color={Colors.primary} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.getVerifiedTitle}>Get SpotMe Verified</Text>
+                <Text style={styles.getVerifiedTitle}>Get SpotMeOne Verified</Text>
                 <Text style={styles.getVerifiedText}>Add a checkmark to build trust. Send your details for review.</Text>
               </View>
               <MaterialIcons name="chevron-right" size={18} color={Colors.primary} />

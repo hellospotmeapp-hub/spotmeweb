@@ -25,9 +25,9 @@ function storeSpotInLocalStorage(spot: { needId: string; needTitle: string; amou
     if (spots.some(s => s.paymentId === spot.paymentId && spot.paymentId)) return;
     spots.push(spot);
     localStorage.setItem(MY_SPOTS_KEY, JSON.stringify(spots));
-    console.log(`[SpotMe MySpots] Stored spot: $${spot.amount} for "${spot.needTitle}" — ${spots.length} total`);
+    console.log(`[SpotMeOne MySpots] Stored spot: $${spot.amount} for "${spot.needTitle}" — ${spots.length} total`);
   } catch (err) {
-    console.warn('[SpotMe MySpots] Failed to store spot:', err);
+    console.warn('[SpotMeOne MySpots] Failed to store spot:', err);
   }
 }
 
@@ -146,7 +146,7 @@ export default function PaymentSuccessScreen() {
   const verifyPayment = useCallback(async () => {
     const { paymentId, paymentIntentId, redirectStatus, sessionId } = urlParams;
 
-    console.log('[SpotMe Success] Verifying with params:', {
+    console.log('[SpotMeOne Success] Verifying with params:', {
       paymentId: paymentId || '(none)',
       paymentIntentId: paymentIntentId ? paymentIntentId.slice(0, 15) + '...' : '(none)',
       redirectStatus,
@@ -154,7 +154,7 @@ export default function PaymentSuccessScreen() {
 
     // Edge case: no identifiers at all (e.g. user navigated here directly)
     if (!paymentId && !paymentIntentId && !redirectStatus) {
-      console.log('[SpotMe Success] No payment identifiers found in URL');
+      console.log('[SpotMeOne Success] No payment identifiers found in URL');
       setErrorMsg('No payment information found. If you just completed a payment, please check your email for a confirmation.');
       setStatus('error');
       return;
@@ -172,7 +172,7 @@ export default function PaymentSuccessScreen() {
         },
       });
 
-      console.log('[SpotMe Success] Verify response:', {
+      console.log('[SpotMeOne Success] Verify response:', {
         success: data?.success,
         verified: data?.verified,
         already_processed: data?.already_processed,
@@ -183,9 +183,9 @@ export default function PaymentSuccessScreen() {
 
       if (error && !data) {
         // Network/server error — but if Stripe says succeeded, trust it
-        console.warn('[SpotMe Success] Verify call failed:', error.message);
+        console.warn('[SpotMeOne Success] Verify call failed:', error.message);
         if (redirectStatus === 'succeeded') {
-          console.log('[SpotMe Success] Trusting redirect_status=succeeded despite verify error');
+          console.log('[SpotMeOne Success] Trusting redirect_status=succeeded despite verify error');
           setStatus('success');
           await refreshNeeds();
           return;
@@ -228,7 +228,7 @@ export default function PaymentSuccessScreen() {
             setReceiptError(receiptResult.error || 'Could not send receipt email');
           }
         } catch (e: any) {
-          console.log('[SpotMe Success] Receipt email failed (non-critical):', e);
+          console.log('[SpotMeOne Success] Receipt email failed (non-critical):', e);
           setReceiptStatus('failed');
         }
         return;
@@ -264,10 +264,10 @@ export default function PaymentSuccessScreen() {
       setStatus('error');
 
     } catch (err: any) {
-      console.error('[SpotMe Success] Verification exception:', err);
+      console.error('[SpotMeOne Success] Verification exception:', err);
       // If Stripe redirect said succeeded, trust it despite the error
       if (redirectStatus === 'succeeded') {
-        console.log('[SpotMe Success] Treating as success despite exception (redirect_status=succeeded)');
+        console.log('[SpotMeOne Success] Treating as success despite exception (redirect_status=succeeded)');
         setStatus('success');
         await refreshNeeds();
         return;
@@ -344,7 +344,7 @@ export default function PaymentSuccessScreen() {
     // 4) Refresh needs to pick up updated progress
     refreshNeeds().catch(() => {});
 
-    console.log('[SpotMe Success] Spot stored & totalGiven updated:', {
+    console.log('[SpotMeOne Success] Spot stored & totalGiven updated:', {
       needId: spotNeedId,
       amount: spotAmount,
       paymentId: spotPaymentId,
@@ -356,7 +356,7 @@ export default function PaymentSuccessScreen() {
   useEffect(() => {
     if (status === 'processing' && retryCount < 5) {
       const timer = setTimeout(() => {
-        console.log(`[SpotMe Success] Auto-retry verification (attempt ${retryCount + 1}/5)`);
+        console.log(`[SpotMeOne Success] Auto-retry verification (attempt ${retryCount + 1}/5)`);
         setRetryCount(prev => prev + 1);
         verifyPayment();
       }, 3000); // retry every 3 seconds
@@ -408,7 +408,7 @@ export default function PaymentSuccessScreen() {
   const getShareText = () => {
     const name = relatedNeed?.userName || 'someone';
     const title = needTitle || relatedNeed?.title || 'a need';
-    return `I just spotted ${name} for "${title}" on SpotMe! Can you help too? No tragedy, just life. #SpotMe #MutualAid #HelpYourNeighbor`;
+    return `I just spotted ${name} for "${title}" on SpotMeOne! Can you help too? No tragedy, just life. #SpotMeOne #MutualAid #HelpYourNeighbor`;
   };
 
   const handleShare = async (platform: string) => {
@@ -442,7 +442,7 @@ export default function PaymentSuccessScreen() {
       case 'native':
         try {
           if (Platform.OS === 'web' && navigator.share) {
-            await navigator.share({ title: 'I spotted someone on SpotMe!', text, url });
+            await navigator.share({ title: 'I spotted someone on SpotMeOne!', text, url });
           } else {
             await Share.share({ message: `${text}\n${url}` });
           }
@@ -596,7 +596,7 @@ export default function PaymentSuccessScreen() {
                   <View style={styles.receiptRow}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                       <MaterialIcons name="favorite" size={12} color={Colors.primary} />
-                      <Text style={[styles.receiptLabel, { color: Colors.primary }]}>SpotMe tip</Text>
+                      <Text style={[styles.receiptLabel, { color: Colors.primary }]}>SpotMeOne tip</Text>
                     </View>
                     <Text style={[styles.receiptValue, { color: Colors.primary }]}>${tipAmount.toFixed(2)}</Text>
                   </View>

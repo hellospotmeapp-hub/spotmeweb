@@ -1,6 +1,6 @@
-# SpotMe — App Store Publishing Guide
+# SpotMeOne — App Store Publishing Guide
 
-> Everything you need to publish SpotMe to the **Apple App Store** and **Google Play Store** tonight.
+> Everything you need to publish SpotMeOne to the **Apple App Store** and **Google Play Store** tonight.
 
 ---
 
@@ -104,7 +104,7 @@ eas submit --platform ios
 1. Go to [App Store Connect](https://appstoreconnect.apple.com)
 2. Click **My Apps** → **+** → **New App**
 3. Fill in:
-   - **Name**: SpotMe: Everyday Support
+   - **Name**: SpotMeOne: Everyday Support
    - **Bundle ID**: com.spotmeone.app
    - **SKU**: spotme-everyday-support
    - **Primary Language**: English (U.S.)
@@ -157,7 +157,7 @@ eas submit --platform android
 5. Fill in release notes and required metadata
 
 ### Required Play Store Metadata:
-- **App name**: SpotMe: Everyday Support
+- **App name**: SpotMeOne: Everyday Support
 - **Short description**: Help your neighbors with everyday needs. Small acts, big impact.
 - **Full description**: (see App Store Description section below)
 - **Category**: Social
@@ -188,7 +188,7 @@ See `DEEP_LINKS_SETUP.md` for full instructions.
 Use this for both stores:
 
 ```
-SpotMe — No Tragedy. Just Life.
+SpotMeOne — No Tragedy. Just Life.
 
 Help your neighbors with everyday needs. Not emergencies or medical bills — just the regular stuff that adds up: groceries, kids' school supplies, a car repair, or this month's electric bill.
 
@@ -215,7 +215,7 @@ FEATURES:
 • Secure payments powered by Stripe
 • Works on iPhone, Android, and web
 
-SpotMe is for the everyday moments when a little help goes a long way. No judgment — just people helping people.
+SpotMeOne is for the everyday moments when a little help goes a long way. No judgment — just people helping people.
 ```
 
 ---

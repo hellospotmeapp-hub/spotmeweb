@@ -60,12 +60,12 @@ export default function ShareCard({ visible, onClose, needTitle, needId, needRai
   const getShareText = () => {
     if (needTitle && needRaised !== undefined && needGoal !== undefined) {
       const pct = Math.round((needRaised / needGoal) * 100);
-      return `Help someone on SpotMe! "${needTitle}" is ${pct}% funded ($${needRaised}/$${needGoal}). No tragedy, just life. Every dollar counts.`;
+      return `Help someone on SpotMeOne! "${needTitle}" is ${pct}% funded ($${needRaised}/$${needGoal}). No tragedy, just life. Every dollar counts.`;
     }
     if (stats) {
-      return `SpotMe community has raised $${stats.totalRaised.toLocaleString()} and completed ${stats.goalsCompleted} goals! Join us - no tragedy, just life. Help your neighbors with everyday needs.`;
+      return `SpotMeOne community has raised $${stats.totalRaised.toLocaleString()} and completed ${stats.goalsCompleted} goals! Join us - no tragedy, just life. Help your neighbors with everyday needs.`;
     }
-    return 'SpotMe - Help your neighbors with everyday needs. No tragedy, just life. Every dollar counts.';
+    return 'SpotMeOne - Help your neighbors with everyday needs. No tragedy, just life. Every dollar counts.';
   };
 
   const handleShare = async (platform: 'tiktok' | 'twitter' | 'copy' | 'native') => {
@@ -104,7 +104,7 @@ export default function ShareCard({ visible, onClose, needTitle, needId, needRai
     } else if (platform === 'native') {
       try {
         if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
-          await navigator.share({ title: 'SpotMe', text, url });
+          await navigator.share({ title: 'SpotMeOne', text, url });
         } else {
           await Share.share({ message: `${text}\n${url}` });
         }
@@ -120,7 +120,7 @@ export default function ShareCard({ visible, onClose, needTitle, needId, needRai
           <View style={styles.handle} />
 
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Share SpotMe</Text>
+            <Text style={styles.headerTitle}>Share SpotMeOne</Text>
             <TouchableOpacity onPress={onClose}>
               <MaterialIcons name="close" size={24} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -132,7 +132,7 @@ export default function ShareCard({ visible, onClose, needTitle, needId, needRai
               <View style={[styles.impactCircle, styles.impactCircle1]} />
               <View style={[styles.impactCircle, styles.impactCircle2]} />
 
-              <Text style={styles.impactLogo}>SpotMe</Text>
+              <Text style={styles.impactLogo}>SpotMeOne</Text>
               <Text style={styles.impactTagline}>No tragedy. Just life.</Text>
 
               {loading ? (
@@ -209,7 +209,7 @@ export default function ShareCard({ visible, onClose, needTitle, needId, needRai
           <View style={styles.viralTip}>
             <MaterialIcons name="auto-awesome" size={18} color={Colors.accent} />
             <Text style={styles.viralTipText}>
-              Sharing on TikTok? Use #SpotMe #MutualAid #HelpYourNeighbor for maximum reach
+              Sharing on TikTok? Use #SpotMeOne #MutualAid #HelpYourNeighbor for maximum reach
             </Text>
           </View>
         </View>
