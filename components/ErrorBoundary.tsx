@@ -26,14 +26,14 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('[SpotMe ErrorBoundary] Caught error:', error.message);
-    console.error('[SpotMe ErrorBoundary] Component stack:', errorInfo.componentStack);
+    console.error('[SpotMeOne ErrorBoundary] Caught error:', error.message);
+    console.error('[SpotMeOne ErrorBoundary] Component stack:', errorInfo.componentStack);
     this.setState({ errorInfo: errorInfo.componentStack || '' });
 
     // Try to log the error
     try {
       if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        console.error('[SpotMe] Component crash caught by ErrorBoundary - auth state preserved');
+        console.error('[SpotMeOne] Component crash caught by ErrorBoundary - auth state preserved');
       }
     } catch {}
   }

@@ -106,7 +106,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
           />
           <View>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{need.userName || 'SpotMe User'}</Text>
+              <Text style={styles.userName}>{need.userName || 'SpotMeOne User'}</Text>
               {!!need.userVerified && (
                 <MaterialIcons name="verified" size={15} color="rgba(255,255,255,0.95)" style={{ marginLeft: 3 }} />
               )}
@@ -149,7 +149,7 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
         {need.verificationStatus === 'approved' && (
           <View style={styles.verifiedNeedBadge}>
             <MaterialIcons name="verified-user" size={13} color={Colors.primary} />
-            <Text style={styles.verifiedNeedText}>SpotMe Verified</Text>
+            <Text style={styles.verifiedNeedText}>SpotMeOne Verified</Text>
           </View>
         )}
         {need.verificationStatus === 'pending' && (

@@ -30,7 +30,7 @@ export default function NotFoundScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <TouchableOpacity onPress={() => router.replace('/')} activeOpacity={0.7}>
-            <Text style={styles.brand}>SpotMe</Text>
+            <Text style={styles.brand}>SpotMeOne</Text>
           </TouchableOpacity>
 
           <View style={styles.art}>

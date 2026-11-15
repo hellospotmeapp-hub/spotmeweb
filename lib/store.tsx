@@ -101,9 +101,9 @@ function addUnlinkedPaymentId(paymentId: string): void {
     if (Platform.OS === 'web') {
       try { localStorage.setItem(UNLINKED_PAYMENTS_KEY, json); } catch {}
     }
-    console.log(`[SpotMe UnlinkedPayments] Stored unlinked payment: ${paymentId} — ${updated.length} total`);
+    console.log(`[SpotMeOne UnlinkedPayments] Stored unlinked payment: ${paymentId} — ${updated.length} total`);
   } catch (err) {
-    console.warn('[SpotMe UnlinkedPayments] Failed to store payment ID:', err);
+    console.warn('[SpotMeOne UnlinkedPayments] Failed to store payment ID:', err);
   }
 }
 
@@ -114,7 +114,7 @@ function clearUnlinkedPaymentIds(): void {
     if (Platform.OS === 'web') {
       try { localStorage.removeItem(UNLINKED_PAYMENTS_KEY); } catch {}
     }
-    console.log('[SpotMe UnlinkedPayments] Cleared all unlinked payment IDs');
+    console.log('[SpotMeOne UnlinkedPayments] Cleared all unlinked payment IDs');
   } catch {}
 }
 
@@ -154,9 +154,9 @@ function savePendingNeed(need: Need): void {
     if (Platform.OS === 'web') {
       try { localStorage.setItem(PENDING_NEEDS_KEY, json); } catch {}
     }
-    console.log(`[SpotMe PendingNeeds] Saved pending need: ${need.id} ("${need.title}") — ${updated.length} total pending`);
+    console.log(`[SpotMeOne PendingNeeds] Saved pending need: ${need.id} ("${need.title}") — ${updated.length} total pending`);
   } catch (err) {
-    console.warn('[SpotMe PendingNeeds] Failed to save pending need:', err);
+    console.warn('[SpotMeOne PendingNeeds] Failed to save pending need:', err);
   }
 }
 
@@ -171,9 +171,9 @@ function removePendingNeed(localId: string): void {
     if (Platform.OS === 'web') {
       try { localStorage.setItem(PENDING_NEEDS_KEY, json); } catch {}
     }
-    console.log(`[SpotMe PendingNeeds] Cleared confirmed need: ${localId} — ${updated.length} remaining`);
+    console.log(`[SpotMeOne PendingNeeds] Cleared confirmed need: ${localId} — ${updated.length} remaining`);
   } catch (err) {
-    console.warn('[SpotMe PendingNeeds] Failed to remove pending need:', err);
+    console.warn('[SpotMeOne PendingNeeds] Failed to remove pending need:', err);
   }
 }
 
@@ -237,9 +237,9 @@ function markNeedDeleted(needId: string): void {
     if (Platform.OS === 'web') {
       try { localStorage.setItem(DELETED_NEEDS_KEY, json); } catch {}
     }
-    console.log(`[SpotMe DeletedNeeds] Marked need as deleted: ${needId} — ${updated.length} total deleted`);
+    console.log(`[SpotMeOne DeletedNeeds] Marked need as deleted: ${needId} — ${updated.length} total deleted`);
   } catch (err) {
-    console.warn('[SpotMe DeletedNeeds] Failed to mark need as deleted:', err);
+    console.warn('[SpotMeOne DeletedNeeds] Failed to mark need as deleted:', err);
   }
 }
 
@@ -255,7 +255,7 @@ function cleanupDeletedNeeds(): void {
     if (Platform.OS === 'web') {
       try { localStorage.setItem(DELETED_NEEDS_KEY, json); } catch {}
     }
-    console.log(`[SpotMe DeletedNeeds] Cleaned up ${records.length - cleaned.length} old records`);
+    console.log(`[SpotMeOne DeletedNeeds] Cleaned up ${records.length - cleaned.length} old records`);
   } catch {}
 }
 
@@ -311,7 +311,7 @@ function reconcilePendingNeeds(serverNeeds: Need[]): Need[] {
       if (age > 30 * 60 * 1000) {
         // Stale — remove from pending cache
         removePendingNeed(pn.id);
-        console.log(`[SpotMe PendingNeeds] Removed stale pending need (${Math.round(age / 60000)}min old): ${pn.id}`);
+        console.log(`[SpotMeOne PendingNeeds] Removed stale pending need (${Math.round(age / 60000)}min old): ${pn.id}`);
       } else {
         remaining.push(pn);
       }
@@ -335,7 +335,7 @@ function mergeWithPendingNeeds(serverNeeds: Need[]): Need[] {
 
   if (toMerge.length === 0) return serverNeeds;
 
-  console.log(`[SpotMe PendingNeeds] Merging ${toMerge.length} unconfirmed needs with ${serverNeeds.length} server needs`);
+  console.log(`[SpotMeOne PendingNeeds] Merging ${toMerge.length} unconfirmed needs with ${serverNeeds.length} server needs`);
   return [...toMerge, ...serverNeeds];
 }
 
@@ -805,7 +805,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (raw) {
           const user = JSON.parse(raw);
           if (user && user.id && user.id !== 'guest') {
-            console.log('[SpotMe Auth Recovery] Recovered auth from localStorage:', user.name);
+            console.log('[SpotMeOne Auth Recovery] Recovered auth from localStorage:', user.name);
             setCurrentUser(user);
             setIsLoggedIn(true);
             return;
@@ -820,7 +820,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (raw) {
         const user = JSON.parse(raw);
         if (user && user.id && user.id !== 'guest') {
-          console.log('[SpotMe Auth Recovery] Recovered auth from memoryStore:', user.name);
+          console.log('[SpotMeOne Auth Recovery] Recovered auth from memoryStore:', user.name);
           setCurrentUser(user);
           setIsLoggedIn(true);
           return;
@@ -861,7 +861,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // ---- PENDING NEEDS: Restore any needs cached in localStorage ----
         const pendingNeeds = getPendingNeeds();
         if (pendingNeeds.length > 0) {
-          console.log(`[SpotMe PendingNeeds] Restoring ${pendingNeeds.length} pending needs from localStorage`);
+          console.log(`[SpotMeOne PendingNeeds] Restoring ${pendingNeeds.length} pending needs from localStorage`);
           setNeeds(prev => {
             const existingIds = new Set(prev.map(n => n.id));
             const toRestore = pendingNeeds.filter(pn => !existingIds.has(pn.id));
@@ -872,12 +872,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const cached = offlineManager.getCachedNeeds();
         if (cached.needs && cached.needs.length > 0) {
           setNeeds(applyExpirations(filterDeletedNeeds(cached.needs)));
-          console.log(`[SpotMe Offline] Loaded ${cached.needs.length} cached needs`);
+          console.log(`[SpotMeOne Offline] Loaded ${cached.needs.length} cached needs`);
         }
 
         await fetchNeeds();
       } catch (e: any) {
-        console.warn('[SpotMe] Startup failed:', e?.message);
+        console.warn('[SpotMeOne] Startup failed:', e?.message);
       }
       setIsLoading(false);
     })();
@@ -915,7 +915,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         await loadSessionUser();
       } else if (isLoggedIn) {
         // Cached login from before Supabase Auth (or an expired session): sign in again
-        console.warn('[SpotMe Auth] No active session, signing out cached user');
+        console.warn('[SpotMeOne Auth] No active session, signing out cached user');
         await signOutLocal();
       }
     })().catch(() => {});
@@ -1063,7 +1063,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
             setShowPushPrompt(true);
             pushPromptCheckedRef.current = true; // Only show once per session
-            console.log('[SpotMe PushPrompt] Showing push notification prompt — new contribution detected');
+            console.log('[SpotMeOne PushPrompt] Showing push notification prompt — new contribution detected');
           }
         }
 
@@ -1515,7 +1515,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (insertError || !insertedNeed) {
           setNeeds(prev => prev.filter(n => n.id !== localNeed.id));
           removePendingNeed(localNeed.id);
-          console.error('[SpotMe] Need creation failed:', insertError?.message);
+          console.error('[SpotMeOne] Need creation failed:', insertError?.message);
           setNotifications(prev => [{
             id: `not_${Date.now()}`,
             type: 'welcome' as const,
@@ -1533,12 +1533,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : n
         ));
         removePendingNeed(localNeed.id);
-        console.log(`[SpotMe PendingNeeds] Need saved: ${localNeed.id} → ${insertedNeed.id}`);
+        console.log(`[SpotMeOne PendingNeeds] Need saved: ${localNeed.id} → ${insertedNeed.id}`);
         offlineManager.markOnline();
         return { success: true };
     } catch (err) {
       // Server call failed — need stays in pending cache for recovery on next load
-      console.log(`[SpotMe PendingNeeds] Server call failed, need preserved in pending cache: ${localNeed.id}`);
+      console.log(`[SpotMeOne PendingNeeds] Server call failed, need preserved in pending cache: ${localNeed.id}`);
       offlineManager.enqueue({
         type: 'create_need',
         payload: {
@@ -1691,7 +1691,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: {
-            name: (name && name.trim()) ? name.trim() : 'SpotMe User',
+            name: (name && name.trim()) ? name.trim() : 'SpotMeOne User',
             bio: (bio && bio.trim()) ? bio.trim() : '',
             city: (city && city.trim()) ? city.trim() : '',
             avatar: '',
@@ -1725,7 +1725,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setNotifications(prev => [{
         id: `not_${Date.now()}`,
         type: 'welcome' as const,
-        title: 'Welcome to SpotMe!',
+        title: 'Welcome to SpotMeOne!',
         message: `Hey ${user.name}! You're in. Start by browsing Needs or creating your own.`,
         timestamp: new Date().toISOString(),
         read: false,
@@ -1884,7 +1884,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setShowPushPrompt(false);
     setPushPromptContribution(null);
     markPushPromptDismissed();
-    console.log('[SpotMe PushPrompt] Prompt dismissed — will not show again');
+    console.log('[SpotMeOne PushPrompt] Prompt dismissed — will not show again');
   }, []);
 
   const requestPushPermission = useCallback(async (): Promise<boolean> => {
@@ -1892,14 +1892,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       // Step 1: Check browser support
       if (!('Notification' in window) || !('serviceWorker' in navigator)) {
-        console.warn('[SpotMe PushPrompt] Browser does not support push notifications');
+        console.warn('[SpotMeOne PushPrompt] Browser does not support push notifications');
         return false;
       }
 
       // Step 2: Request notification permission
       const permission = await window.Notification.requestPermission();
       if (permission !== 'granted') {
-        console.log('[SpotMe PushPrompt] Permission denied by user');
+        console.log('[SpotMeOne PushPrompt] Permission denied by user');
         return false;
       }
 
@@ -1913,9 +1913,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setTimeout(() => reject(new Error('Service worker ready timeout')), 8000)
           ),
         ]);
-        console.log('[SpotMe PushPrompt] Service worker ready');
+        console.log('[SpotMeOne PushPrompt] Service worker ready');
       } catch (swErr) {
-        console.warn('[SpotMe PushPrompt] Service worker not ready (timeout or error):', swErr);
+        console.warn('[SpotMeOne PushPrompt] Service worker not ready (timeout or error):', swErr);
         // Fallback: permission was granted but SW isn't available
         // Mark as enabled so user isn't prompted again
         setPushEnabled(true);
@@ -1955,9 +1955,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setTimeout(() => reject(new Error('Push subscribe timeout')), 10000)
             ),
           ]);
-          console.log('[SpotMe PushPrompt] Push subscription created successfully');
+          console.log('[SpotMeOne PushPrompt] Push subscription created successfully');
         } catch (subErr) {
-          console.warn('[SpotMe PushPrompt] Push subscribe failed, using fallback:', subErr);
+          console.warn('[SpotMeOne PushPrompt] Push subscribe failed, using fallback:', subErr);
           // Fallback: mark as enabled and save a placeholder subscription
           setPushEnabled(true);
           setShowPushPrompt(false);
@@ -1999,9 +1999,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setTimeout(() => reject(new Error('Save subscription timeout')), 8000)
           ),
         ]);
-        console.log('[SpotMe PushPrompt] Subscription saved to database');
+        console.log('[SpotMeOne PushPrompt] Subscription saved to database');
       } catch (saveErr) {
-        console.warn('[SpotMe PushPrompt] Failed to save subscription to DB (non-fatal):', saveErr);
+        console.warn('[SpotMeOne PushPrompt] Failed to save subscription to DB (non-fatal):', saveErr);
         // Non-fatal: subscription was created locally, just couldn't save to server
       }
 
@@ -2013,7 +2013,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       return true;
     } catch (err) {
-      console.error('[SpotMe PushPrompt] requestPushPermission error:', err);
+      console.error('[SpotMeOne PushPrompt] requestPushPermission error:', err);
       return false;
     }
   }, [currentUser.id]);
@@ -2616,7 +2616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           action: 'send_receipt',
           toEmail: email || undefined,
           contributorId: currentUser.id !== 'guest' ? currentUser.id : undefined,
-          contributorName: currentUser.name || 'SpotMe User',
+          contributorName: currentUser.name || 'SpotMeOne User',
           amount: safeAmount,
           tipAmount: safeTip,
           totalCharged,
@@ -2632,7 +2632,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error('[SpotMe] Receipt email error:', error);
+        console.error('[SpotMeOne] Receipt email error:', error);
         return { success: false, error: error.message || 'Failed to send receipt' };
       }
 
@@ -2644,7 +2644,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         error: data?.error || null,
       };
     } catch (err: any) {
-      console.error('[SpotMe] Receipt email exception:', err);
+      console.error('[SpotMeOne] Receipt email exception:', err);
       return { success: false, error: err.message || 'Failed to send receipt' };
     }
   }, [currentUser]);
@@ -2695,7 +2695,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!paymentId) return;
     addUnlinkedPaymentId(paymentId);
     setHasUnlinkedPayments(true);
-    console.log(`[SpotMe GuestLink] Stored unlinked payment: ${paymentId}`);
+    console.log(`[SpotMeOne GuestLink] Stored unlinked payment: ${paymentId}`);
   }, []);
 
   const linkGuestPaymentsInternal = useCallback(async (): Promise<{ linked: number; error?: string }> => {
@@ -2706,11 +2706,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // Only link if user has a real UUID (not guest, not local_)
     if (currentUser.id === 'guest' || currentUser.id.startsWith('local_') || !isRealUUID(currentUser.id)) {
-      console.log(`[SpotMe GuestLink] User ID is not a real UUID yet (${currentUser.id}), skipping link`);
+      console.log(`[SpotMeOne GuestLink] User ID is not a real UUID yet (${currentUser.id}), skipping link`);
       return { linked: 0, error: 'User does not have a real UUID yet' };
     }
 
-    console.log(`[SpotMe GuestLink] Attempting to link ${paymentIds.length} payment(s) to user ${currentUser.id}`);
+    console.log(`[SpotMeOne GuestLink] Attempting to link ${paymentIds.length} payment(s) to user ${currentUser.id}`);
 
     try {
       const { data, error } = await supabase.functions.invoke('link-guest-payment', {
@@ -2724,13 +2724,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error('[SpotMe GuestLink] Edge function error:', error);
+        console.error('[SpotMeOne GuestLink] Edge function error:', error);
         return { linked: 0, error: error.message || 'Failed to link payments' };
       }
 
       if (data?.success) {
         const linked = data.linked || 0;
-        console.log(`[SpotMe GuestLink] Successfully linked ${linked} payment(s)`);
+        console.log(`[SpotMeOne GuestLink] Successfully linked ${linked} payment(s)`);
 
         // Clear stored payment IDs
         clearUnlinkedPaymentIds();
@@ -2754,7 +2754,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       return { linked: 0, error: data?.error || 'Unknown error' };
     } catch (err: any) {
-      console.error('[SpotMe GuestLink] Exception:', err);
+      console.error('[SpotMeOne GuestLink] Exception:', err);
       return { linked: 0, error: err.message || 'Failed to link payments' };
     }
   }, [currentUser.id, currentUser.name, currentUser.avatar]);
@@ -2774,7 +2774,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (paymentIds.length === 0) return;
 
     linkAttemptedRef.current = true;
-    console.log(`[SpotMe GuestLink] User now has real UUID ${currentUser.id}, auto-linking ${paymentIds.length} payment(s)`);
+    console.log(`[SpotMeOne GuestLink] User now has real UUID ${currentUser.id}, auto-linking ${paymentIds.length} payment(s)`);
     linkGuestPaymentsInternal();
   }, [isLoggedIn, currentUser.id, linkGuestPaymentsInternal]);
 

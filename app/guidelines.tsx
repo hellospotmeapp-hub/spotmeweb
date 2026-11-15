@@ -41,7 +41,7 @@ export default function GuidelinesScreen() {
           </View>
           <Text style={styles.heroTitle}>Building Trust Together</Text>
           <Text style={styles.heroSubtitle}>
-            SpotMe is built on mutual respect and honesty. These guidelines help keep our community safe, supportive, and genuine.
+            SpotMeOne is built on mutual respect and honesty. These guidelines help keep our community safe, supportive, and genuine.
           </Text>
         </View>
 

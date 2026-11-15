@@ -65,7 +65,7 @@ export default function ShareLinkPreview({
     const text = getShareText();
     try {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({ title: `Help ${userName} on SpotMe`, text, url: shareUrl });
+        await navigator.share({ title: `Help ${userName} on SpotMeOne`, text, url: shareUrl });
       } else {
         await Share.share({ message: text });
       }
@@ -83,8 +83,8 @@ export default function ShareLinkPreview({
   };
 
   const handleEmail = () => {
-    const subject = `Help ${userName}: ${needTitle} on SpotMe`;
-    const body = `Hey!\n\n${userName} needs help with "${needTitle}" on SpotMe.\n\n$${remaining} is still needed (${progress}% funded so far).\n\nEvery dollar goes directly to them — no platform fees.\n\nCheck it out: ${shareUrl}\n\n— Sent via SpotMe`;
+    const subject = `Help ${userName}: ${needTitle} on SpotMeOne`;
+    const body = `Hey!\n\n${userName} needs help with "${needTitle}" on SpotMeOne.\n\n$${remaining} is still needed (${progress}% funded so far).\n\nEvery dollar goes directly to them — no platform fees.\n\nCheck it out: ${shareUrl}\n\n— Sent via SpotMeOne`;
     const mailUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     if (Platform.OS === 'web') {
       window.open(mailUrl, '_self');

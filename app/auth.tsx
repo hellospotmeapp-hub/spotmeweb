@@ -107,7 +107,7 @@ export default function AuthScreen() {
     if (!validate()) return;
     setServerError('');
     setIsSubmitting(true);
-    console.log('[SpotMe Auth] handleSubmit called, mode:', mode, 'step:', step);
+    console.log('[SpotMeOne Auth] handleSubmit called, mode:', mode, 'step:', step);
 
     try {
       if (mode === 'signup' && step === 1) {
@@ -120,18 +120,18 @@ export default function AuthScreen() {
       
       try {
         if (mode === 'signup') {
-          console.log('[SpotMe Auth] Calling signup with:', { name: name.trim(), email: email.trim().toLowerCase() });
+          console.log('[SpotMeOne Auth] Calling signup with:', { name: name.trim(), email: email.trim().toLowerCase() });
           result = await signup(name.trim(), email.trim().toLowerCase(), password, bio.trim(), city.trim());
         } else {
-          console.log('[SpotMe Auth] Calling login with:', { email: email.trim().toLowerCase() });
+          console.log('[SpotMeOne Auth] Calling login with:', { email: email.trim().toLowerCase() });
           result = await login(name.trim() || '', email.trim().toLowerCase(), password);
         }
       } catch (callErr: any) {
-        console.error('[SpotMe Auth] Call threw error:', callErr);
+        console.error('[SpotMeOne Auth] Call threw error:', callErr);
         result = { success: false, error: callErr?.message || 'An unexpected error occurred' };
       }
 
-      console.log('[SpotMe Auth] Result:', JSON.stringify(result));
+      console.log('[SpotMeOne Auth] Result:', JSON.stringify(result));
 
       if (result && result.success) {
         // If we have an uploaded avatar URL, update the profile
@@ -139,7 +139,7 @@ export default function AuthScreen() {
           try {
             updateProfile({ avatar: avatarUploadedUrl });
           } catch (e) {
-            console.log('[SpotMe Auth] Avatar update failed (non-critical):', e);
+            console.log('[SpotMeOne Auth] Avatar update failed (non-critical):', e);
           }
         }
 
@@ -153,12 +153,12 @@ export default function AuthScreen() {
         setPassword('');
       } else {
         const errorMsg = result?.error || 'Something went wrong. Please check your connection and try again.';
-        console.log('[SpotMe Auth] Error:', errorMsg);
+        console.log('[SpotMeOne Auth] Error:', errorMsg);
         setServerError(errorMsg);
       }
     } catch (err: any) {
       const errorMsg = err?.message || err?.toString?.() || 'Something went wrong';
-      console.error('[SpotMe Auth] Unexpected error:', errorMsg, err);
+      console.error('[SpotMeOne Auth] Unexpected error:', errorMsg, err);
       setServerError(`Error: ${errorMsg}. If this keeps happening, try closing Safari and reopening.`);
     } finally {
       setIsSubmitting(false);
@@ -169,9 +169,9 @@ export default function AuthScreen() {
 
   const handleSkipProfile = async () => {
     setIsSubmitting(true);
-    console.log('[SpotMe Auth] Skip profile, signing up directly');
+    console.log('[SpotMeOne Auth] Skip profile, signing up directly');
     try {
-      const result = await signup(name.trim() || 'SpotMe User', email.trim().toLowerCase(), password, '', '');
+      const result = await signup(name.trim() || 'SpotMeOne User', email.trim().toLowerCase(), password, '', '');
       if (result && result.success) {
         // Still apply avatar if uploaded
         if (avatarUploadedUrl) {
@@ -191,7 +191,7 @@ export default function AuthScreen() {
       }
     } catch (err: any) {
       const errorMsg = err?.message || 'Something went wrong';
-      console.error('[SpotMe Auth] Skip profile error:', errorMsg, err);
+      console.error('[SpotMeOne Auth] Skip profile error:', errorMsg, err);
       setServerError(errorMsg);
     } finally {
       setIsSubmitting(false);
@@ -249,7 +249,7 @@ export default function AuthScreen() {
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Logo */}
         <View style={styles.logoSection}>
-          <Text style={styles.logo}>SpotMe</Text>
+          <Text style={styles.logo}>SpotMeOne</Text>
           <Text style={styles.tagline}>No tragedy. Just life.</Text>
         </View>
 
@@ -615,7 +615,7 @@ export default function AuthScreen() {
         </View>
 
         <Text style={styles.termsText}>
-          By continuing, you agree to SpotMe's Terms of Service and Privacy Policy.
+          By continuing, you agree to SpotMeOne's Terms of Service and Privacy Policy.
         </Text>
       </ScrollView>
     </Wrapper>

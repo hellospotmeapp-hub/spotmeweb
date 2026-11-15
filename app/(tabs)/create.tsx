@@ -528,7 +528,7 @@ export default function CreateScreen() {
                 </View>
                 <View style={styles.welcomeBody}>
                   {[
-                    { icon: 'verified-user', color: Colors.primary, text: 'Our team verifies every need before it goes live on SpotMe. We may reach out to you by email.' },
+                    { icon: 'verified-user', color: Colors.primary, text: 'Our team verifies every need before it goes live on SpotMeOne. We may reach out to you by email.' },
                     { icon: 'account-balance-wallet', color: '#7B9ED9', text: 'Connect a Stripe payout account in Settings so you can receive the money.' },
                     { icon: 'favorite', color: '#E85D5D', text: 'Real, honest stories connect with people. Be specific about what you need and why.' },
                     { icon: 'bolt', color: '#F5C563', text: 'Once your goal is met, you can withdraw the money to your bank account.' },
@@ -543,7 +543,7 @@ export default function CreateScreen() {
                 </View>
                 <View style={styles.welcomePromise}>
                   <MaterialIcons name="shield" size={14} color={Colors.primary} />
-                  <Text style={styles.welcomePromiseText}>SpotMe reviews needs to protect our community</Text>
+                  <Text style={styles.welcomePromiseText}>SpotMeOne reviews needs to protect our community</Text>
                 </View>
                 <TouchableOpacity style={styles.welcomeBtn} onPress={dismissWelcome} activeOpacity={0.85}>
                   <Text style={styles.welcomeBtnText}>Got it, let's go</Text>
@@ -567,7 +567,7 @@ export default function CreateScreen() {
           </Animated.View>
           <Text style={styles.successTitle}>Need Submitted!</Text>
           <Text style={styles.successMessage}>
-            Thanks! Our team will verify your need and post it to SpotMe. We'll notify you when it's live.
+            Thanks! Our team will verify your need and post it to SpotMeOne. We'll notify you when it's live.
           </Text>
 
           {!(payoutStatus?.hasAccount && payoutStatus?.payoutsEnabled) && (
@@ -621,7 +621,7 @@ export default function CreateScreen() {
 
           {/* Subtitle */}
           <Text style={styles.signInSubtitle}>
-            Create an account or sign in to share your need with the SpotMe community. It only takes a moment.
+            Create an account or sign in to share your need with the SpotMeOne community. It only takes a moment.
           </Text>
 
           {/* Benefits */}
@@ -702,10 +702,10 @@ export default function CreateScreen() {
   }
 
   // ---- Profile gate helpers ----
-  const DEFAULT_NAMES = ['spotme user', 'apple user', 'google user', 'guest', 'user', ''];
+  const DEFAULT_NAMES = ['spotme user', 'spotmeone user', 'apple user', 'google user', 'guest', 'user', ''];
   const isDefaultName = (name: string) =>
     DEFAULT_NAMES.includes(name.toLowerCase().trim()) ||
-    /^(apple|google|spotme)\s+user$/i.test(name.trim());
+    /^(apple|google|spotme|spotmeone)\s+user$/i.test(name.trim());
 
   const needsProfileCompletion = () =>
     isDefaultName(currentUser.name || '') || !(currentUser.city || '').trim();

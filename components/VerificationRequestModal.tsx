@@ -13,7 +13,7 @@ interface VerificationRequestModalProps {
 
 // Sends a verification request to the admin Verify tab; an admin reviews it and adds the checkmark
 export default function VerificationRequestModal({ visible, onClose, defaultName = '', defaultCity = '' }: VerificationRequestModalProps) {
-  const [name, setName] = useState(defaultName === 'SpotMe User' ? '' : defaultName);
+  const [name, setName] = useState((defaultName === 'SpotMeOne User' || defaultName === 'SpotMe User') ? '' : defaultName);
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState(defaultCity);
   const [sending, setSending] = useState(false);
@@ -64,7 +64,7 @@ export default function VerificationRequestModal({ visible, onClose, defaultName
           ) : (
             <>
               <View style={styles.header}>
-                <Text style={styles.title}>Get SpotMe Verified</Text>
+                <Text style={styles.title}>Get SpotMeOne Verified</Text>
                 <TouchableOpacity onPress={handleClose}>
                   <MaterialIcons name="close" size={24} color={Colors.textSecondary} />
                 </TouchableOpacity>

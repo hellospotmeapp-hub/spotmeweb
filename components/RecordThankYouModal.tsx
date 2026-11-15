@@ -245,7 +245,7 @@ export default function RecordThankYouModal({
           videoUrl = urlData?.publicUrl || '';
         }
       } catch (storageErr) {
-        console.log('[SpotMe] Storage upload failed (non-critical):', storageErr);
+        console.log('[SpotMeOne] Storage upload failed (non-critical):', storageErr);
       }
 
       // Save video metadata via local API

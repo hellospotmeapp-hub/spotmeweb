@@ -1,4 +1,4 @@
-# SpotMe
+# SpotMeOne
 
 **No tragedy. Just life.** A micro-mutual-aid platform for everyday needs.
 

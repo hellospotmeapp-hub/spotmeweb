@@ -81,12 +81,12 @@ export default function ThankYouVideoPage() {
       };
 
       const baseUrl = window.location.origin;
-      document.title = `${video.user_name}'s Thank You | SpotMe`;
+      document.title = `${video.user_name}'s Thank You | SpotMeOne`;
       setMeta('description', video.message?.substring(0, 160) || `Watch ${video.user_name}'s thank you video`);
       setMeta('og:title', `${video.user_name}'s Thank You - ${video.need_title}`);
       setMeta('og:description', video.message || `Watch this heartfelt thank you from ${video.user_name}`);
       setMeta('og:url', `${baseUrl}/thankyou/${video.id}`);
-      setMeta('og:site_name', 'SpotMe');
+      setMeta('og:site_name', 'SpotMeOne');
       setMeta('og:type', 'video.other');
       if (video.video_url) {
         setMeta('og:video', video.video_url);
@@ -99,7 +99,7 @@ export default function ThankYouVideoPage() {
         setMeta('og:image', video.thumbnail_url || video.user_avatar);
       }
       setMeta('twitter:card', 'player');
-      setMeta('twitter:title', `${video.user_name}'s Thank You | SpotMe`);
+      setMeta('twitter:title', `${video.user_name}'s Thank You | SpotMeOne`);
       setMeta('twitter:description', video.message?.substring(0, 200) || '');
     }
   }, [video]);
@@ -115,7 +115,7 @@ export default function ThankYouVideoPage() {
         setShareCount(data.video.shares || 0);
       }
     } catch (err) {
-      console.log('[SpotMe] Failed to fetch thank-you video:', err);
+      console.log('[SpotMeOne] Failed to fetch thank-you video:', err);
     } finally {
       setIsLoading(false);
     }
@@ -144,8 +144,8 @@ export default function ThankYouVideoPage() {
       ? `${window.location.origin}/thankyou/${id}`
       : `https://spotmeone.com/thankyou/${id}`;
     const shareText = video
-      ? `${video.user_name}'s heartfelt thank you for "${video.need_title}" on SpotMe`
-      : 'Watch this thank you video on SpotMe';
+      ? `${video.user_name}'s heartfelt thank you for "${video.need_title}" on SpotMeOne`
+      : 'Watch this thank you video on SpotMeOne';
 
     if (platform === 'tiktok') {
       if (Platform.OS === 'web') {
@@ -221,7 +221,7 @@ export default function ThankYouVideoPage() {
             <TouchableOpacity style={styles.topBtn} onPress={() => goBack(router)}>
               <MaterialIcons name="arrow-back" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={styles.topLogo}>SpotMe</Text>
+            <Text style={styles.topLogo}>SpotMeOne</Text>
             <TouchableOpacity style={styles.topBtn} onPress={() => handleShare()}>
               <MaterialIcons name="share" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -387,13 +387,13 @@ export default function ThankYouVideoPage() {
             <View style={styles.trustRow}>
               <MaterialIcons name="verified-user" size={14} color={Colors.secondary} />
               <Text style={styles.trustText}>
-                Real people, real stories. SpotMe helps neighbors with everyday needs.
+                Real people, real stories. SpotMeOne helps neighbors with everyday needs.
               </Text>
             </View>
 
             {/* Footer */}
             <View style={styles.footer}>
-              <Text style={styles.footerLogo}>SpotMe</Text>
+              <Text style={styles.footerLogo}>SpotMeOne</Text>
               <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
               <TouchableOpacity onPress={() => router.replace('/(tabs)')}>
 

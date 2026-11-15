@@ -30,7 +30,7 @@ export default function WebTopNav({ state, descriptors, navigateToTab }: BottomT
     <View style={styles.bar}>
       <View style={styles.inner}>
         <TouchableOpacity onPress={() => go('index')} activeOpacity={0.8} accessibilityRole="link">
-          <Text style={styles.logo}>SpotMe</Text>
+          <Text style={styles.logo}>SpotMeOne</Text>
           <Text style={styles.tagline}>No tragedy. Just life.</Text>
         </TouchableOpacity>
 

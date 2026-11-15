@@ -25,5 +25,5 @@ export const stripePublishableKey = (useStaging || forceStripeTest
 export const stripeTestMode = stripePublishableKey.startsWith('pk_test_');
 
 if (__DEV__) {
-  console.log(`[SpotMe] backend: ${useStaging ? 'staging' : 'PRODUCTION'} (${supabaseUrl}), Stripe ${stripeTestMode ? 'test' : 'LIVE'}`);
+  console.log(`[SpotMeOne] backend: ${useStaging ? 'staging' : 'PRODUCTION'} (${supabaseUrl}), Stripe ${stripeTestMode ? 'test' : 'LIVE'}`);
 }

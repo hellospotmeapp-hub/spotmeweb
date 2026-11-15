@@ -37,7 +37,7 @@ const SCENE_DURATIONS = [
 
 // Subtitles that mirror the voiceover — conversational and warm
 const SCENE_SUBTITLES = [
-  "Hey there, welcome to SpotMe!\nLet me give you a quick tour.",
+  "Hey there, welcome to SpotMeOne!\nLet me give you a quick tour.",
   "This is your home feed — real requests\nfrom real people, with progress bars\nshowing how close each one is to funded.",
   "Need a hand? Tap the plus button,\npick a category, share your story,\nand set a goal up to $300.",
   "Browse by category — bills, kids,\ngroceries, health, self-care, and more.\nPlus Mama Recharge, just for you.",
@@ -570,7 +570,7 @@ export default function WelcomeScreen() {
             <View style={styles.startLogoCircle}>
               <MaterialIcons name="play-arrow" size={48} color={Colors.white} />
             </View>
-            <Text style={styles.startTitle}>Welcome to SpotMe</Text>
+            <Text style={styles.startTitle}>Welcome to SpotMeOne</Text>
 
             <Text style={styles.startSubtitle}>
               Take a quick tour and learn how{'\n'}to browse, post, and support others.

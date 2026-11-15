@@ -36,7 +36,7 @@ async function remoteInvoke(functionName: string, options?: any): Promise<{ data
     }
     return { data, error: null };
   } catch (err: any) {
-    console.error(`[SpotMe] ${functionName} request failed:`, err?.message);
+    console.error(`[SpotMeOne] ${functionName} request failed:`, err?.message);
     return { data: null, error: { message: err?.message || 'Network error' } };
   }
 }
@@ -88,7 +88,7 @@ if (!overrideSucceeded) {
 }
 
 if (!overrideSucceeded) {
-  console.warn('[SpotMe] WARNING: Could not override supabase.functions. Use safeInvoke for all calls.');
+  console.warn('[SpotMeOne] WARNING: Could not override supabase.functions. Use safeInvoke for all calls.');
 }
 
 /**
@@ -115,7 +115,7 @@ async function safeInvoke(
       const errMsg = typeof result.error === 'string'
         ? result.error
         : result.error?.message || 'Server error';
-      console.log(`[SpotMe] ${functionName} error:`, errMsg);
+      console.log(`[SpotMeOne] ${functionName} error:`, errMsg);
       return { data: null, error: { message: errMsg } };
     }
 
@@ -131,7 +131,7 @@ async function safeInvoke(
     } else if (err?.message) {
       errorMessage = err.message;
     }
-    console.log(`[SpotMe] ${functionName} caught error:`, errorMessage);
+    console.log(`[SpotMeOne] ${functionName} caught error:`, errorMessage);
     return { data: null, error: { message: errorMessage } };
   }
 }

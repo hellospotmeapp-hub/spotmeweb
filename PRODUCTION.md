@@ -1,4 +1,4 @@
-# SpotMe production setup
+# SpotMeOne production setup
 
 Backend: Supabase project `wjhxrpwobnyntokegrtx`. Frontend: Expo web build on Vercel.
 

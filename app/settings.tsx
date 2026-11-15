@@ -82,7 +82,7 @@ export default function SettingsScreen() {
 
   const emailSupport = (subject: string) => {
     Linking.openURL(`mailto:hellospotme.app@gmail.com?subject=${encodeURIComponent(subject)}`).catch(() => {
-      showAlert('Contact SpotMe', 'Email us at hellospotme.app@gmail.com');
+      showAlert('Contact SpotMeOne', 'Email us at hellospotme.app@gmail.com');
     });
   };
 
@@ -108,9 +108,9 @@ export default function SettingsScreen() {
   const confirmDeleteAccount = () => {
     const message = 'This permanently deletes your account, profile and needs that have no donations. Donation records are kept anonymously. This cannot be undone.';
     if (Platform.OS === 'web') {
-      if (window.confirm(`Delete your SpotMe account?\n\n${message}`)) deleteAccount();
+      if (window.confirm(`Delete your SpotMeOne account?\n\n${message}`)) deleteAccount();
     } else {
-      showAlert('Delete your SpotMe account?', message, [
+      showAlert('Delete your SpotMeOne account?', message, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: deleteAccount },
       ]);
@@ -370,8 +370,8 @@ export default function SettingsScreen() {
           <SettingRow icon="person" label="Edit Profile" onPress={() => router.push('/(tabs)/profile')} />
           <SettingRow
             icon="verified-user"
-            label={currentUser.verified ? 'SpotMe Verified' : 'Get Verified'}
-            value={currentUser.verified ? 'Checkmark active on your posts' : currentUser.verificationRequest === 'pending' ? 'Request under review' : 'Reviewed by the SpotMe team'}
+            label={currentUser.verified ? 'SpotMeOne Verified' : 'Get Verified'}
+            value={currentUser.verified ? 'Checkmark active on your posts' : currentUser.verificationRequest === 'pending' ? 'Request under review' : 'Reviewed by the SpotMeOne team'}
             badge={currentUser.verified ? 'Verified' : currentUser.verificationRequest === 'pending' ? 'Pending' : 'Get Checkmark'}
             badgeColor={currentUser.verified ? Colors.success : Colors.primary}
             onPress={() => { if (!currentUser.verified && currentUser.verificationRequest !== 'pending') setShowVerifyRequest(true); }}
@@ -395,7 +395,7 @@ export default function SettingsScreen() {
           <View style={styles.connectInfoContent}>
             <Text style={styles.connectInfoTitle}>Stripe Connect</Text>
             <Text style={styles.connectInfoText}>
-              Set up payouts so you can withdraw your donations once your need reaches its goal. SpotMe takes no platform fee — 100% goes to you. Tips from contributors support SpotMe.
+              Set up payouts so you can withdraw your donations once your need reaches its goal. SpotMeOne takes no platform fee — 100% goes to you. Tips from contributors support SpotMeOne.
             </Text>
 
           </View>
@@ -406,7 +406,7 @@ export default function SettingsScreen() {
         <Text style={styles.sectionTitle}>Privacy & Safety</Text>
         <View style={styles.section}>
           <SettingRow icon="gavel" label="Community Guidelines" onPress={() => router.push('/guidelines')} />
-          <SettingRow icon="flag" label="Report a Problem" onPress={() => emailSupport('SpotMe: Report a problem')} />
+          <SettingRow icon="flag" label="Report a Problem" onPress={() => emailSupport('SpotMeOne: Report a problem')} />
         </View>
 
         <Text style={styles.sectionTitle}>Help Center</Text>
@@ -429,8 +429,8 @@ export default function SettingsScreen() {
               ))}
             </View>
           )}
-          <SettingRow icon="chat" label="Contact Support" value="hellospotme.app@gmail.com" onPress={() => emailSupport('SpotMe Support Request')} />
-          <SettingRow icon="info" label="About SpotMe" value="v1.1.0" onPress={() => router.push('/about')} />
+          <SettingRow icon="chat" label="Contact Support" value="hellospotme.app@gmail.com" onPress={() => emailSupport('SpotMeOne Support Request')} />
+          <SettingRow icon="info" label="About SpotMeOne" value="v1.1.0" onPress={() => router.push('/about')} />
           <SettingRow icon="description" label="Terms of Service" onPress={() => router.push('/terms')} />
           <SettingRow icon="privacy-tip" label="Privacy Policy" onPress={() => router.push('/privacy')} />
           {!!isAdmin && (
@@ -454,7 +454,7 @@ export default function SettingsScreen() {
         )}
 
         <View style={styles.footer}>
-          <Text style={styles.footerLogo}>SpotMe</Text>
+          <Text style={styles.footerLogo}>SpotMeOne</Text>
           <Text style={styles.footerTagline}>No tragedy. Just life.</Text>
           <Text style={styles.footerVersion}>Version 1.1.0 · Stripe Connect</Text>
           <View style={styles.footerLinks}>
@@ -464,7 +464,7 @@ export default function SettingsScreen() {
             <Text style={styles.footerDot}>·</Text>
             <TouchableOpacity onPress={() => router.push('/guidelines')}><Text style={styles.footerLink}>Guidelines</Text></TouchableOpacity>
           </View>
-          <Text style={styles.footerCopyright}>© 2026 SpotMe. All rights reserved.</Text>
+          <Text style={styles.footerCopyright}>© 2026 SpotMeOne. All rights reserved.</Text>
         </View>
 
       </ScrollView>
@@ -589,7 +589,7 @@ export default function SettingsScreen() {
                 </View>
                 <Text style={styles.payoutStatusTitle}>Set Up Payouts</Text>
                 <Text style={styles.payoutStatusText}>
-                  Connect your bank account via Stripe so you can withdraw 100% of your donations once your need reaches its goal. No platform fees — SpotMe is supported by optional tips.
+                  Connect your bank account via Stripe so you can withdraw 100% of your donations once your need reaches its goal. No platform fees — SpotMeOne is supported by optional tips.
                 </Text>
               </View>
             )}
@@ -612,8 +612,8 @@ export default function SettingsScreen() {
                   <Text style={[styles.stepNumberText, { color: Colors.secondaryDark }]}>2</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={styles.stepTitle}>SpotMe holds the funds</Text>
-                  <Text style={styles.stepDesc}>Donations are held safely by Stripe until your goal is met. Optional tips support SpotMe separately.</Text>
+                  <Text style={styles.stepTitle}>SpotMeOne holds the funds</Text>
+                  <Text style={styles.stepDesc}>Donations are held safely by Stripe until your goal is met. Optional tips support SpotMeOne separately.</Text>
                 </View>
               </View>
               <View style={styles.stepConnector} />
@@ -730,7 +730,7 @@ export default function SettingsScreen() {
             <View style={styles.payoutSecurityNote}>
               <MaterialIcons name="verified-user" size={16} color={Colors.textLight} />
               <Text style={styles.payoutSecurityText}>
-                Stripe Connect is PCI-DSS Level 1 certified. Your banking information is never stored on SpotMe's servers. All transfers are handled securely by Stripe.
+                Stripe Connect is PCI-DSS Level 1 certified. Your banking information is never stored on SpotMeOne's servers. All transfers are handled securely by Stripe.
               </Text>
             </View>
 

@@ -63,7 +63,7 @@ export default function ThankYouShareCard({
   };
 
   const getShareText = () => {
-    return `I just spotted ${userName} $${amount} for "${needTitle}" on SpotMe! Can you help too? No tragedy, just life. #SpotMe #MutualAid #HelpYourNeighbor`;
+    return `I just spotted ${userName} $${amount} for "${needTitle}" on SpotMeOne! Can you help too? No tragedy, just life. #SpotMeOne #MutualAid #HelpYourNeighbor`;
   };
 
   const handleNativeShare = async () => {

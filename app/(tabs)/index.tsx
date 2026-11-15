@@ -153,11 +153,11 @@ function HomeScreenContent() {
             </View>
           )}
         <View style={styles.topBar}>
-          <View><Text style={styles.logo}>SpotMe</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
+          <View><Text style={styles.logo}>SpotMeOne</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={{ fontSize: 15, color: Colors.textSecondary }}>Loading SpotMe...</Text>
+          <Text style={{ fontSize: 15, color: Colors.textSecondary }}>Loading SpotMeOne...</Text>
         </View>
       </View>
     );
@@ -234,7 +234,7 @@ function HomeScreenContent() {
           <View style={styles.walkthroughIcon}><MaterialIcons name="play-circle-filled" size={20} color={Colors.primary} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.walkthroughTitle}>New here? Watch our walkthrough</Text>
-            <Text style={styles.walkthroughSubtitle}>See how SpotMe works in 45 seconds</Text>
+            <Text style={styles.walkthroughSubtitle}>See how SpotMeOne works in 45 seconds</Text>
           </View>
           <MaterialIcons name="chevron-right" size={20} color={Colors.textLight} />
         </TouchableOpacity>
@@ -370,14 +370,14 @@ function HomeScreenContent() {
     <>
         {Platform.OS === 'web' && (
           <View style={styles.webFooter}>
-            <Text style={styles.webFooterLogo}>SpotMe</Text>
+            <Text style={styles.webFooterLogo}>SpotMeOne</Text>
             <Text style={styles.webFooterTagline}>No tragedy. Just life.</Text>
             <View style={styles.webFooterLinks}>
               <TouchableOpacity onPress={() => { try { router.push('/guidelines'); } catch {} }}><Text style={styles.webFooterLink}>Guidelines</Text></TouchableOpacity>
               <Text style={styles.webFooterDot}>·</Text>
               <TouchableOpacity onPress={() => { try { router.push('/settings'); } catch {} }}><Text style={styles.webFooterLink}>Settings</Text></TouchableOpacity>
             </View>
-            <Text style={styles.webFooterCopy}>© 2026 SpotMe. All rights reserved.</Text>
+            <Text style={styles.webFooterCopy}>© 2026 SpotMeOne. All rights reserved.</Text>
           </View>
         )}
     </>
@@ -481,7 +481,7 @@ function HomeScreenContent() {
     <View style={[styles.container, { paddingTop: topPadding }]}>
       {!isWide && (
       <View style={styles.topBar}>
-        <View><Text style={styles.logo}>SpotMe</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
+        <View><Text style={styles.logo}>SpotMeOne</Text><Text style={styles.tagline}>No tragedy. Just life.</Text></View>
         <View style={styles.topBarRight}>
           <TouchableOpacity style={styles.iconButton} onPress={() => { try { router.push('/settings'); } catch {} }}>
             <MaterialIcons name="settings" size={22} color={Colors.textSecondary} />

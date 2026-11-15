@@ -510,7 +510,7 @@ export default function AdminDashboard() {
           <MaterialIcons name="lock" size={56} color={Colors.primary} />
           <Text style={s.accessDeniedTitle}>Admin Access Only</Text>
           <Text style={s.accessDeniedText}>
-            This dashboard is restricted to the SpotMe administrator account.
+            This dashboard is restricted to the SpotMeOne administrator account.
           </Text>
           <View style={s.accessDeniedDivider} />
           <Text style={s.accessDeniedNote}>
