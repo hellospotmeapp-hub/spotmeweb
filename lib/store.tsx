@@ -531,7 +531,7 @@ interface AppState {
   contribute: (needId: string, amount: number, note?: string) => void;
   contributeWithPayment: (needId: string, amount: number, note?: string, isAnonymous?: boolean, tipAmount?: number, guestEmail?: string, guestPhone?: string) => Promise<PaymentResult>;
   spreadWithPayment: (allocations: any[], totalAmount: number, spreadMode: string, isAnonymous?: boolean) => Promise<PaymentResult>;
-  createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => Promise<{ success: boolean; queued?: boolean; error?: string }>;
+  createNeed: (need: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>) => Promise<{ success: boolean; queued?: boolean; needId?: string; error?: string }>;
   editNeed: (needId: string, updates: { title?: string; message?: string; photo?: string; goalAmount?: number }) => Promise<boolean>;
   deleteNeed: (needId: string) => Promise<{ success: boolean; error?: string }>;
   requestPayout: (needId: string) => Promise<PayoutResult>;
@@ -552,7 +552,7 @@ interface AppState {
   fetchActivity: () => Promise<void>;
   subscribeToPush: () => Promise<boolean>;
   unsubscribeFromPush: () => Promise<void>;
-  setupPayouts: () => Promise<{ success: boolean; onboardingUrl?: string; accountId?: string; error?: string }>;
+  setupPayouts: (returnPath?: string) => Promise<{ success: boolean; onboardingUrl?: string; accountId?: string; error?: string }>;
   checkPayoutStatus: () => Promise<PayoutStatus>;
   completePayoutOnboarding: () => Promise<boolean>;
   fetchFailedPayments: () => Promise<void>;
@@ -1337,7 +1337,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentUser, needs]);
 
   // ---- PAYOUT SETUP (Stripe Connect Onboarding) ----
-  const setupPayouts = useCallback(async (): Promise<{ success: boolean; onboardingUrl?: string; accountId?: string; error?: string }> => {
+  const setupPayouts = useCallback(async (returnPath = '/settings'): Promise<{ success: boolean; onboardingUrl?: string; accountId?: string; error?: string }> => {
     try {
       if (currentUser.id === 'guest') {
         return { success: false, error: 'Please sign in first' };
@@ -1380,8 +1380,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           action: 'create_onboarding_link',
           userId: currentUser.id,
           // setup_payout=true tells Settings to finish onboarding when Stripe sends the user back
-          returnUrl: returnUrl + '/settings?setup_payout=true',
-          refreshUrl: returnUrl + '/settings',
+          returnUrl: returnUrl + returnPath + '?setup_payout=true',
+          refreshUrl: returnUrl + returnPath,
         },
       });
 
@@ -1471,7 +1471,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await fetchNeedsSilent();
   }, []);
 
-  const createNeed = useCallback(async (needData: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>): Promise<{ success: boolean; queued?: boolean; error?: string }> => {
+  const createNeed = useCallback(async (needData: Omit<Need, 'id' | 'userId' | 'userName' | 'userAvatar' | 'userCity' | 'status' | 'contributorCount' | 'contributions' | 'createdAt' | 'raisedAmount'>): Promise<{ success: boolean; queued?: boolean; needId?: string; error?: string }> => {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + NEED_EXPIRATION_MS).toISOString();
 
@@ -1535,7 +1535,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         removePendingNeed(localNeed.id);
         console.log(`[SpotMeOne PendingNeeds] Need saved: ${localNeed.id} → ${insertedNeed.id}`);
         offlineManager.markOnline();
-        return { success: true };
+        return { success: true, needId: insertedNeed.id };
     } catch (err) {
       // Server call failed — need stays in pending cache for recovery on next load
       console.log(`[SpotMeOne PendingNeeds] Server call failed, need preserved in pending cache: ${localNeed.id}`);

@@ -50,6 +50,7 @@ export default function ProfileScreen() {
   const [showBulkManager, setShowBulkManager] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingNeed, setEditingNeed] = useState<Need | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Payout state per need
   const [payoutLoadingId, setPayoutLoadingId] = useState<string | null>(null);
@@ -221,6 +222,73 @@ export default function ProfileScreen() {
     if (need.status === 'Goal Met') return true;
     if (need.status === 'Expired' || isExpiredByTime(need)) return true;
     return false;
+  };
+
+  // ---- Per-need owner actions (edit / share / delete) ----
+
+  const openEditNeed = (need: Need) => {
+    setEditingNeed(need);
+    setShowEditModal(true);
+  };
+
+  const confirmDeleteNeed = (need: Need) => {
+    if (need.raisedAmount > 0) {
+      showAlert(
+        "Can't delete this need",
+        'It has already received donations. Contact support if you need it taken down.',
+      );
+      return;
+    }
+    showAlert(
+      'Delete this need?',
+      `"${need.title}" will be removed from SpotMeOne. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(need.id);
+            const result = await deleteNeed(need.id);
+            setDeletingId(null);
+            if (!result.success) showAlert('Could not delete', result.error || 'Please try again.');
+          },
+        },
+      ],
+    );
+  };
+
+  const renderOwnerActions = (need: Need, deleteOnly = false) => {
+    const editable = !deleteOnly && need.status === 'Collecting' && !isExpiredByTime(need);
+    const shareable = !deleteOnly && need.verificationStatus !== 'pending' && need.verificationStatus !== 'rejected';
+    const deletable = need.raisedAmount === 0;
+    return (
+      <View style={styles.ownerActions}>
+        {editable && (
+          <TouchableOpacity style={styles.ownerActionBtn} onPress={() => openEditNeed(need)} activeOpacity={0.7}
+            accessibilityRole="button" accessibilityLabel={`Edit ${need.title}`}>
+            <MaterialIcons name="edit" size={16} color={Colors.text} />
+            <Text style={styles.ownerActionText}>Edit</Text>
+          </TouchableOpacity>
+        )}
+        {shareable && (
+          <TouchableOpacity style={styles.ownerActionBtn} onPress={() => router.push(`/share/${need.id}`)} activeOpacity={0.7}
+            accessibilityRole="button" accessibilityLabel={`Share ${need.title}`}>
+            <MaterialIcons name="ios-share" size={16} color={Colors.text} />
+            <Text style={styles.ownerActionText}>Share</Text>
+          </TouchableOpacity>
+        )}
+        {deletable && (
+          <TouchableOpacity style={styles.ownerActionBtn} onPress={() => confirmDeleteNeed(need)} activeOpacity={0.7}
+            disabled={deletingId === need.id} accessibilityRole="button" accessibilityLabel={`Delete ${need.title}`}>
+            {deletingId === need.id
+              ? <ActivityIndicator size="small" color={Colors.error} />
+              : <MaterialIcons name="delete-outline" size={16} color={Colors.error} />}
+            <Text style={[styles.ownerActionText, { color: Colors.error }]}>Delete</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
   };
 
   // Handle payout request with loading state
@@ -464,7 +532,12 @@ export default function ProfileScreen() {
           {activeTab === 'active' && (
             activeNeeds.length === 0 ? (
               <View style={styles.emptyTab}><MaterialIcons name="add-circle-outline" size={48} color={Colors.borderLight} /><Text style={styles.emptyTabTitle}>No active needs</Text><TouchableOpacity style={styles.createButton} onPress={() => router.push('/(tabs)/create')}><Text style={styles.createButtonText}>Post a Need</Text></TouchableOpacity></View>
-            ) : activeNeeds.map(need => <NeedCard key={need.id} need={need} />)
+            ) : activeNeeds.map(need => (
+              <View key={need.id} style={styles.ownedNeed}>
+                <NeedCard need={need} />
+                {renderOwnerActions(need)}
+              </View>
+            ))
           )}
 
           {activeTab === 'completed' && (
@@ -486,6 +559,12 @@ export default function ProfileScreen() {
                       <Text style={styles.completedAmount}>${need.raisedAmount} raised</Text>
                     </View>
                   </TouchableOpacity>
+                  {/* Nothing raised: let them clear it out */}
+                  {need.raisedAmount === 0 && need.status !== 'Deleted' && (
+                    <View style={{ paddingHorizontal: Spacing.md, paddingBottom: Spacing.md }}>
+                      {renderOwnerActions(need, true)}
+                    </View>
+                  )}
                   {/* Payout message */}
                   {!!payoutMsg && (
                     <View style={[styles.completedActions, { paddingBottom: 0 }]}>
@@ -703,6 +782,26 @@ export default function ProfileScreen() {
 
 
 const styles = StyleSheet.create({
+  ownedNeed: { marginBottom: Spacing.lg },
+  ownerActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: -Spacing.xs,
+    paddingHorizontal: Spacing.xs,
+  },
+  ownerActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  ownerActionText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
 
   container: { flex: 1, backgroundColor: Colors.background },
   headerActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.xl, paddingVertical: Spacing.md, ...(Platform.OS === 'web' ? { paddingTop: 16 } : {}) },

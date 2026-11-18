@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform, RefreshControl, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Platform, RefreshControl, TextInput, Modal, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { goBack } from '@/lib/navigation';
@@ -166,6 +166,7 @@ export default function AdminDashboard() {
   const [pendingNeeds, setPendingNeeds] = useState<any[]>([]);
   const [approvalsLoading, setApprovalsLoading] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [remindingId, setRemindingId] = useState<string | null>(null);
 
   // Webhook state
   const [webhookEvents, setWebhookEvents] = useState<WebhookEvent[]>([]);
@@ -266,11 +267,11 @@ export default function AdminDashboard() {
     setApprovalsLoading(false);
   }, []);
 
-  const handleApproveNeed = async (needId: string, approve: boolean) => {
+  const handleApproveNeed = async (needId: string, approve: boolean, approveWithoutPayouts = false) => {
     setApprovingId(needId);
     try {
       const { data } = await supabase.functions.invoke('process-contribution', {
-        body: { action: 'admin_review_need', needId, approve },
+        body: { action: 'admin_review_need', needId, approve, approveWithoutPayouts },
       });
       if (!data?.success) throw new Error(data?.error || 'Review failed');
       setPendingNeeds(prev => prev.filter(n => n.id !== needId));
@@ -279,6 +280,154 @@ export default function AdminDashboard() {
     }
     setApprovingId(null);
   };
+
+  // Posters whose payouts aren't connected yet: send an in-app reminder ('all' = everyone waiting)
+  const handleRemindSetup = async (needId: string | 'all') => {
+    setRemindingId(needId);
+    try {
+      const { data } = await supabase.functions.invoke('process-contribution', {
+        body: needId === 'all' ? { action: 'admin_remind_setup', all: true } : { action: 'admin_remind_setup', needId },
+      });
+      if (!data?.success) throw new Error(data?.error || 'Reminder failed');
+      showAlert(
+        data.sent > 0 ? 'Reminder sent' : 'No reminder sent',
+        data.sent > 0
+          ? `${data.sent} ${data.sent === 1 ? 'person was' : 'people were'} notified in the app to connect Stripe.`
+            + (data.emailEnabled === false
+              ? ' Email is off (RESEND_API_KEY isn\'t set), so no emails went out.'
+              : data.emailed !== undefined ? ` ${data.emailed} of ${data.sent} also got an email.` : '')
+            + (data.skipped ? ` ${data.skipped} skipped (already reminded in the last 12 hours, or already connected).` : '')
+          : 'Everyone waiting was already reminded in the last 12 hours, or has connected Stripe since.',
+      );
+      await fetchPendingApprovals();
+    } catch (err) {
+      showAlert('Reminder failed', (err as Error).message);
+    }
+    setRemindingId(null);
+  };
+
+  // In-app reminders only reach people who open the app, so also offer a ready-to-send email
+  const emailPoster = (need: any) => {
+    const email = need.profiles?.email;
+    if (!email) return;
+    const first = (need.profiles?.name || '').split(' ')[0] || 'there';
+    const subject = 'One step left to get your SpotMeOne need approved';
+    const body = `Hi ${first},\n\nThanks for posting "${need.title}" on SpotMeOne. Before we can approve it, please connect a Stripe payout account so donations can reach your bank.\n\n1. Open spotmeone.com and sign in\n2. Go to your need (or Settings > Payouts)\n3. Tap "Connect Stripe" and finish the steps (about 5 minutes)\n\nOnce that's done, we'll review it and let you know when it's live.\n\nThe SpotMeOne Team`;
+    Linking.openURL(`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+  };
+
+  const confirmApproveAnyway = (need: any) => {
+    showAlert(
+      'Approve without payouts?',
+      `"${need.title}" will go live now and people can donate. Donations are held safely by SpotMeOne until ${need.profiles?.name?.split(' ')[0] || 'the poster'} connects Stripe, then sent to their bank. We'll notify them by app and email to connect.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve anyway', onPress: () => handleApproveNeed(need.id, true, true) },
+      ],
+    );
+  };
+
+  const confirmReject = (need: any) => {
+    showAlert(
+      'Reject this need?',
+      `"${need.title}" won't be posted and ${need.profiles?.name?.split(' ')[0] || 'the poster'} will be told it wasn't approved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reject', style: 'destructive', onPress: () => handleApproveNeed(need.id, false) },
+      ],
+    );
+  };
+
+  const readyNeeds = pendingNeeds.filter(n => n.payoutReady);
+  const waitingNeeds = pendingNeeds.filter(n => !n.payoutReady);
+
+  const renderApprovalCard = (need: any) => (
+    <View key={need.id} style={s.approvalCard}>
+      {need.photo ? (
+        <Image source={{ uri: need.photo }} style={s.approvalPhoto} />
+      ) : null}
+      <View style={s.approvalInfo}>
+        <Text style={s.approvalTitle}>{need.title}</Text>
+        <Text style={s.approvalUser}>{need.profiles?.name || 'Unknown'} · {need.profiles?.city || ''}</Text>
+        {!!need.phone && (
+          <Text style={s.approvalMeta}>📞 {need.phone}</Text>
+        )}
+        {!!need.profiles?.email && (
+          <Text style={s.approvalMeta}>✉️ {need.profiles.email}</Text>
+        )}
+        <Text style={s.approvalMeta}>{need.category} · ${need.goal_amount}</Text>
+        <Text style={[s.approvalMeta, { color: need.payoutReady ? Colors.success : Colors.error }]}>
+          {need.payoutReady ? 'Stripe payouts connected'
+            : need.stripeState === 'incomplete' ? 'Started Stripe setup but hasn\'t finished'
+            : 'Hasn\'t started Stripe setup'}
+        </Text>
+        {!need.payoutReady && (
+          <Text style={s.approvalMeta}>
+            {need.lastReminderAt ? `Last reminded ${formatDate(need.lastReminderAt)}` : 'Not reminded yet'}
+          </Text>
+        )}
+        <Text style={s.approvalMessage} numberOfLines={3}>{need.message}</Text>
+        <Text style={s.approvalDate}>Submitted {formatDate(need.created_at)}</Text>
+      </View>
+      <View style={s.approvalActions}>
+        {need.payoutReady ? (
+          <TouchableOpacity
+            style={[s.approveBtn, approvingId === need.id && { opacity: 0.5 }]}
+            onPress={() => handleApproveNeed(need.id, true)}
+            disabled={approvingId === need.id}
+          >
+            {approvingId === need.id ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <MaterialIcons name="check" size={20} color={Colors.white} />
+            )}
+            <Text style={s.approveBtnText}>Approve</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+          <TouchableOpacity
+            style={[s.rejectBtn, s.approvalBtnHalf, { borderColor: Colors.success }, approvingId === need.id && { opacity: 0.5 }]}
+            onPress={() => confirmApproveAnyway(need)}
+            disabled={approvingId === need.id}
+          >
+            {approvingId === need.id ? (
+              <ActivityIndicator size="small" color={Colors.success} />
+            ) : (
+              <MaterialIcons name="check" size={18} color={Colors.success} />
+            )}
+            <Text style={[s.rejectBtnText, { color: Colors.success }]}>Approve anyway</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.approveBtn, s.approvalBtnHalf, { backgroundColor: Colors.primary }, remindingId === need.id && { opacity: 0.5 }]}
+            onPress={() => handleRemindSetup(need.id)}
+            disabled={remindingId !== null}
+          >
+            {remindingId === need.id ? (
+              <ActivityIndicator size="small" color={Colors.white} />
+            ) : (
+              <MaterialIcons name="notifications-active" size={18} color={Colors.white} />
+            )}
+            <Text style={s.approveBtnText}>Remind</Text>
+          </TouchableOpacity>
+          </>
+        )}
+        {!need.payoutReady && !!need.profiles?.email && (
+          <TouchableOpacity style={[s.rejectBtn, s.approvalBtnHalf, { borderColor: Colors.border }]} onPress={() => emailPoster(need)}>
+            <MaterialIcons name="email" size={18} color={Colors.text} />
+            <Text style={[s.rejectBtnText, { color: Colors.text }]}>Email</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={[s.rejectBtn, !need.payoutReady && s.approvalBtnHalf, approvingId === need.id && { opacity: 0.5 }]}
+          onPress={() => confirmReject(need)}
+          disabled={approvingId === need.id}
+        >
+          <MaterialIcons name="close" size={20} color={Colors.error} />
+          <Text style={s.rejectBtnText}>Reject</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   const [stripeStatus, setStripeStatus] = useState<any>(null);
   const [stripeChecking, setStripeChecking] = useState(false);
@@ -581,9 +730,9 @@ export default function AdminDashboard() {
       </View>
 
       {/* Tabs */}
-      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={s.tabRow}>
+      <ScrollView keyboardShouldPersistTaps="handled" horizontal showsHorizontalScrollIndicator={false} style={s.tabBar} contentContainerStyle={s.tabRow}>
         <TabButton tab="overview" current={activeTab} label="Overview" icon="dashboard" onPress={() => setActiveTab('overview')} />
-        <TabButton tab="approvals" current={activeTab} label="Approvals" icon="verified-user" onPress={() => setActiveTab('approvals')} badge={pendingNeeds.length} />
+        <TabButton tab="approvals" current={activeTab} label="Approvals" icon="verified-user" onPress={() => setActiveTab('approvals')} badge={pendingNeeds.length || undefined} />
         <TabButton tab="users" current={activeTab} label="Users" icon="people" onPress={() => setActiveTab('users')} />
         <TabButton tab="needs" current={activeTab} label="Needs" icon="volunteer-activism" onPress={() => setActiveTab('needs')} />
         <TabButton tab="transactions" current={activeTab} label="Transactions" icon="receipt-long" onPress={() => setActiveTab('transactions')} />
@@ -599,6 +748,7 @@ export default function AdminDashboard() {
 
       <ScrollView keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        style={{ flex: 1 }}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
@@ -614,51 +764,35 @@ export default function AdminDashboard() {
                   <Text style={s.emptyText}>All caught up! No needs pending review.</Text>
                 </View>
               ) : (
-                pendingNeeds.map(need => (
-                  <View key={need.id} style={s.approvalCard}>
-                    {need.photo ? (
-                      <Image source={{ uri: need.photo }} style={s.approvalPhoto} />
-                    ) : null}
-                    <View style={s.approvalInfo}>
-                      <Text style={s.approvalTitle}>{need.title}</Text>
-                      <Text style={s.approvalUser}>{need.profiles?.name || 'Unknown'} · {need.profiles?.city || ''}</Text>
-                      {!!need.profiles?.phone && (
-                        <Text style={s.approvalMeta}>📞 {need.profiles.phone}</Text>
-                      )}
-                      {!!need.profiles?.email && (
-                        <Text style={s.approvalMeta}>✉️ {need.profiles.email}</Text>
-                      )}
-                      <Text style={s.approvalMeta}>{need.category} · ${need.goal_amount}</Text>
-                      <Text style={[s.approvalMeta, { color: need.payoutReady ? Colors.success : Colors.error }]}>
-                        {need.payoutReady ? 'Stripe payouts connected' : 'Stripe payouts not connected yet'}
-                      </Text>
-                      <Text style={s.approvalMessage} numberOfLines={3}>{need.message}</Text>
-                      <Text style={s.approvalDate}>Submitted {formatDate(need.created_at)}</Text>
-                    </View>
-                    <View style={s.approvalActions}>
-                      <TouchableOpacity
-                        style={[s.approveBtn, approvingId === need.id && { opacity: 0.5 }]}
-                        onPress={() => handleApproveNeed(need.id, true)}
-                        disabled={approvingId === need.id}
-                      >
-                        {approvingId === need.id ? (
-                          <ActivityIndicator size="small" color={Colors.white} />
-                        ) : (
-                          <MaterialIcons name="check" size={20} color={Colors.white} />
-                        )}
-                        <Text style={s.approveBtnText}>Approve</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[s.rejectBtn, approvingId === need.id && { opacity: 0.5 }]}
-                        onPress={() => handleApproveNeed(need.id, false)}
-                        disabled={approvingId === need.id}
-                      >
-                        <MaterialIcons name="close" size={20} color={Colors.error} />
-                        <Text style={s.rejectBtnText}>Reject</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
+                <>
+                  <Text style={s.approvalSectionTitle}>Ready to approve ({readyNeeds.length})</Text>
+                  <Text style={s.approvalSectionHint}>Payouts are connected. These can go live now.</Text>
+                  {readyNeeds.length === 0 ? (
+                    <Text style={s.approvalSectionEmpty}>Nothing ready yet.</Text>
+                  ) : readyNeeds.map(renderApprovalCard)}
+
+                  {waitingNeeds.length > 0 && (
+                    <>
+                      <View style={s.approvalSectionHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.approvalSectionTitle}>Waiting on poster ({waitingNeeds.length})</Text>
+                          <Text style={s.approvalSectionHint}>Stripe isn't connected yet. Remind them, or approve anyway and donations are held until they connect.</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[s.remindAllBtn, remindingId !== null && { opacity: 0.5 }]}
+                          onPress={() => handleRemindSetup('all')}
+                          disabled={remindingId !== null}
+                        >
+                          {remindingId === 'all'
+                            ? <ActivityIndicator size="small" color={Colors.white} />
+                            : <MaterialIcons name="notifications-active" size={16} color={Colors.white} />}
+                          <Text style={s.remindAllText}>Remind all</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {waitingNeeds.map(renderApprovalCard)}
+                    </>
+                  )}
+                </>
               )}
             </View>
           )}
@@ -1566,8 +1700,10 @@ const s = StyleSheet.create({
   liveText: { fontSize: 10, fontWeight: '700', color: Colors.success },
   refreshBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' },
 
-  tabRow: { paddingHorizontal: Spacing.lg, gap: Spacing.sm, paddingBottom: Spacing.md },
-  tabBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: BorderRadius.full, backgroundColor: Colors.surfaceAlt },
+  // Never let the content below squeeze the tab row (on web a long list would cut the pills in half)
+  tabBar: { flexGrow: 0, flexShrink: 0, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
+  tabRow: { paddingHorizontal: Spacing.lg, gap: Spacing.sm, paddingTop: Spacing.xs, paddingBottom: Spacing.md, alignItems: 'center' },
+  tabBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, minHeight: 36, flexShrink: 0, borderRadius: BorderRadius.full, backgroundColor: Colors.surfaceAlt },
   tabBtnActive: { backgroundColor: Colors.primary },
   tabBtnText: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textSecondary },
   tabBtnTextActive: { color: Colors.white },
@@ -1576,7 +1712,7 @@ const s = StyleSheet.create({
   tabBadgeText: { fontSize: 9, fontWeight: '800', color: Colors.white },
   tabBadgeTextActive: { color: Colors.white },
 
-  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.sm },
+  content: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, paddingBottom: Spacing.xxxl },
 
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
   approvalCard: {
@@ -1622,10 +1758,52 @@ const s = StyleSheet.create({
       color: Colors.textLight,
       marginTop: 2,
     },
+    approvalSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 20,
+    },
+    approvalSectionTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: Colors.text,
+      marginTop: 12,
+    },
+    approvalSectionHint: {
+      fontSize: 12,
+      color: Colors.textSecondary,
+      marginBottom: 10,
+    },
+    approvalSectionEmpty: {
+      fontSize: 13,
+      color: Colors.textLight,
+      marginBottom: 12,
+    },
+    remindAllBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: Colors.primary,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    remindAllText: {
+      color: Colors.white,
+      fontSize: 13,
+      fontWeight: '700',
+    },
     approvalActions: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 10,
       marginTop: 12,
+    },
+    // Two buttons per row on cards with four actions
+    approvalBtnHalf: {
+      flexBasis: '45%',
+      flexGrow: 1,
     },
     approveBtn: {
       flex: 1,

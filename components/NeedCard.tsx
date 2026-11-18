@@ -55,8 +55,13 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
   const expired = isExpiredByTime(need);
   const isComplete = need.status !== 'Collecting' || expired;
   const canContribute = need.status === 'Collecting' && !expired && need.verificationStatus !== 'pending';
-  const { currentUser } = useApp();
+  const { currentUser, payoutStatus } = useApp();
   const isOwner = !!need.userId && need.userId === currentUser.id;
+  // The admin can't approve until the poster's Stripe payouts are connected
+  const waitingOnOwner = isOwner && need.verificationStatus === 'pending' && payoutStatus !== null && !payoutStatus.onboardingComplete;
+  // Approved before payouts were connected: donations are held until they connect
+  const payoutsMissing = isOwner && need.verificationStatus === 'approved' && payoutStatus !== null && !payoutStatus.onboardingComplete
+    && ['Collecting', 'Goal Met', 'Payout Requested'].includes(need.status);
 
   const handlePress = () => {
     router.push(`/need/${need.id}`);
@@ -152,7 +157,27 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
             <Text style={styles.verifiedNeedText}>SpotMeOne Verified</Text>
           </View>
         )}
-        {need.verificationStatus === 'pending' && (
+        {waitingOnOwner && (
+          <TouchableOpacity style={styles.waitingOnYou} onPress={handlePress} activeOpacity={0.8}>
+            <MaterialIcons name="pending-actions" size={16} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.waitingOnYouTitle}>Waiting on you</Text>
+              <Text style={styles.waitingOnYouText}>Connect Stripe payouts so we can approve this need</Text>
+            </View>
+            <Text style={styles.waitingOnYouBtn}>Finish setup</Text>
+          </TouchableOpacity>
+        )}
+        {payoutsMissing && (
+          <TouchableOpacity style={styles.waitingOnYou} onPress={handlePress} activeOpacity={0.8}>
+            <MaterialIcons name="account-balance" size={16} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.waitingOnYouTitle}>Connect payouts</Text>
+              <Text style={styles.waitingOnYouText}>Donations are held until you connect Stripe</Text>
+            </View>
+            <Text style={styles.waitingOnYouBtn}>Set up</Text>
+          </TouchableOpacity>
+        )}
+        {need.verificationStatus === 'pending' && !waitingOnOwner && (
           <View style={[styles.verifiedNeedBadge, { backgroundColor: Colors.accentLight }]}>
             <MaterialIcons name="hourglass-empty" size={13} color={Colors.textSecondary} />
             <Text style={[styles.verifiedNeedText, { color: Colors.textSecondary }]}>Under review: only you can see this</Text>
@@ -290,6 +315,20 @@ export default NeedCard;
 
 
 const styles = StyleSheet.create({
+  waitingOnYou: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderColor: Colors.primary + '40',
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  waitingOnYouTitle: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary },
+  waitingOnYouText: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  waitingOnYouBtn: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.primary },
 
   card: {
     backgroundColor: Colors.surface,
