@@ -298,7 +298,8 @@ export default function NotificationsScreen() {
                   isPaymentFailed && styles.notifCardFailed,
                 ]}
                 onPress={() => {
-                  if (isPayoutReady || isPayoutIssue) {
+                  // Setup reminders carry a need: open it, since that page has the "Finish setup" steps
+                  if ((isPayoutReady || isPayoutIssue) && !notif.needId) {
                     markNotificationRead(notif.id);
                     router.push('/payouts');
                   } else {

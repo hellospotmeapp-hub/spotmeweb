@@ -13,6 +13,7 @@ import { hapticLight, hapticMedium, hapticSuccess, hapticSelection } from '@/lib
 import ConfettiAnimation from '@/components/ConfettiAnimation';
 import UploadProgressBar from '@/components/UploadProgressBar';
 import ImageEditor from '@/components/ImageEditor';
+import FinishSetupCard from '@/components/FinishSetupCard';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -55,6 +56,7 @@ export default function CreateScreen() {
   const [customGoal, setCustomGoal] = useState('');
   const [isCustomGoal, setIsCustomGoal] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [postedNeedId, setPostedNeedId] = useState<string | null>(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
@@ -421,6 +423,7 @@ export default function CreateScreen() {
       showAlert('Need not posted', result.error || 'Please try again.');
       return;
     }
+    setPostedNeedId(result.needId || null);
 
     hapticSuccess();
 
@@ -529,7 +532,7 @@ export default function CreateScreen() {
                 <View style={styles.welcomeBody}>
                   {[
                     { icon: 'verified-user', color: Colors.primary, text: 'Our team verifies every need before it goes live on SpotMeOne. We may reach out to you by email.' },
-                    { icon: 'account-balance-wallet', color: '#7B9ED9', text: 'Connect a Stripe payout account in Settings so you can receive the money.' },
+                    { icon: 'account-balance-wallet', color: '#7B9ED9', text: 'Right after you post, add your phone and connect a Stripe payout account. We can only approve needs that can receive money.' },
                     { icon: 'favorite', color: '#E85D5D', text: 'Real, honest stories connect with people. Be specific about what you need and why.' },
                     { icon: 'bolt', color: '#F5C563', text: 'Once your goal is met, you can withdraw the money to your bank account.' },
                   ].map((item, i) => (
@@ -552,6 +555,7 @@ export default function CreateScreen() {
               </View>
             </View>
           </Modal>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingVertical: Spacing.xxl }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <Animated.View style={[
           styles.successContainer,
           {
@@ -567,17 +571,13 @@ export default function CreateScreen() {
           </Animated.View>
           <Text style={styles.successTitle}>Need Submitted!</Text>
           <Text style={styles.successMessage}>
-            Thanks! Our team will verify your need and post it to SpotMeOne. We'll notify you when it's live.
+            Thanks! Finish the steps below and our team will review your need. We'll notify you when it's live.
           </Text>
 
-          {!(payoutStatus?.hasAccount && payoutStatus?.payoutsEnabled) && (
-            <TouchableOpacity style={styles.payoutNotice} onPress={() => router.push('/settings')} activeOpacity={0.8}>
-              <MaterialIcons name="account-balance" size={20} color={Colors.accent} />
-              <Text style={styles.payoutNoticeText}>
-                Next step: connect a payout account so you can receive donations. <Text style={styles.payoutNoticeLink}>Set up in Settings</Text>
-              </Text>
-            </TouchableOpacity>
-          )}
+          {/* Phone + Stripe right away, so the need reaches the admin ready to approve */}
+          <View style={{ width: '100%', marginBottom: Spacing.lg }}>
+            <FinishSetupCard returnPath={postedNeedId ? `/need/${postedNeedId}` : '/settings'} />
+          </View>
 
           <TouchableOpacity
             style={styles.successButton}
@@ -597,6 +597,7 @@ export default function CreateScreen() {
             <Text style={styles.postAnotherButtonText}>Post Another Need</Text>
           </TouchableOpacity>
         </Animated.View>
+        </ScrollView>
       </View>
     );
   }
@@ -891,7 +892,7 @@ export default function CreateScreen() {
                 <TouchableOpacity style={styles.payoutNotice} onPress={() => router.push('/settings')} activeOpacity={0.8}>
                   <MaterialIcons name="account-balance" size={20} color={Colors.accent} />
                   <Text style={styles.payoutNoticeText}>
-                    You can post now. To receive donations you'll also need to connect a payout account. <Text style={styles.payoutNoticeLink}>Set up in Settings</Text>
+                    Right after you post, you'll connect a Stripe payout account. We can't approve your need without it. <Text style={styles.payoutNoticeLink}>Set up now</Text>
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1805,8 +1806,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.xxxl,
+    paddingHorizontal: Spacing.xl,
     gap: Spacing.lg,
+    maxWidth: 520,
+    width: '100%',
+    alignSelf: 'center',
   },
   successIcon: {
     marginBottom: Spacing.md,

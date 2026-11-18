@@ -11,6 +11,7 @@ import { stripe, stripeMode, stripeKeyKind } from "../_shared/stripe.ts";
 // Payout accounts are per Stripe mode; only the ones matching the server key are usable
 const LIVEMODE = stripeKeyKind.endsWith("_live");
 import { onPaymentCompleted } from "../_shared/payments.ts";
+import { sendEmail, buttonEmail, emailEnabled } from "../_shared/email.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
@@ -154,6 +155,75 @@ function mapNeed(need: any, profile: any = {}, contributions: any[] = []) {
 async function notify(userId: string | null, n: { type: string; title: string; message: string; need_id?: string | null; avatar?: string }) {
   if (!userId) return;
   await db.from("notifications").insert({ user_id: userId, ...n });
+}
+
+// Setup reminders are payout_issue notifications tied to the need, so the poster lands on the
+// need page (which shows the "Finish setup" checklist) and admins can see when they were last sent.
+const SETUP_REMINDER_TYPE = "payout_issue";
+const SETUP_REMINDER_COOLDOWN_MS = 12 * 60 * 60 * 1000;
+
+// In-app notification plus an email (when Resend is configured). Returns whether the email went out.
+// "posted": just posted. "admin": admin nudge while pending. "live": approved without payouts,
+// so donations are being held until they connect.
+type ReminderKind = "posted" | "admin" | "live";
+
+async function sendSetupReminder(need: { id: string; user_id: string | null; title: string }, kind: ReminderKind = "posted"): Promise<boolean> {
+  if (!need.user_id) return false;
+  const live = kind === "live";
+  const title = live ? "Your need is live! Connect payouts" : kind === "admin" ? "Your need is waiting on you" : "One more step to go live";
+  await notify(need.user_id, {
+    type: SETUP_REMINDER_TYPE,
+    title,
+    message: live
+      ? `"${need.title}" is now on SpotMeOne. Connect your Stripe payout account so donations can reach your bank. Tap to finish setup.`
+      : `Connect your Stripe payout account so we can approve "${need.title}". Tap to finish setup. It takes about 5 minutes.`,
+    need_id: need.id,
+  });
+  if (!emailEnabled) return false;
+
+  const { data: profile } = await db.from("profiles").select("name, email").eq("id", need.user_id).maybeSingle();
+  let to = profile?.email || "";
+  if (!to) {
+    const { data } = await db.auth.admin.getUserById(need.user_id);
+    to = data?.user?.email || "";
+  }
+  if (!to) return false;
+
+  const first = (profile?.name || "").trim().split(/\s+/)[0];
+  const { html, text } = buttonEmail({
+    preheader: live ? "People can now donate. Connect Stripe so the money reaches you." : "Connect Stripe so we can approve your need. It takes about 5 minutes.",
+    heading: title,
+    paragraphs: live
+      ? [
+        `Hi ${first && !/^spotme/i.test(first) ? first : "there"},`,
+        `Good news: "${need.title}" is now live on SpotMeOne and people can donate.`,
+        "To receive the money, connect a Stripe payout account. It takes about 5 minutes. Donations are held safely until you do, then sent to your bank.",
+      ]
+      : [
+        `Hi ${first && !/^spotme/i.test(first) ? first : "there"},`,
+        `Thanks for posting "${need.title}" on SpotMeOne. Before our team can approve it, you need to connect a Stripe payout account. That's how donations reach your bank account.`,
+        "It takes about 5 minutes. Once you're done, we'll review your need and let you know when it's live.",
+      ],
+    buttonText: "Connect Stripe",
+    buttonUrl: `${DEFAULT_ORIGIN}/need/${need.id}`,
+  });
+  const r = await sendEmail({
+    to,
+    subject: live ? `Your need is live! Connect payouts to receive donations`
+      : kind === "admin" ? `Action needed: "${need.title}" is waiting on you` : "One more step to get your need approved",
+    html,
+    text,
+    // Stops a double-tap or retry from emailing twice within the same minute
+    idempotencyKey: `setup-${kind}-${need.id}-${Math.floor(Date.now() / 60000)}`,
+  });
+  if (!r.sent) {
+    console.warn(`[email] setup reminder for need ${need.id} not sent: ${r.error}`);
+    await db.from("error_logs").insert({
+      error_type: "email", message: `setup reminder: ${r.error}`.slice(0, 1000),
+      user_id: need.user_id, metadata: { severity: "warning", source: "sendSetupReminder", need_id: need.id },
+    });
+  }
+  return r.sent;
 }
 
 // Load a need the caller owns (admins may act on any need)
@@ -1024,6 +1094,14 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
       }
       const { data: needs } = await db.from("needs").select("id").eq("user_id", uid);
       const r = await transferPendingFunds(uid, (needs || []).map((n) => n.id), account.stripe_account_id, "auto_transfer_on_onboarding");
+      const { count: waiting } = await db.from("needs").select("id", { count: "exact", head: true })
+        .eq("user_id", uid).eq("verification_status", "pending").neq("status", "Deleted");
+      // Once only: this runs every time they come back from Stripe
+      const { count: alreadyTold } = await db.from("notifications").select("id", { count: "exact", head: true })
+        .eq("user_id", uid).eq("type", "payout_ready").eq("title", "You're all set!");
+      if ((waiting || 0) > 0 && !alreadyTold) {
+        await notify(uid, { type: "payout_ready", title: "You're all set!", message: "Your payout account is connected. Our team will review your need and let you know when it's live." });
+      }
       if (r.transferred > 0) {
         await notify(uid, { type: "payout", title: "Your funds are on the way!", message: `$${r.totalDollars.toFixed(2)} has been transferred to your bank account. Arrives in 2–3 business days.` });
       }
@@ -1096,11 +1174,16 @@ async function stripeConnect(action: string, body: any, ctx: Ctx) {
       if (!body.needId) return { success: false, error: "needId required" };
       const { data: need } = await db.from("needs").select("user_id").eq("id", body.needId).maybeSingle();
       if (!need) return { success: true, needNotFound: true };
-      const { data: acct } = await db.from("connected_accounts")
-        .select("stripe_account_id, onboarding_complete, payouts_enabled").eq("user_id", need.user_id).eq("livemode", LIVEMODE).maybeSingle();
+      const [{ data: acct }, profile] = await Promise.all([
+        db.from("connected_accounts").select("stripe_account_id, onboarding_complete, payouts_enabled")
+          .eq("user_id", need.user_id).eq("livemode", LIVEMODE).maybeSingle(),
+        need.user_id ? getProfile(need.user_id) : null,
+      ]);
       return {
         success: true, hasAccount: !!acct?.stripe_account_id, onboardingComplete: acct?.onboarding_complete || false,
         payoutsEnabled: acct?.payouts_enabled || false,
+        // First name only: shown to donors in the payment sheet
+        recipientName: (profile?.name || "").trim().split(/\s+/)[0] || "",
       };
     }
   }
@@ -1180,7 +1263,11 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
         expires_at: new Date(Date.now() + NEED_LIFETIME_MS).toISOString(),
       }).select().single();
       if (error) throw new Error(error.message);
-      return { success: true, need: mapNeed(need, profile) };
+      const { data: acct } = await db.from("connected_accounts").select("onboarding_complete")
+        .eq("user_id", uid).eq("livemode", LIVEMODE).maybeSingle();
+      const payoutReady = !!acct?.onboarding_complete;
+      if (!payoutReady) await sendSetupReminder(need, "posted");
+      return { success: true, need: mapNeed(need, profile), payoutReady };
     }
 
     case "edit_need": {
@@ -1524,25 +1611,36 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
     case "admin_review_need": {
       requireAdmin(ctx);
       const approve = body.verificationAction === "approve" || body.approve === true;
+      // Admin override: go live before payouts are connected. Donations are charged to the platform
+      // and held (no destination charges), then transferred once they finish Stripe setup.
+      const withoutPayouts = approve && body.approveWithoutPayouts === true;
+      let payoutReady = true;
       if (approve) {
-        // A need only goes live once its poster can actually receive the money
         const { data: pending } = await db.from("needs").select("user_id").eq("id", body.needId).maybeSingle();
         if (!pending) return { success: false, error: "Need not found" };
         const { account, live } = pending.user_id ? await syncConnectedAccount(pending.user_id) : { account: null, live: null };
-        if (!account?.stripe_account_id) return { success: false, error: "This person hasn't connected a Stripe payout account yet." };
-        if (!live) return { success: false, error: "Couldn't reach their payout account on Stripe. Check Stripe status in the Overview tab." };
-        if (!account.onboarding_complete) return { success: false, error: "Their Stripe payout setup isn't finished yet." };
+        payoutReady = !!(account?.stripe_account_id && live && account.onboarding_complete);
+        if (!payoutReady && !withoutPayouts) {
+          // A need normally only goes live once its poster can actually receive the money
+          if (!account?.stripe_account_id) return { success: false, needsPayouts: true, error: "This person hasn't connected a Stripe payout account yet." };
+          if (!live) return { success: false, error: "Couldn't reach their payout account on Stripe. Check Stripe status in the Overview tab." };
+          return { success: false, needsPayouts: true, error: "Their Stripe payout setup isn't finished yet." };
+        }
       }
       const updates: Record<string, unknown> = { verification_status: approve ? "approved" : "rejected", updated_at: new Date().toISOString() };
       if (action === "admin_review_need") updates.status = approve ? "Collecting" : "Expired";
       if (approve) updates.expires_at = new Date(Date.now() + NEED_LIFETIME_MS).toISOString();
       const { data: need } = await db.from("needs").update(updates).eq("id", body.needId).select("user_id, title").maybeSingle();
       if (need?.user_id) {
-        await notify(need.user_id, approve
-          ? { type: "milestone", title: "Your need is live!", message: `"${need.title}" was verified and is now on SpotMeOne.`, need_id: body.needId }
-          : { type: "welcome", title: "Need not approved", message: `"${need.title}" wasn't approved. Reply to our email or contact support for details.`, need_id: body.needId });
+        if (approve && !payoutReady) {
+          await sendSetupReminder({ id: body.needId, user_id: need.user_id, title: need.title }, "live");
+        } else {
+          await notify(need.user_id, approve
+            ? { type: "milestone", title: "Your need is live!", message: `"${need.title}" was verified and is now on SpotMeOne.`, need_id: body.needId }
+            : { type: "welcome", title: "Need not approved", message: `"${need.title}" wasn't approved. Reply to our email or contact support for details.`, need_id: body.needId });
+        }
       }
-      return { success: true, newStatus: updates.verification_status };
+      return { success: true, newStatus: updates.verification_status, payoutReady };
     }
 
     case "admin_stripe_status": {
@@ -1586,24 +1684,88 @@ async function processContribution(action: string, body: any, ctx: Ctx) {
       const { data } = await db.from("needs").select("*").in("verification_status", ["pending", "flagged", "info_requested"])
         .order("created_at", { ascending: true });
       const userIds = [...new Set((data || []).map((n) => n.user_id).filter(Boolean))];
-      const [{ data: profiles }, { data: accounts }] = userIds.length
+      const needIds = (data || []).map((n) => n.id);
+      const none = { data: [] as any[] };
+      const [{ data: profiles }, { data: accounts }, { data: phones }, { data: reminders }] = userIds.length
         ? await Promise.all([
           db.from("profiles").select("id, name, avatar, city, email").in("id", userIds),
-          db.from("connected_accounts").select("user_id, onboarding_complete").in("user_id", userIds).eq("livemode", LIVEMODE),
+          db.from("connected_accounts").select("user_id, stripe_account_id, onboarding_complete").in("user_id", userIds).eq("livemode", LIVEMODE),
+          db.from("verification_requests").select("user_id, phone, created_at").in("user_id", userIds).order("created_at", { ascending: false }),
+          db.from("notifications").select("need_id, created_at").in("need_id", needIds).eq("type", SETUP_REMINDER_TYPE).order("created_at", { ascending: false }),
         ])
-        : [{ data: [] as any[] }, { data: [] as any[] }];
+        : [none, none, none, none];
+      // Someone may have finished Stripe without coming back to the app: ask Stripe about unfinished accounts
+      const stripeState = new Map<string, "none" | "incomplete" | "ready">();
+      await Promise.all((accounts || []).map(async (a) => {
+        if (!a.stripe_account_id) return;
+        if (a.onboarding_complete) return stripeState.set(a.user_id, "ready");
+        const { account } = await syncConnectedAccount(a.user_id);
+        stripeState.set(a.user_id, account?.onboarding_complete ? "ready" : "incomplete");
+      }));
       const pMap = new Map((profiles || []).map((p) => [p.id, p]));
-      const payoutReady = new Set((accounts || []).filter((a) => a.onboarding_complete).map((a) => a.user_id));
+      const phoneMap = new Map<string, string>();
+      for (const v of phones || []) if (v.phone && !phoneMap.has(v.user_id)) phoneMap.set(v.user_id, v.phone);
+      const reminderMap = new Map<string, string>();
+      for (const r of reminders || []) if (!reminderMap.has(r.need_id)) reminderMap.set(r.need_id, r.created_at);
       return {
         success: true,
         needs: (data || []).map((n) => ({
-          payoutReady: payoutReady.has(n.user_id),
+          payoutReady: stripeState.get(n.user_id) === "ready",
+          stripeState: stripeState.get(n.user_id) || "none",
+          phone: phoneMap.get(n.user_id) || "",
+          lastReminderAt: reminderMap.get(n.id) || null,
           id: n.id, userId: n.user_id, userName: n.user_name || "Unknown", userAvatar: n.user_avatar || "",
           title: n.title, message: n.message, category: n.category, goalAmount: Number(n.goal_amount),
           photo: n.photo, verificationStatus: n.verification_status, createdAt: n.created_at,
           goal_amount: Number(n.goal_amount), created_at: n.created_at, user_id: n.user_id,
           profiles: pMap.get(n.user_id) || null,
         })),
+      };
+    }
+
+    case "admin_remind_setup": {
+      // Nudge posters whose pending needs can't be approved because payouts aren't connected.
+      // { needId } reminds one; { all: true } reminds everyone waiting. Skips anyone reminded recently.
+      requireAdmin(ctx);
+      let query = db.from("needs").select("id, user_id, title").eq("verification_status", "pending").neq("status", "Deleted");
+      if (!body.all) {
+        if (typeof body.needId !== "string" || !body.needId) throw new HttpError("Missing needId");
+        query = query.eq("id", body.needId);
+      }
+      const { data: needs } = await query;
+      const list = (needs || []).filter((n) => n.user_id);
+      if (!list.length) return { success: true, sent: 0, skipped: 0 };
+      const userIds = [...new Set(list.map((n) => n.user_id))];
+      const since = new Date(Date.now() - SETUP_REMINDER_COOLDOWN_MS).toISOString();
+      const [{ data: ready }, { data: recent }] = await Promise.all([
+        db.from("connected_accounts").select("user_id").in("user_id", userIds).eq("livemode", LIVEMODE).eq("onboarding_complete", true),
+        db.from("notifications").select("need_id").in("need_id", list.map((n) => n.id)).eq("type", SETUP_REMINDER_TYPE).gte("created_at", since),
+      ]);
+      const readySet = new Set((ready || []).map((a) => a.user_id));
+      const recentSet = new Set((recent || []).map((r) => r.need_id));
+      let sent = 0, skipped = 0, emailed = 0;
+      for (const n of list) {
+        // A single reminder can be re-sent on demand; "remind all" respects the cooldown
+        if (readySet.has(n.user_id) || (body.all && recentSet.has(n.id))) { skipped++; continue; }
+        if (await sendSetupReminder(n, "admin")) emailed++;
+        sent++;
+      }
+      return { success: true, sent, skipped, emailed, emailEnabled };
+    }
+
+    case "get_setup_status": {
+      // What the poster still has to do before their pending needs can be approved
+      const uid = requireUser(ctx);
+      const [{ account }, { data: vr }, profile] = await Promise.all([
+        syncConnectedAccount(uid),
+        db.from("verification_requests").select("phone").eq("user_id", uid).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        getProfile(uid),
+      ]);
+      return {
+        success: true,
+        phoneOnFile: !!vr?.phone || !!profile?.verified,
+        verified: !!profile?.verified,
+        stripeState: !account?.stripe_account_id ? "none" : account.onboarding_complete ? "ready" : "incomplete",
       };
     }
 

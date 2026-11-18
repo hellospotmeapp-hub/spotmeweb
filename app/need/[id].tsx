@@ -23,6 +23,7 @@ import EditNeedModal from '@/components/EditNeedModal';
 import CommentsSection from '@/components/CommentsSection';
 import GracefulImage from '@/components/GracefulImage';
 import ShareLinkPreview from '@/components/ShareLinkPreview';
+import FinishSetupCard from '@/components/FinishSetupCard';
 
 
 
@@ -64,7 +65,7 @@ export default function NeedDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { needs, contribute, editNeed, deleteNeed, reportNeed, blockUser, requestPayout, currentUser, isLoggedIn, createThankYou, refreshNeeds } = useApp();
+  const { needs, contribute, editNeed, deleteNeed, reportNeed, blockUser, requestPayout, currentUser, isLoggedIn, createThankYou, refreshNeeds, payoutStatus } = useApp();
 
   
   const [showContribute, setShowContribute] = useState(false);
@@ -299,6 +300,18 @@ export default function NeedDetailScreen() {
         ) : null}
 
         <View style={styles.content}>
+          {isOwner && need.verificationStatus === 'pending' && (
+            <View style={{ marginBottom: Spacing.lg }}>
+              <FinishSetupCard returnPath={`/need/${need.id}`} />
+            </View>
+          )}
+          {/* Approved before payouts were connected: show how to receive the money */}
+          {isOwner && need.verificationStatus === 'approved' && payoutStatus !== null && !payoutStatus.onboardingComplete
+            && ['Collecting', 'Goal Met', 'Payout Requested'].includes(need.status) && (
+            <View style={{ marginBottom: Spacing.lg }}>
+              <FinishSetupCard returnPath={`/need/${need.id}`} mode="live" />
+            </View>
+          )}
           <View style={styles.badgeRow}>
             <CategoryBadge category={need.category} size="md" />
             <StatusBadge status={displayStatus} />

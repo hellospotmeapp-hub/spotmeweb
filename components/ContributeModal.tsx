@@ -142,8 +142,9 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
         body: { action: 'get_recipient_account', needId },
       });
       if (data?.success) {
-        setRecipientHasAccount(data.hasConnectedAccount);
-        setDestinationInfo({ recipientName: data.recipientName });
+        // Donations are always held by SpotMeOne first; this only says whether payouts are set up
+        setRecipientHasAccount(!!data.onboardingComplete);
+        setDestinationInfo({ recipientName: data.recipientName || '' });
       }
     } catch {
       setRecipientHasAccount(false);
@@ -293,7 +294,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
             tipAmount: tip,
             needTitle,
             needId,
-            recipientName: contributorName || destinationInfo?.recipientName || '',
+            recipientName: destinationInfo?.recipientName || '',
           });
           if (receiptResult.emailSent) {
             setReceiptStatus('sent');
@@ -426,11 +427,11 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
               {/* Stripe Connect Badge */}
               {recipientHasAccount === true ? (
                 <View style={styles.connectBadge}>
-                  <MaterialIcons name="swap-horiz" size={16} color={Colors.secondary} />
+                  <MaterialIcons name="verified-user" size={16} color={Colors.secondary} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.connectBadgeTitle}>Direct Payment via Stripe Connect</Text>
+                    <Text style={styles.connectBadgeTitle}>Secure payment via Stripe</Text>
                     <Text style={styles.connectBadgeText}>
-                      100% goes directly to {destinationInfo?.recipientName || 'the recipient'}. No platform fees.
+                      100% of your gift goes to {destinationInfo?.recipientName || 'the recipient'}. No platform fees.
                     </Text>
                   </View>
                 </View>
@@ -438,7 +439,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                 <View style={styles.platformBadge}>
                   <MaterialIcons name="lock" size={14} color={Colors.accent} />
                   <Text style={styles.platformBadgeText}>
-                    Secure payment via Stripe. Funds held until recipient sets up payouts.
+                    Secure payment via Stripe. Your gift is held safely until {destinationInfo?.recipientName || 'the recipient'} finishes payout setup, then sent to their bank.
                   </Text>
                 </View>
               ) : (
@@ -642,7 +643,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
                   <View style={styles.recipientRow}>
                     <MaterialIcons name="check-circle" size={14} color={Colors.success} />
                     <Text style={[styles.feeLabel, { color: Colors.success, fontWeight: '700' }]}>
-                      {recipientHasAccount ? 'Sent directly to recipient' : 'Recipient receives'}
+                      {destinationInfo?.recipientName ? `${destinationInfo.recipientName} receives` : 'Recipient receives'}
                     </Text>
                   </View>
                   <Text style={[styles.feeValue, { color: Colors.success, fontWeight: '700' }]}>
@@ -742,10 +743,7 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
               <View style={styles.stripeFooter}>
                 <MaterialIcons name="verified-user" size={14} color={Colors.textLight} />
                 <Text style={styles.disclaimerText}>
-                  {recipientHasAccount
-                    ? 'Powered by Stripe Connect. 100% of your contribution goes to the recipient. No platform fees. PCI-DSS compliant.'
-                    : 'Payments secured by Stripe. No platform fees — 100% goes to the recipient. PCI-DSS compliant.'
-                  }
+                  Payments secured by Stripe. No platform fees: 100% of your contribution goes to the recipient. PCI-DSS compliant.
                 </Text>
               </View>
             </ScrollView>
