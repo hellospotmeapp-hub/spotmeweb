@@ -1,5 +1,5 @@
 import React, { useCallback, memo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { useRouter } from 'expo-router';
@@ -51,6 +51,8 @@ function getTimeAgo(dateStr: string): string {
 function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
 
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const narrow = windowWidth < 380;
   const progress = need.goalAmount > 0 ? Math.min(need.raisedAmount / need.goalAmount, 1) : 0;
   const expired = isExpiredByTime(need);
   const isComplete = need.status !== 'Collecting' || expired;
@@ -75,6 +77,8 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
 
   // Determine the effective status for display
   const displayStatus = expired && need.status === 'Collecting' ? 'Expired' : need.status;
+  // Normalise stray whitespace (e.g. "Atlanta,  GA")
+  const city = (need.userCity || '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
 
   if (compact) {
     return (
@@ -109,20 +113,23 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
             type="avatar"
             style={styles.avatar}
           />
-          <View>
+          <View style={styles.userText}>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{need.userName || 'SpotMeOne User'}</Text>
+              <Text style={styles.userName} numberOfLines={1}>{need.userName || 'SpotMeOne User'}</Text>
               {!!need.userVerified && (
-                <MaterialIcons name="verified" size={15} color="rgba(255,255,255,0.95)" style={{ marginLeft: 3 }} />
+                <MaterialIcons name="verified" size={15} color="rgba(255,255,255,0.95)" />
               )}
-              {need.userCity ? (
-                <View style={styles.cityRow}>
-                  <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.75)" />
-                  <Text style={styles.cityText}>{need.userCity}</Text>
-                </View>
-              ) : null}
             </View>
-            <Text style={styles.timeText}>{getTimeAgo(need.createdAt)}</Text>
+            <View style={styles.metaRow}>
+              {city ? (
+                <>
+                  <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.8)" />
+                  <Text style={styles.cityText} numberOfLines={1}>{city}</Text>
+                  <Text style={styles.metaDot}>·</Text>
+                </>
+              ) : null}
+              <Text style={styles.timeText} numberOfLines={1}>{getTimeAgo(need.createdAt)}</Text>
+            </View>
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -130,10 +137,13 @@ function NeedCardInner({ need, onContribute, compact }: NeedCardProps) {
             style={styles.shareBtn}
             onPress={() => router.push(`/share/${need.id}`)}
             activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Share ${need.userName || 'this'} need`}
           >
-            <MaterialIcons name="share" size={16} color="rgba(255,255,255,0.85)" />
+            <MaterialIcons name="ios-share" size={17} color={Colors.white} />
           </TouchableOpacity>
-          <StatusBadge status={displayStatus} onDark />
+          <StatusBadge status={displayStatus} onDark iconOnly={narrow} />
         </View>
       </View>
 
@@ -345,6 +355,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
@@ -355,6 +366,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
     flex: 1,
+    minWidth: 0,
+  },
+  userText: {
+    flex: 1,
+    minWidth: 0,
   },
 
   avatar: {
@@ -368,38 +384,46 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    flexWrap: 'wrap',
+    gap: 4,
   },
   userName: {
     fontSize: FontSize.md,
     fontWeight: '700',
     color: Colors.white,
+    flexShrink: 1,
   },
-  cityRow: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
+    marginTop: 2,
   },
   cityText: {
     fontSize: FontSize.xs,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255,255,255,0.85)',
+    flexShrink: 1,
+  },
+  metaDot: {
+    fontSize: FontSize.xs,
+    color: 'rgba(255,255,255,0.7)',
+    marginHorizontal: 2,
   },
   timeText: {
     fontSize: FontSize.xs,
-    color: 'rgba(255,255,255,0.75)',
-    marginTop: 1,
+    color: 'rgba(255,255,255,0.85)',
+    flexShrink: 0,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    flexShrink: 0,
   },
   shareBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },

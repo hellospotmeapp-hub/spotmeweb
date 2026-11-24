@@ -6,6 +6,8 @@ import { Colors, BorderRadius, FontSize, Spacing } from '@/lib/theme';
 interface StatusBadgeProps {
   status: string;
   onDark?: boolean;
+  /** Icon-only round chip for tight layouts */
+  iconOnly?: boolean;
 }
 
 
@@ -17,15 +19,28 @@ const STATUS_CONFIG: Record<string, { color: string; icon: string; bg: string }>
   'Expired': { color: '#A9A29B', icon: 'timer-off', bg: '#F0EDE9' },
 };
 
-export default function StatusBadge({ status, onDark }: StatusBadgeProps) {
+export default function StatusBadge({ status, onDark, iconOnly }: StatusBadgeProps) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG['Collecting'];
   const bg = onDark ? 'rgba(255,255,255,0.22)' : config.bg;
   const color = onDark ? Colors.white : config.color;
 
+  if (iconOnly) {
+    return (
+      <View
+        style={[styles.iconOnly, { backgroundColor: bg }]}
+        accessible
+        accessibilityRole="text"
+        accessibilityLabel={`Status: ${status}`}
+      >
+        <MaterialIcons name={config.icon as any} size={17} color={color} />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       <MaterialIcons name={config.icon as any} size={14} color={color} />
-      <Text style={[styles.text, { color }]}>{status}</Text>
+      <Text style={[styles.text, { color }]} numberOfLines={1}>{status}</Text>
     </View>
   );
 }
@@ -38,6 +53,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: BorderRadius.full,
     gap: 4,
+  },
+  iconOnly: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   text: {
     fontSize: FontSize.xs,

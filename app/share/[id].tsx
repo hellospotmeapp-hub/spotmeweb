@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, Animated, Dimensions, ActivityIndicator, Image,
+  Platform, Animated, ActivityIndicator, useWindowDimensions,
 } from 'react-native';
 
 import { MaterialIcons } from '@expo/vector-icons';
@@ -18,9 +18,12 @@ import SignInPromptModal from '@/components/SignInPromptModal';
 import LiveDonationFeed from '@/components/LiveDonationFeed';
 import VideoPlayer from '@/components/VideoPlayer';
 import GracefulImage from '@/components/GracefulImage';
+import SocialShareGrid from '@/components/SocialShareGrid';
+import FadeOverlay from '@/components/FadeOverlay';
+import { getBaseUrl } from '@/lib/share';
 
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MAX_CONTENT_WIDTH = 640;
 const CTA_COLOR = Colors.primary;
 
 interface ThankYouVideoData {
@@ -43,12 +46,15 @@ export default function ShareLandingPage() {
   const scrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
 
   const [showContribute, setShowContribute] = useState(false);
+  const [presetAmount, setPresetAmount] = useState<number | undefined>(undefined);
+  const { width: windowWidth } = useWindowDimensions();
+  const isSmall = windowWidth < 360;
+  const heroHeight = windowWidth < 380 ? 260 : windowWidth >= 768 ? 360 : 300;
   const [showShare, setShowShare] = useState(false);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [pulseAnim] = useState(new Animated.Value(1));
   const [thankYouVideo, setThankYouVideo] = useState<ThankYouVideoData | null>(null);
-  const [linkCopied, setLinkCopied] = useState(false);
 
   // ---- DIRECT FETCH: If need not found in local store, fetch from DB ----
   const [fetchedNeed, setFetchedNeed] = useState<Need | null>(null);
@@ -126,8 +132,8 @@ export default function ShareLandingPage() {
         el.setAttribute('content', content);
       };
 
-      const remaining = need.goalAmount - need.raisedAmount;
-      const progress = Math.round((need.raisedAmount / need.goalAmount) * 100);
+      const remaining = Math.max(0, need.goalAmount - need.raisedAmount);
+      const progress = need.goalAmount > 0 ? Math.min(100, Math.round((need.raisedAmount / need.goalAmount) * 100)) : 0;
       const baseUrl = window.location.origin;
       const firstName = (need.userName || 'Someone').split(' ')[0];
 
@@ -138,7 +144,8 @@ export default function ShareLandingPage() {
       document.title = `Help ${need.userName}: ${need.title} | SpotMeOne`;
 
       // Standard meta
-      setMeta('description', `${need.message.substring(0, 150)}... $${remaining} still needed.`);
+      const msg = (need.message || '').trim();
+      setMeta('description', `${msg.length > 150 ? msg.substring(0, 150) + '…' : msg} $${remaining} still needed.`);
       setMeta('author', need.userName);
 
       // Open Graph
@@ -153,7 +160,6 @@ export default function ShareLandingPage() {
       setMeta('og:image', ogImageUrl);
       setMeta('og:image:width', '1200');
       setMeta('og:image:height', '630');
-      setMeta('og:image:type', 'image/svg+xml');
       setMeta('og:image:alt', `${need.userName} needs help: ${need.title}`);
 
       // Twitter Card
@@ -197,28 +203,6 @@ export default function ShareLandingPage() {
     pulse.start();
     return () => pulse.stop();
   }, []);
-
-  // Copy share link
-  const handleCopyLink = async () => {
-    const baseUrl = Platform.OS === 'web' && typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://spotmeone.com';
-    const url = `${baseUrl}/share/${id}`;
-    if (Platform.OS === 'web') {
-      try {
-        await navigator.clipboard.writeText(url);
-      } catch {
-        const ta = document.createElement('textarea');
-        ta.value = url;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-      }
-    }
-    setLinkCopied(true);
-    setTimeout(() => setLinkCopied(false), 2500);
-  };
 
   // Loading state
   if ((isLoading || isFetching || (!need && !fetchAttempted)) && !need) {
@@ -269,8 +253,8 @@ export default function ShareLandingPage() {
     );
   }
 
-  const progress = need.raisedAmount / need.goalAmount;
-  const remaining = need.goalAmount - need.raisedAmount;
+  const progress = need.goalAmount > 0 ? Math.min(need.raisedAmount / need.goalAmount, 1) : 0;
+  const remaining = Math.max(0, need.goalAmount - need.raisedAmount);
   const isComplete = need.status !== 'Collecting';
   // A closed need only "reached its goal" if it was actually fully funded
   const goalReached = need.raisedAmount >= need.goalAmount;
@@ -281,7 +265,7 @@ export default function ShareLandingPage() {
   const closedColor = goalReached || need.status === 'Paid' ? Colors.success : Colors.textLight;
   const closedIcon = goalReached || need.status === 'Paid' ? 'check-circle' : 'schedule';
   const closedBg = goalReached || need.status === 'Paid' ? '#E8F5E8' : Colors.surfaceAlt;
-  const progressPct = Math.round(progress * 100);
+  const progressPct = need.goalAmount > 0 ? Math.round((need.raisedAmount / need.goalAmount) * 100) : 0;
   const firstName = (need.userName || 'Someone').split(' ')[0];
   const recentContributors = need.contributions.slice(0, 5);
   const hasMultipleContributors = need.contributorCount > 1;
@@ -290,9 +274,16 @@ export default function ShareLandingPage() {
     contribute(need.id, amount, note);
   };
 
-  const handleSpotMe = () => {
+  const handleSpotMe = (amount?: number) => {
+    setPresetAmount(amount);
     setShowContribute(true);
   };
+
+  const shareUrl = `${getBaseUrl()}/share/${need.id}`;
+  const shareText = `${need.userName || 'Someone'} needs help: "${need.title}". $${remaining} still needed. Can you spot them?`;
+  const emailSubject = `Help ${need.userName || 'a neighbor'}: ${need.title} on SpotMeOne`;
+  const emailBody = `Hey!\n\n${need.userName || 'Someone'} needs help with "${need.title}" on SpotMeOne.\n\n$${remaining} is still needed (${progressPct}% funded so far).\n\nEvery dollar goes directly to them, with no platform fees.\n\nCheck it out: ${shareUrl}`;
+  const caption = `${need.userName || 'Someone'} needs $${remaining} for "${need.title}". Can you help? #SpotMeOne #MutualAid #HelpYourNeighbor`;
 
   return (
     <View style={[styles.container, { paddingTop: topPadding }]}>
@@ -302,29 +293,32 @@ export default function ShareLandingPage() {
         bounces={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <Animated.View style={{ opacity: fadeAnim }}>
+        <Animated.View style={[styles.page, { opacity: fadeAnim }]}>
           {/* ===== HERO SECTION ===== */}
-          <View style={styles.hero}>
+          <View style={[styles.hero, { height: need.photo ? heroHeight : 200 + topPadding }]}>
             {need.photo ? (
-              <GracefulImage uri={need.photo} type="photo" style={styles.heroImage} category={need.category} />
+              <>
+                <GracefulImage uri={need.photo} type="photo" style={styles.heroImage} category={need.category} />
+                <FadeOverlay edge="top" height={110 + topPadding} maxOpacity={0.45} />
+                <FadeOverlay edge="bottom" height={Math.round(heroHeight * 0.6)} maxOpacity={0.7} />
+              </>
             ) : (
-              <View style={[styles.heroImage, { backgroundColor: Colors.primary }]} />
+              <View style={[styles.heroImage, styles.heroPlain]}>
+                <View style={styles.heroPlainCircleA} />
+                <View style={styles.heroPlainCircleB} />
+              </View>
             )}
-
-            {/* Gradient overlays */}
-            <View style={styles.heroGradientTop} />
-            <View style={styles.heroGradientBottom} />
 
             {/* Top Navigation Bar */}
             <View style={[styles.topBar, { paddingTop: topPadding + 8 }]}>
-              <TouchableOpacity style={styles.topBtn} onPress={() => router.replace('/(tabs)')}>
-                <MaterialIcons name="home" size={18} color="#FFF" />
+              <TouchableOpacity style={styles.topBtn} onPress={() => router.replace('/(tabs)')} accessibilityLabel="Go to home">
+                <MaterialIcons name="home" size={20} color="#FFF" />
               </TouchableOpacity>
               <View style={styles.topLogoContainer}>
                 <Text style={styles.topLogo}>SpotMeOne</Text>
               </View>
-              <TouchableOpacity style={styles.topBtn} onPress={() => setShowShare(true)}>
-                <MaterialIcons name="share" size={18} color="#FFF" />
+              <TouchableOpacity style={styles.topBtn} onPress={() => setShowShare(true)} accessibilityLabel="Share this need">
+                <MaterialIcons name="ios-share" size={20} color="#FFF" />
               </TouchableOpacity>
             </View>
 
@@ -334,21 +328,23 @@ export default function ShareLandingPage() {
                 <GracefulImage uri={need.userAvatar} type="avatar" style={styles.heroAvatar} />
                 <View style={styles.heroUserInfo}>
                   <View style={styles.heroNameRow}>
-                    <Text style={styles.heroName}>{need.userName}</Text>
+                    <Text style={styles.heroName} numberOfLines={1}>{need.userName || 'SpotMeOne User'}</Text>
                     {!!need.userVerified && (
                       <MaterialIcons name="verified" size={16} color="#FFF" />
                     )}
                   </View>
-                  <View style={styles.heroLocationRow}>
-                    <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.8)" />
-                    <Text style={styles.heroLocation}>{need.userCity}</Text>
-                  </View>
+                  {!!need.userCity?.trim() && (
+                    <View style={styles.heroLocationRow}>
+                      <MaterialIcons name="place" size={12} color="rgba(255,255,255,0.8)" />
+                      <Text style={styles.heroLocation} numberOfLines={1}>{need.userCity.replace(/\s+/g, ' ').trim()}</Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
               {/* Category Badge */}
               <View style={styles.heroCategoryBadge}>
-                <Text style={styles.heroCategoryText}>{need.category}</Text>
+                <Text style={styles.heroCategoryText} numberOfLines={1}>{need.category}</Text>
               </View>
             </View>
           </View>
@@ -356,12 +352,12 @@ export default function ShareLandingPage() {
           {/* ===== MAIN CONTENT ===== */}
           <View style={styles.mainContent}>
             {/* Need Title */}
-            <Text style={styles.needTitle}>{need.title}</Text>
+            <Text style={[styles.needTitle, isSmall && { fontSize: 21, lineHeight: 27 }]}>{need.title}</Text>
 
             {/* PRIMARY CTA BUTTON */}
             {!isComplete && (
               <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-                <TouchableOpacity style={styles.primaryCTA} onPress={handleSpotMe} activeOpacity={0.85}>
+                <TouchableOpacity style={styles.primaryCTA} onPress={() => handleSpotMe()} activeOpacity={0.85} accessibilityRole="button">
                   <View style={styles.ctaInner}>
                     <View style={styles.ctaIconWrap}>
                       <MaterialIcons name="favorite" size={28} color="#FFF" />
@@ -451,7 +447,7 @@ export default function ShareLandingPage() {
                 <Text style={styles.quickSpotLabel}>Quick Spot</Text>
                 <View style={styles.quickSpotRow}>
                   {[1, 5, 10, 25].map(amount => (
-                    <TouchableOpacity key={amount} style={styles.quickSpotBtn} onPress={handleSpotMe} activeOpacity={0.7}>
+                    <TouchableOpacity key={amount} style={styles.quickSpotBtn} onPress={() => handleSpotMe(amount)} activeOpacity={0.7} accessibilityLabel={`Spot $${amount}`}>
                       <MaterialIcons name="favorite" size={14} color={CTA_COLOR} />
                       <Text style={styles.quickSpotText}>${amount}</Text>
                     </TouchableOpacity>
@@ -571,38 +567,16 @@ export default function ShareLandingPage() {
               <Text style={styles.shareSectionSub}>
                 Even if you can't contribute, sharing helps {firstName} reach more people.
               </Text>
-              <View style={styles.shareActions}>
-                <TouchableOpacity style={styles.shareActionBtn} onPress={handleCopyLink} activeOpacity={0.7}>
-                  <MaterialIcons name={linkCopied ? 'check' : 'link'} size={18} color={linkCopied ? Colors.success : CTA_COLOR} />
-                  <Text style={[styles.shareActionText, linkCopied && { color: Colors.success }]}>
-                    {linkCopied ? 'Link Copied!' : 'Copy Link'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.shareActionBtn} onPress={() => setShowShare(true)} activeOpacity={0.7}>
-                  <MaterialIcons name="share" size={18} color={CTA_COLOR} />
-                  <Text style={styles.shareActionText}>Share</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.shareActionBtn} onPress={() => {
-                  const baseUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://spotmeone.com';
-                  const text = `${need.userName} needs help: "${need.title}". $${remaining} still needed. Can you spot them?\n${baseUrl}/share/${need.id}`;
-                  if (Platform.OS === 'web') {
-                    window.open(`sms:?body=${encodeURIComponent(text)}`, '_self');
-                  }
-                }} activeOpacity={0.7}>
-                  <MaterialIcons name="sms" size={18} color={CTA_COLOR} />
-                  <Text style={styles.shareActionText}>Text</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.shareActionBtn} onPress={() => {
-                  const baseUrl = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://spotmeone.com';
-                  const subject = `Help ${need.userName}: ${need.title} on SpotMeOne`;
-                  const body = `Hey!\n\n${need.userName} needs help with "${need.title}" on SpotMeOne.\n\n$${remaining} is still needed (${progressPct}% funded so far).\n\nEvery dollar goes directly to them — no platform fees.\n\nCheck it out: ${baseUrl}/share/${need.id}`;
-                  if (Platform.OS === 'web') {
-                    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
-                  }
-                }} activeOpacity={0.7}>
-                  <MaterialIcons name="email" size={18} color={CTA_COLOR} />
-                  <Text style={styles.shareActionText}>Email</Text>
-                </TouchableOpacity>
+              <View style={styles.shareGridWrap}>
+                <SocialShareGrid
+                  url={shareUrl}
+                  text={shareText}
+                  smsText={`Hey! ${shareText}`}
+                  emailSubject={emailSubject}
+                  emailBody={emailBody}
+                  caption={caption}
+                  title={need.title}
+                />
               </View>
             </View>
 
@@ -638,34 +612,33 @@ export default function ShareLandingPage() {
       </ScrollView>
 
       {/* FIXED BOTTOM CTA */}
-      {!isComplete && (
-        <View style={[styles.fixedCTA, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <TouchableOpacity style={styles.fixedCTABtn} onPress={handleSpotMe} activeOpacity={0.85}>
-            <MaterialIcons name="favorite" size={22} color="#FFF" />
-            <Text style={styles.fixedCTAText}>Spot {firstName} — ${remaining} needed</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.fixedShareBtn} onPress={() => setShowShare(true)} activeOpacity={0.7}>
-            <MaterialIcons name="share" size={20} color={CTA_COLOR} />
-          </TouchableOpacity>
-        </View>
-      )}
-      {!!isComplete && (
-        <View style={[styles.fixedCTA, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <View style={[styles.fixedCompleteBanner, { backgroundColor: closedBg }]}>
-            <MaterialIcons name={closedIcon} size={20} color={closedColor} />
-            <Text style={[styles.fixedCompleteText, { color: closedColor }]} numberOfLines={2}>{closedMessage}</Text>
-          </View>
-          <TouchableOpacity style={styles.fixedShareBtn} onPress={() => setShowShare(true)} activeOpacity={0.7}>
-            <MaterialIcons name="share" size={20} color={CTA_COLOR} />
+      <View style={[styles.fixedCTA, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={styles.fixedCTAInner}>
+          {!isComplete ? (
+            <TouchableOpacity style={styles.fixedCTABtn} onPress={() => handleSpotMe()} activeOpacity={0.85} accessibilityRole="button">
+              <MaterialIcons name="favorite" size={20} color="#FFF" />
+              <Text style={[styles.fixedCTAText, isSmall && { fontSize: 15 }]} numberOfLines={1}>
+                {windowWidth < 400 ? `Spot ${firstName} · $${remaining}` : `Spot ${firstName} · $${remaining} needed`}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.fixedCompleteBanner, { backgroundColor: closedBg }]}>
+              <MaterialIcons name={closedIcon} size={20} color={closedColor} />
+              <Text style={[styles.fixedCompleteText, { color: closedColor }]} numberOfLines={2}>{closedMessage}</Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.fixedShareBtn} onPress={() => setShowShare(true)} activeOpacity={0.7} accessibilityLabel="Share this need">
+            <MaterialIcons name="ios-share" size={22} color={CTA_COLOR} />
           </TouchableOpacity>
         </View>
-      )}
+      </View>
 
       {/* MODALS */}
       <ContributeModal
         visible={showContribute}
         onClose={() => setShowContribute(false)}
         onContribute={handleContribute}
+        initialAmount={presetAmount}
         needTitle={need.title}
         needId={need.id}
         remaining={remaining}
@@ -701,6 +674,7 @@ export default function ShareLandingPage() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scrollContent: { flexGrow: 1 },
+  page: { width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
 
   // Loading
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, paddingHorizontal: Spacing.xxl },
@@ -718,27 +692,28 @@ const styles = StyleSheet.create({
   homeLinkText: { fontSize: FontSize.sm, fontWeight: '600', color: Colors.primary },
 
   // Hero
-  hero: { position: 'relative', height: 320 },
+  hero: { position: 'relative', height: 300, overflow: 'hidden' },
   heroImage: { width: '100%', height: '100%' },
-  heroGradientTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 100, backgroundColor: 'rgba(0,0,0,0.3)' },
-  heroGradientBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 180, backgroundColor: 'rgba(0,0,0,0.4)' },
+  heroPlain: { backgroundColor: Colors.primary },
+  heroPlainCircleA: { position: 'absolute', width: 260, height: 260, borderRadius: 130, backgroundColor: 'rgba(255,255,255,0.10)', top: -90, right: -70 },
+  heroPlainCircleB: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: 'rgba(0,0,0,0.06)', bottom: -60, left: -40 },
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, zIndex: 10 },
-  topBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
+  topBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' },
   topLogoContainer: { alignItems: 'center' },
   topLogo: { fontSize: FontSize.lg, fontWeight: '900', color: '#FFF', letterSpacing: -0.5 },
-  heroBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: Spacing.xl, paddingBottom: Spacing.lg, paddingTop: Spacing.xxl, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  heroProfile: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
+  heroBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg, paddingTop: Spacing.xxl, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: Spacing.sm },
+  heroProfile: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1, minWidth: 0 },
   heroAvatar: { width: 52, height: 52, borderRadius: 26, borderWidth: 2.5, borderColor: '#FFF' },
-  heroUserInfo: { flex: 1 },
+  heroUserInfo: { flex: 1, minWidth: 0 },
   heroNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  heroName: { fontSize: FontSize.lg, fontWeight: '800', color: '#FFF' },
+  heroName: { fontSize: FontSize.lg, fontWeight: '800', color: '#FFF', flexShrink: 1 },
   heroLocationRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 },
-  heroLocation: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
-  heroCategoryBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
+  heroLocation: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.85)', fontWeight: '500', flexShrink: 1 },
+  heroCategoryBadge: { maxWidth: '40%', flexShrink: 0, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: BorderRadius.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   heroCategoryText: { fontSize: FontSize.xs, fontWeight: '700', color: '#FFF' },
 
   // Main Content
-  mainContent: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl, gap: Spacing.lg },
+  mainContent: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl, gap: Spacing.lg },
   needTitle: { fontSize: 24, fontWeight: '900', color: Colors.text, lineHeight: 30 },
 
   // Primary CTA
@@ -748,8 +723,8 @@ const styles = StyleSheet.create({
   ctaTextWrap: { flex: 1 },
   ctaMainText: { fontSize: FontSize.xl, fontWeight: '900', color: '#FFF' },
   ctaSubText: { fontSize: FontSize.sm, color: 'rgba(255,255,255,0.85)', fontWeight: '600', marginTop: 2 },
-  completeBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: '#E8F5E8', paddingVertical: Spacing.lg, borderRadius: BorderRadius.xl, ...Shadow.sm },
-  completeText: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.success },
+  completeBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, paddingHorizontal: Spacing.lg, backgroundColor: '#E8F5E8', paddingVertical: Spacing.lg, borderRadius: BorderRadius.xl, ...Shadow.sm },
+  completeText: { flexShrink: 1, fontSize: FontSize.lg, fontWeight: '700', color: Colors.success, textAlign: 'center' },
 
   // Thank You Video
   thankYouVideoSection: { backgroundColor: Colors.surface, borderRadius: BorderRadius.xl, overflow: 'hidden', ...Shadow.md },
@@ -799,7 +774,7 @@ const styles = StyleSheet.create({
   supporterRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
   supporterAvatar: { width: 36, height: 36, borderRadius: 18 },
   supporterInfo: { flex: 1 },
-  supporterNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  supporterNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
   supporterName: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.text },
   supporterAmount: { fontSize: FontSize.sm, fontWeight: '600', color: CTA_COLOR },
   supporterNote: { fontSize: FontSize.xs, color: Colors.textSecondary, fontStyle: 'italic', marginTop: 2 },
@@ -825,12 +800,10 @@ const styles = StyleSheet.create({
   trustNote: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', lineHeight: 18 },
 
   // Share Section
-  shareSection: { backgroundColor: Colors.primaryLight, borderRadius: BorderRadius.xl, padding: Spacing.xl, gap: Spacing.md, borderWidth: 1, borderColor: CTA_COLOR + '20' },
+  shareSection: { backgroundColor: Colors.primaryLight, borderRadius: BorderRadius.xl, padding: Spacing.lg, gap: Spacing.md, borderWidth: 1, borderColor: CTA_COLOR + '20' },
   shareSectionTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.text, textAlign: 'center' },
   shareSectionSub: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
-  shareActions: { flexDirection: 'row', justifyContent: 'space-around', marginTop: Spacing.sm },
-  shareActionBtn: { alignItems: 'center', gap: Spacing.xs },
-  shareActionText: { fontSize: FontSize.xs, fontWeight: '700', color: CTA_COLOR },
+  shareGridWrap: { backgroundColor: Colors.surface, borderRadius: BorderRadius.lg, paddingVertical: Spacing.lg, paddingHorizontal: Spacing.xs, marginTop: Spacing.xs },
 
   // Footer
   footer: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.xs, marginTop: Spacing.md },
@@ -843,10 +816,11 @@ const styles = StyleSheet.create({
   footerCopy: { fontSize: FontSize.xs, color: Colors.textLight, marginTop: Spacing.md },
 
   // Fixed CTA
-  fixedCTA: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(250,250,248,0.97)', paddingHorizontal: Spacing.xl, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.borderLight, flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
-  fixedCTABtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: CTA_COLOR, paddingVertical: 16, borderRadius: BorderRadius.xl, minHeight: 56, ...Shadow.md },
-  fixedCTAText: { fontSize: 17, fontWeight: '800', color: '#FFF' },
+  fixedCTA: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(250,250,248,0.97)', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.borderLight },
+  fixedCTAInner: { width: '100%', maxWidth: MAX_CONTENT_WIDTH - 2 * Spacing.lg, alignSelf: 'center', flexDirection: 'row', gap: Spacing.sm, alignItems: 'center' },
+  fixedCTABtn: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: CTA_COLOR, paddingVertical: 14, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.xl, minHeight: 56, ...Shadow.md },
+  fixedCTAText: { flexShrink: 1, fontSize: 17, fontWeight: '800', color: '#FFF' },
   fixedShareBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: CTA_COLOR + '30' },
-  fixedCompleteBanner: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: '#E8F5E8', paddingVertical: 16, borderRadius: BorderRadius.xl, minHeight: 56 },
-  fixedCompleteText: { fontSize: FontSize.md, fontWeight: '700', color: Colors.success },
+  fixedCompleteBanner: { flex: 1, minWidth: 0, paddingHorizontal: Spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, backgroundColor: '#E8F5E8', paddingVertical: 16, borderRadius: BorderRadius.xl, minHeight: 56 },
+  fixedCompleteText: { flexShrink: 1, fontSize: FontSize.md, fontWeight: '700', color: Colors.success },
 });
