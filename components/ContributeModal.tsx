@@ -13,6 +13,8 @@ interface ContributeModalProps {
   needId: string;
   remaining: number;
   contributorName?: string;
+  /** Preselect this amount when the modal opens */
+  initialAmount?: number;
 }
 
 const PRESET_AMOUNTS = [1, 5, 10, 25, 50];
@@ -64,7 +66,7 @@ function getSmartTipSuggestions(donationAmount: number): { presets: number[]; de
 }
 
 
-export default function ContributeModal({ visible, onClose, onContribute, needTitle, needId, remaining, contributorName }: ContributeModalProps) {
+export default function ContributeModal({ visible, onClose, onContribute, needTitle, needId, remaining, contributorName, initialAmount }: ContributeModalProps) {
   const { contributeWithPayment, isLoggedIn, sendContributionReceipt, resendContributionReceipt } = useApp();
 
   const [selectedAmount, setSelectedAmount] = useState<number | null>(5);
@@ -126,6 +128,15 @@ export default function ContributeModal({ visible, onClose, onContribute, needTi
   // ============================================================
   useEffect(() => {
     if (visible) {
+      if (initialAmount && initialAmount > 0) {
+        if (PRESET_AMOUNTS.includes(initialAmount)) {
+          setIsCustom(false);
+          setSelectedAmount(initialAmount);
+        } else {
+          setIsCustom(true);
+          setCustomAmount(String(initialAmount));
+        }
+      }
       // Always allow a fresh payment attempt when the modal opens
       paymentInProgressRef.current = false;
       setProcessing(false);

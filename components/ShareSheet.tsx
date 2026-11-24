@@ -1,8 +1,10 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform, Share, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform, Image, ScrollView } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, FontSize, Spacing, Shadow } from '@/lib/theme';
 import QRCode from './QRCode';
+import SocialShareGrid from './SocialShareGrid';
+import { copyText, getBaseUrl as shareBaseUrl } from '@/lib/share';
 
 interface ShareSheetProps {
   visible: boolean;
@@ -35,12 +37,7 @@ export default function ShareSheet({
   const [copiedCaption, setCopiedCaption] = useState(false);
   const [activeTab, setActiveTab] = useState<'link' | 'qr' | 'preview'>('link');
 
-  const getBaseUrl = () => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      return window.location.origin;
-    }
-    return 'https://spotmeone.com';
-  };
+  const getBaseUrl = shareBaseUrl;
 
   const getShareUrl = useCallback(() => {
     const base = getBaseUrl();
@@ -94,118 +91,18 @@ export default function ShareSheet({
   }, [needTitle, userName, needGoal, needRaised]);
 
 
-  const handleShare = async (platform: string) => {
-    const url = getShareUrl();
-    const text = getShareText();
-
-    switch (platform) {
-      case 'copy':
-        if (Platform.OS === 'web') {
-          try {
-            await navigator.clipboard.writeText(url);
-          } catch {
-            const ta = document.createElement('textarea');
-            ta.value = url;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-          }
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2500);
-        }
-        break;
-
-      case 'copy-message':
-        if (Platform.OS === 'web') {
-          const msg = getSMSText();
-          try {
-            await navigator.clipboard.writeText(msg);
-          } catch {
-            const ta = document.createElement('textarea');
-            ta.value = msg;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-          }
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2500);
-        }
-        break;
-
-      case 'copy-caption':
-        if (Platform.OS === 'web') {
-          const caption = getTikTokCaption();
-          try {
-            await navigator.clipboard.writeText(caption);
-          } catch {
-            const ta = document.createElement('textarea');
-            ta.value = caption;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-          }
-          setCopiedCaption(true);
-          setTimeout(() => setCopiedCaption(false), 2500);
-        }
-        break;
-
-      case 'sms':
-        if (Platform.OS === 'web') {
-          const smsText = getSMSText();
-          window.open(`sms:?body=${encodeURIComponent(smsText)}`, '_self');
-        }
-        break;
-
-      case 'email':
-        if (Platform.OS === 'web') {
-          const subject = getEmailSubject();
-          const body = getEmailBody();
-          window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_self');
-        }
-        break;
-
-      case 'tiktok':
-        if (Platform.OS === 'web') {
-          window.open('https://www.tiktok.com/upload', '_blank');
-        }
-        break;
-
-      case 'instagram':
-        if (Platform.OS === 'web') {
-          window.open('https://www.instagram.com/', '_blank');
-        }
-        break;
-
-      case 'twitter':
-        if (Platform.OS === 'web') {
-          window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
-        }
-        break;
-
-      case 'facebook':
-        if (Platform.OS === 'web') {
-          window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
-        }
-        break;
-
-      case 'whatsapp':
-        if (Platform.OS === 'web') {
-          window.open(`https://wa.me/?text=${encodeURIComponent(text + '\n' + url)}`, '_blank');
-        }
-        break;
-
-      case 'native':
-        try {
-          if (Platform.OS === 'web' && navigator.share) {
-            await navigator.share({ title: needTitle || 'SpotMeOne', text, url });
-          } else {
-            await Share.share({ message: `${text}\n${url}` });
-          }
-        } catch {}
-        break;
+  const handleShare = async (platform: 'copy' | 'copy-message' | 'copy-caption') => {
+    const value = platform === 'copy' ? getShareUrl()
+      : platform === 'copy-message' ? getSMSText()
+      : getTikTokCaption();
+    const ok = await copyText(value);
+    if (!ok) return;
+    if (platform === 'copy-caption') {
+      setCopiedCaption(true);
+      setTimeout(() => setCopiedCaption(false), 2500);
+    } else {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
@@ -319,69 +216,17 @@ export default function ShareSheet({
                   <Text style={styles.copyMessageText}>Copy as ready-to-send message</Text>
                 </TouchableOpacity>
 
-                {/* Direct Share: SMS & Email */}
-                <Text style={styles.sectionLabel}>Send Directly</Text>
-                <View style={styles.directShareRow}>
-                  <TouchableOpacity style={styles.directShareBtn} onPress={() => handleShare('sms')} activeOpacity={0.7}>
-                    <View style={[styles.directShareIcon, { backgroundColor: '#34C759' }]}>
-                      <MaterialIcons name="sms" size={20} color="#FFF" />
-                    </View>
-                    <Text style={styles.directShareLabel}>Text Message</Text>
-                    <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.directShareBtn} onPress={() => handleShare('email')} activeOpacity={0.7}>
-                    <View style={[styles.directShareIcon, { backgroundColor: '#5856D6' }]}>
-                      <MaterialIcons name="email" size={20} color="#FFF" />
-                    </View>
-                    <Text style={styles.directShareLabel}>Email</Text>
-                    <MaterialIcons name="chevron-right" size={18} color={Colors.textLight} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Social Share Grid */}
-                <Text style={styles.sectionLabel}>Share on Social</Text>
-                <View style={styles.socialGrid}>
-                  <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('tiktok')} activeOpacity={0.7}>
-                    <View style={[styles.socialIcon, { backgroundColor: '#000' }]}>
-                      <MaterialIcons name="music-note" size={22} color="#FFF" />
-                    </View>
-                    <Text style={styles.socialLabel}>TikTok</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('instagram')} activeOpacity={0.7}>
-                    <View style={[styles.socialIcon, { backgroundColor: '#E1306C' }]}>
-                      <MaterialIcons name="camera-alt" size={22} color="#FFF" />
-                    </View>
-                    <Text style={styles.socialLabel}>Instagram</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('twitter')} activeOpacity={0.7}>
-                    <View style={[styles.socialIcon, { backgroundColor: '#1DA1F2' }]}>
-                      <MaterialIcons name="tag" size={22} color="#FFF" />
-                    </View>
-                    <Text style={styles.socialLabel}>X</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('facebook')} activeOpacity={0.7}>
-                    <View style={[styles.socialIcon, { backgroundColor: '#1877F2' }]}>
-                      <MaterialIcons name="thumb-up" size={22} color="#FFF" />
-                    </View>
-                    <Text style={styles.socialLabel}>Facebook</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('whatsapp')} activeOpacity={0.7}>
-                    <View style={[styles.socialIcon, { backgroundColor: '#25D366' }]}>
-                      <MaterialIcons name="chat" size={22} color="#FFF" />
-                    </View>
-                    <Text style={styles.socialLabel}>WhatsApp</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.socialBtn} onPress={() => handleShare('native')} activeOpacity={0.7}>
-                    <View style={[styles.socialIcon, { backgroundColor: Colors.primary }]}>
-                      <MaterialIcons name="share" size={22} color="#FFF" />
-                    </View>
-                    <Text style={styles.socialLabel}>More</Text>
-                  </TouchableOpacity>
+                <Text style={styles.sectionLabel}>Share to</Text>
+                <View style={{ marginBottom: Spacing.xl }}>
+                  <SocialShareGrid
+                    url={getShareUrl()}
+                    text={getShareText()}
+                    smsText={getSMSText().replace(`\n\n${getShareUrl()}`, '')}
+                    emailSubject={getEmailSubject()}
+                    emailBody={getEmailBody()}
+                    caption={getTikTokCaption()}
+                    title={needTitle || 'SpotMeOne'}
+                  />
                 </View>
 
                 {/* TikTok Caption Helper */}
@@ -523,9 +368,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
-    paddingHorizontal: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
     paddingBottom: Platform.OS === 'web' ? 44 : 30,
     maxHeight: '92%',
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   handle: { width: 40, height: 4, backgroundColor: Colors.border, borderRadius: 2, alignSelf: 'center', marginTop: Spacing.md, marginBottom: Spacing.md },
 
@@ -591,18 +439,8 @@ const styles = StyleSheet.create({
   copyMessageBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs, paddingVertical: Spacing.sm, marginBottom: Spacing.lg },
   copyMessageText: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.primary },
 
-  // Direct Share
-  directShareRow: { gap: Spacing.sm, marginBottom: Spacing.xl },
-  directShareBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surfaceAlt, padding: Spacing.md, borderRadius: BorderRadius.lg },
-  directShareIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  directShareLabel: { flex: 1, fontSize: FontSize.md, fontWeight: '600', color: Colors.text },
-
   // Social Grid
   sectionLabel: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textLight, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: Spacing.md },
-  socialGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.lg, justifyContent: 'center', marginBottom: Spacing.xl },
-  socialBtn: { alignItems: 'center', gap: Spacing.xs, width: 70 },
-  socialIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', ...Shadow.sm },
-  socialLabel: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.textSecondary },
 
   // Caption Box
   captionBox: {
